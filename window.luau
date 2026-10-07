@@ -2,6 +2,16 @@
 
 local CLI = tern.plugin.dir .. "/bin/tern-wt"
 local DIALOG = "tern-worktrees.dialog"
+local FLOAT_SHEET = "dialog-float"
+
+local floatRules: string? = nil
+do
+	local ok, source = pcall(tern.fs.read, tern.plugin.dir .. "/dialog-float.css")
+	if ok then
+		floatRules = source
+	end
+end
+tern.css(FLOAT_SHEET, "")
 
 local function env(name: string): string?
 	local value = tern.getenv(name)
@@ -252,6 +262,13 @@ local function rebuild_managed(cx: WindowCx)
 	end
 end
 
+local function settle(pane: number)
+	pending[pane] = nil
+	if next(pending) == nil then
+		tern.css(FLOAT_SHEET, "")
+	end
+end
+
 local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: boolean?): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
@@ -265,6 +282,9 @@ local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: b
 	else
 		cx.layout:float(pane)
 		cx.layout:focus(pane)
+	end
+	if next(pending) == nil and floatRules ~= nil then
+		tern.css(FLOAT_SHEET, floatRules)
 	end
 	pending[pane] = { reqid = reqid, cb = cb }
 	return true
@@ -669,7 +689,7 @@ local function branch_picker(cx: WindowCx, root: string)
 			table.insert(items, {
 				id = "b:" .. name,
 				label = name,
-				detail = if path then path .. " · worktree" else nil,
+				detail = if path then "worktree" else nil,
 				group = "Branches",
 			})
 		end
@@ -1002,7 +1022,7 @@ tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 	end
 	local ok, decoded = pcall(tern.json.decode, string.sub(ev.title, #prefix + 1))
 	local answer: Answer = if ok and type(decoded) == "table" then decoded else { action = "cancel" }
-	pending[ev.pane] = nil
+	settle(ev.pane)
 	cx.layout:close(ev.pane)
 	entry.cb(answer, cx)
 end)
@@ -1013,7 +1033,7 @@ tern.on("pane_closed", function(ev: PaneEvent, cx: WindowCx)
 	if entry == nil then
 		return
 	end
-	pending[ev.pane] = nil
+	settle(ev.pane)
 	entry.cb({ action = "cancel" }, cx)
 end)
 

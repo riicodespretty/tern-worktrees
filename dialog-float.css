@@ -1,0 +1,57 @@
+section.tn-pane.pip {
+  position: fixed !important;
+  left: 50% !important;
+  top: 12vh !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(640px, calc(100vw - 48px)) !important;
+  height: min(540px, calc(100vh - 160px)) !important;
+  transform: translateX(-50%) !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 16px !important;
+  outline: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+section.tn-pane.pip::before,
+section.tn-pane.pip::after,
+section.tn-pane.pip > header.tn-head,
+section.tn-pane.pip > div.tn-glow,
+section.tn-pane.pip > div.tn-pip-grip,
+section.tn-pane.pip .pk-dim,
+section.tn-pane.pip .sf-ov-dim {
+  display: none !important;
+}
+
+section.tn-pane.pip .tv-grid {
+  visibility: hidden !important;
+}
+
+section.tn-pane.pip > div.tn-body,
+section.tn-pane.pip .tv,
+section.tn-pane.pip .tv-cover {
+  inset: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+section.tn-pane.pip .pk-sheet {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  margin-top: 0 !important;
+}
+
+section.tn-pane.pip .sf-overlay {
+  justify-content: flex-start !important;
+  padding: 0 !important;
+}
+
+section.tn-pane.pip .sf-ov-card {
+  width: 100% !important;
+  border-radius: 16px !important;
+}
