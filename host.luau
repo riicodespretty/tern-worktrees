@@ -4,18 +4,29 @@ local ui = tern.ui
 
 local NEW_ID = "__new__"
 local UNGROUPED = "__ungrouped__"
+local TITLE_PREFIX = "twt:"
+local MODE_PICK: "pick" = "pick"
+local MODE_CONFIRM: "confirm" = "confirm"
+local MODE_PROMPT: "prompt" = "prompt"
+local ACTION_SELECT: "select" = "select"
+local ACTION_NEW: "new" = "new"
+local ACTION_BUTTON: "button" = "button"
+local ACTION_TEXT: "text" = "text"
+local ACTION_CANCEL: "cancel" = "cancel"
+local KIND_CANCEL: "cancel" = "cancel"
 local CARD_KEY = "card"
-local PICK_KEY = "pick"
-local PROMPT_KEY = "prompt"
-local TEXT_KEY = "text"
+local PICK_KEY = MODE_PICK
+local CONFIRM_KEY = MODE_CONFIRM
+local PROMPT_KEY = MODE_PROMPT
+local TEXT_KEY = ACTION_TEXT
 local PICK_ID = "layer." .. CARD_KEY .. "." .. PICK_KEY
 local PROMPT_INPUT_ID = "layer." .. PROMPT_KEY .. "." .. TEXT_KEY
 local ESCAPE_LABEL = "cancel"
 
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
-type Button = { id: string, label: string, kind: ("primary" | "danger" | "cancel")? }
+type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
 type PickRequest = {
-	mode: "pick",
+	mode: typeof(MODE_PICK),
 	title: string,
 	items: { Item }?,
 	allowNew: boolean?,
@@ -25,7 +36,7 @@ type PickRequest = {
 	verb: string?,
 }
 type ConfirmRequest = {
-	mode: "confirm",
+	mode: typeof(MODE_CONFIRM),
 	title: string,
 	message: string?,
 	path: string?,
@@ -33,7 +44,7 @@ type ConfirmRequest = {
 	buttons: { Button }?,
 }
 type PromptRequest = {
-	mode: "prompt",
+	mode: typeof(MODE_PROMPT),
 	title: string,
 	message: string?,
 	placeholder: string?,
@@ -42,11 +53,11 @@ type PromptRequest = {
 }
 type Request = PickRequest | ConfirmRequest | PromptRequest
 type Answer =
-	{ action: "cancel" }
-	| { action: "new", text: string }
-	| { action: "select", id: string }
-	| { action: "button", id: string }
-	| { action: "text", text: string }
+	{ action: typeof(ACTION_CANCEL) }
+	| { action: typeof(ACTION_NEW), text: string }
+	| { action: typeof(ACTION_SELECT), id: string }
+	| { action: typeof(ACTION_BUTTON), id: string }
+	| { action: typeof(ACTION_TEXT), text: string }
 type State = {
 	reqid: string,
 	req: Request,
@@ -122,9 +133,9 @@ local function answer_pick(state: State, id: string?)
 		return
 	end
 	if id == NEW_ID then
-		state.answer = { action = "new", text = state.query }
+		state.answer = { action = ACTION_NEW, text = state.query }
 	else
-		state.answer = { action = "select", id = id }
+		state.answer = { action = ACTION_SELECT, id = id }
 	end
 end
 
@@ -225,7 +236,7 @@ end
 local function button_shortcut(button: Button, index: number): string
 	if index == 1 then
 		return "↵"
-	elseif button.id == "cancel" then
+	elseif button.kind == KIND_CANCEL then
 		return "esc"
 	end
 	return tostring(index)
@@ -252,7 +263,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 	local lead: { Node } = {}
 	local hasCancel = false
 	for _, button in ipairs(buttons) do
-		hasCancel = hasCancel or button.id == "cancel"
+		hasCancel = hasCancel or button.kind == KIND_CANCEL
 	end
 	if not hasCancel then
 		table.insert(lead, hint({ "esc" }, ESCAPE_LABEL, "twt-hint"))
@@ -281,7 +292,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
 	end
 	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
-	return palette_card("confirm", req.title, children)
+	return palette_card(CONFIRM_KEY, req.title, children)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
@@ -342,12 +353,12 @@ local function confirm_key(state: State, key: Key): boolean
 		if buttons[1] == nil then
 			return false
 		end
-		state.answer = { action = "button", id = buttons[1].id }
+		state.answer = { action = ACTION_BUTTON, id = buttons[1].id }
 		return true
 	end
 	local digit = if key.ctrl or key.meta then nil else tonumber(key.name)
 	if digit ~= nil and buttons[digit] ~= nil then
-		state.answer = { action = "button", id = buttons[digit].id }
+		state.answer = { action = ACTION_BUTTON, id = buttons[digit].id }
 		return true
 	end
 	return false
@@ -355,7 +366,7 @@ end
 
 local function prompt_key(state: State, key: Key): boolean
 	if key.name == "enter" then
-		state.answer = { action = "text", text = state.text }
+		state.answer = { action = ACTION_TEXT, text = state.text }
 		return true
 	end
 	local text = edit_text(state.text, key)
@@ -372,9 +383,9 @@ type ModeHandlers = {
 }
 
 local MODES: { [string]: ModeHandlers? } = {
-	pick = { view = pick_view, key = pick_key },
-	confirm = { view = confirm_view, key = confirm_key },
-	prompt = { view = prompt_view, key = prompt_key },
+	[MODE_PICK] = { view = pick_view, key = pick_key },
+	[MODE_CONFIRM] = { view = confirm_view, key = confirm_key },
+	[MODE_PROMPT] = { view = prompt_view, key = prompt_key },
 }
 
 local def: BlockDef<State> = {
@@ -390,11 +401,11 @@ local def: BlockDef<State> = {
 			req = req,
 			query = "",
 			selected = nil,
-			text = if req.mode == "prompt" then req.text or "" else "",
+			text = if req.mode == MODE_PROMPT then req.text or "" else "",
 			answer = nil,
 			focused = false,
 		}
-		if req.mode == "pick" then
+		if req.mode == MODE_PICK then
 			local ids = visible_entries(state)
 			if req.selected ~= nil and table.find(ids, req.selected) ~= nil then
 				state.selected = req.selected
@@ -417,7 +428,7 @@ local def: BlockDef<State> = {
 		if state.answer == nil then
 			return state.req.title
 		end
-		return "twt:" .. state.reqid .. ":" .. tern.json.encode(state.answer)
+		return TITLE_PREFIX .. state.reqid .. ":" .. tern.json.encode(state.answer)
 	end,
 
 	key = function(state: State, key: Key, _cx: BlockCx): boolean?
@@ -429,7 +440,7 @@ local def: BlockDef<State> = {
 			return false
 		end
 		if key.name == "escape" then
-			state.answer = { action = "cancel" }
+			state.answer = { action = ACTION_CANCEL }
 			return true
 		end
 		return handlers.key(state, key)
@@ -450,12 +461,12 @@ local def: BlockDef<State> = {
 			answer_pick(state, ev.item)
 		elseif ev.ev == "action" then
 			if ev.act == "close" or ev.act == "escape" then
-				state.answer = { action = "cancel" }
+				state.answer = { action = ACTION_CANCEL }
 			elseif ev.act == "clear" then
 				state.query = ""
 				keep_selection_visible(state, (visible_entries(state)))
 			elseif ev.act == "btn" and type(ev.value) == "string" then
-				state.answer = { action = "button", id = ev.value }
+				state.answer = { action = ACTION_BUTTON, id = ev.value }
 			end
 		end
 	end,

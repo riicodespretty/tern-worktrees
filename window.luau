@@ -27,12 +27,23 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
+local TITLE_PREFIX = "twt:"
+local MODE_PICK: "pick" = "pick"
+local MODE_CONFIRM: "confirm" = "confirm"
+local MODE_PROMPT: "prompt" = "prompt"
+local ACTION_SELECT: "select" = "select"
+local ACTION_NEW: "new" = "new"
+local ACTION_BUTTON: "button" = "button"
+local ACTION_TEXT: "text" = "text"
+local ACTION_CANCEL: "cancel" = "cancel"
+local KIND_CANCEL = "cancel"
+
 type Answer =
-	{ action: "cancel" }
-	| { action: "button", id: string }
-	| { action: "select", id: string }
-	| { action: "new", text: string }
-	| { action: "text", text: string }
+	{ action: typeof(ACTION_CANCEL) }
+	| { action: typeof(ACTION_BUTTON), id: string }
+	| { action: typeof(ACTION_SELECT), id: string }
+	| { action: typeof(ACTION_NEW), text: string }
+	| { action: typeof(ACTION_TEXT), text: string }
 type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
 type ConfirmRequest = {
@@ -346,19 +357,19 @@ end
 
 local function parse_answer(decoded: any): Answer
 	if type(decoded) ~= "table" then
-		return { action = "cancel" }
+		return { action = ACTION_CANCEL }
 	end
 	local action, id, text = decoded.action, decoded.id, decoded.text
-	if action == "button" and type(id) == "string" then
-		return { action = "button", id = id }
-	elseif action == "select" and type(id) == "string" then
-		return { action = "select", id = id }
-	elseif action == "new" and type(text) == "string" then
-		return { action = "new", text = text }
-	elseif action == "text" and type(text) == "string" then
-		return { action = "text", text = text }
+	if action == ACTION_BUTTON and type(id) == "string" then
+		return { action = ACTION_BUTTON, id = id }
+	elseif action == ACTION_SELECT and type(id) == "string" then
+		return { action = ACTION_SELECT, id = id }
+	elseif action == ACTION_NEW and type(text) == "string" then
+		return { action = ACTION_NEW, text = text }
+	elseif action == ACTION_TEXT and type(text) == "string" then
+		return { action = ACTION_TEXT, text = text }
 	end
-	return { action = "cancel" }
+	return { action = ACTION_CANCEL }
 end
 
 local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: boolean?): boolean
@@ -404,7 +415,7 @@ end
 local function confirm(cx: WindowCx, req: ConfirmRequest, cb: AnswerCb): boolean
 	local listing = req.listing
 	return ask(cx, {
-		mode = "confirm",
+		mode = MODE_CONFIRM,
 		title = req.title,
 		path = req.path,
 		message = req.message,
@@ -415,7 +426,7 @@ end
 
 local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
 	local picked = table.clone(req)
-	picked.mode = "pick"
+	picked.mode = MODE_PICK
 	picked.items = tern.json.array(req.items)
 	ask(cx, picked, cb)
 end
@@ -630,10 +641,10 @@ local function create(cx: WindowCx, root: string, extra: { string })
 					message = "Relocate it to " .. short_path(tostring(err.target)) .. "?",
 					buttons = {
 						{ id = "relocate", label = "Relocate", kind = "primary" },
-						{ id = "cancel", label = "Cancel" },
+						{ id = "cancel", label = "Cancel", kind = KIND_CANCEL },
 					},
 				}, function(answer, cx3)
-					if answer.action == "button" and answer.id == "relocate" then
+					if answer.action == ACTION_BUTTON and answer.id == "relocate" then
 						local again = table.clone(extra)
 						table.insert(again, "--relocate")
 						create(cx3, root, again)
@@ -846,9 +857,9 @@ local function branch_picker(cx: WindowCx, root: string)
 			allowNew = true,
 			newLabel = "Create branch “%s” from " .. tostring(res.default),
 		}, function(answer, cx3)
-			if answer.action == "new" and answer.text ~= "" then
+			if answer.action == ACTION_NEW and answer.text ~= "" then
 				create(cx3, root, { "--branch", answer.text, "--new" })
-			elseif answer.action == "select" then
+			elseif answer.action == ACTION_SELECT then
 				local id = answer.id
 				local branch = string.match(id, "^b:(.*)$")
 				local pr = string.match(id, "^pr:(.*)$")
@@ -884,7 +895,7 @@ local function github_picker(cx: WindowCx)
 			verb = "clone",
 			items = items,
 		}, function(answer)
-			local nameWithOwner = if answer.action == "select" then string.match(answer.id, "^gh:(.*)$") else nil
+			local nameWithOwner = if answer.action == ACTION_SELECT then string.match(answer.id, "^gh:(.*)$") else nil
 			if nameWithOwner == nil then
 				return
 			end
@@ -914,7 +925,7 @@ local function ask_visibility(cx: WindowCx, owner: string, name: string)
 			{ id = "public", label = "public", icon = "globe" },
 		},
 	}, function(answer)
-		if answer.action == "select" then
+		if answer.action == ACTION_SELECT then
 			make_repo(owner, name, answer.id)
 		end
 	end)
@@ -922,12 +933,12 @@ end
 
 local function ask_name(cx: WindowCx, owner: string)
 	ask(cx, {
-		mode = "prompt",
+		mode = MODE_PROMPT,
 		title = "Repository name",
 		placeholder = "Name of the new repository under " .. owner,
 		verb = "continue",
 	}, function(answer, nameCx)
-		if answer.action == "text" and answer.text ~= "" then
+		if answer.action == ACTION_TEXT and answer.text ~= "" then
 			ask_visibility(nameCx, owner, answer.text)
 		end
 	end)
@@ -942,7 +953,7 @@ local function ask_owner(cx: WindowCx, ownerNames: { string })
 		cx,
 		{ title = "Repository owner", placeholder = "Search owners", verb = "choose", items = owners },
 		function(answer, ownerCx)
-			if answer.action == "select" then
+			if answer.action == ACTION_SELECT then
 				ask_name(ownerCx, answer.id)
 			end
 		end
@@ -969,7 +980,7 @@ repo_picker = function(cx: WindowCx)
 	table.insert(items, { id = "github", label = "Browse GitHub repos…", icon = "globe" })
 	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…", icon = "folder-plus" })
 	pick(cx, { title = "Choose repository", placeholder = "Search repositories", items = items }, function(answer, cx2)
-		local id = if answer.action == "select" then answer.id else nil
+		local id = if answer.action == ACTION_SELECT then answer.id else nil
 		if id == nil then
 			return
 		end
@@ -1019,12 +1030,12 @@ local function run_remove(
 				buttons = {
 					{ id = "retry", label = "Retry", kind = "primary" },
 					{ id = "force", label = "Force delete", kind = "danger" },
-					{ id = "cancel", label = "Cancel" },
+					{ id = "cancel", label = "Cancel", kind = KIND_CANCEL },
 				},
 			}, function(answer, cx3)
-				if answer.action == "button" and answer.id == "retry" then
+				if answer.action == ACTION_BUTTON and answer.id == "retry" then
 					run_remove(cx3, path, false, done, stop)
-				elseif answer.action == "button" and answer.id == "force" then
+				elseif answer.action == ACTION_BUTTON and answer.id == "force" then
 					run_remove(cx3, path, true, done, stop)
 				else
 					stop(cx3)
@@ -1058,7 +1069,7 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	local teardown = { id = "teardown", label = "Tear down", kind = "danger" }
 	local keep = { id = "keep", label = "Keep worktree" }
 	local buttons: { any } = if tab ~= nil
-		then { teardown, keep, { id = "cancel", label = "Cancel" } }
+		then { teardown, keep, { id = "cancel", label = "Cancel", kind = KIND_CANCEL } }
 		else { keep, teardown }
 	return confirm(cx, {
 		title = "Tear down worktree?",
@@ -1067,14 +1078,14 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		buttons = buttons,
 		reveal = tab ~= nil,
 	}, function(answer, cx2)
-		if answer.action == "button" and answer.id == "teardown" then
+		if answer.action == ACTION_BUTTON and answer.id == "teardown" then
 			run_remove(cx2, path, false, function(cx3)
 				if tab ~= nil then
 					handled[path] = true
 				end
 				advance(cx3)
 			end, stop)
-		elseif answer.action == "button" and answer.id == "keep" then
+		elseif answer.action == ACTION_BUTTON and answer.id == "keep" then
 			if tab ~= nil then
 				handled[path] = true
 			end
@@ -1188,7 +1199,7 @@ tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 	if entry == nil then
 		return
 	end
-	local prefix = "twt:" .. entry.reqid .. ":"
+	local prefix = TITLE_PREFIX .. entry.reqid .. ":"
 	if string.sub(ev.title, 1, #prefix) ~= prefix then
 		return
 	end
@@ -1206,7 +1217,7 @@ tern.on("pane_closed", function(ev: PaneEvent, cx: WindowCx)
 		return
 	end
 	end_wait(ev.pane)
-	entry.cb({ action = "cancel" }, cx)
+	entry.cb({ action = ACTION_CANCEL }, cx)
 end)
 
 tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)
