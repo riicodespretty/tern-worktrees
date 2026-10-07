@@ -5,7 +5,7 @@ import type { CommandModule } from '../src/cli.ts';
 import { commandLoader, main } from '../src/cli.ts';
 import { CliError, must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { gitShim, REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 interface Envelope {
   error: { code: string; message: string };
@@ -128,11 +128,9 @@ describe('cli', () => {
       const fallbackBin = path.join(home, '.local', 'bin');
       mkdirSync(fallbackBin, { recursive: true });
       writeFileSync(path.join(fallbackBin, 'git'), `#!/bin/sh\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
-      const callerBin = tempDir('caller-bin');
-      const marker = path.join(callerBin, 'ran');
-      writeFileSync(path.join(callerBin, 'git'), `#!/bin/sh\n: > '${marker}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+      const marker = path.join(tempDir('marker'), 'ran');
       vi.stubEnv('HOME', home);
-      vi.stubEnv('PATH', `${callerBin}:${process.env.PATH ?? ''}`);
+      await gitShim(`: > '${marker}'`);
       expect(spawnCli(['resolve', '/tmp']).status).toBe(0);
       expect(existsSync(marker)).toBeTruthy();
     });

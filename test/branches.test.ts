@@ -1,13 +1,16 @@
-import { existsSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
 import { worktreePath } from '../src/paths.ts';
-import { must } from '../src/proc.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
 
-const PR_LIST = 'pr_list_--repo_me_aoyama_--state_open_--limit_200_--json_number,title,headRefName,isCrossRepository.json';
+const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
+
+const PR_LIST = ['pr', 'list', '--repo', 'me/aoyama', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
+
+const VIEW_DEFAULT_BRANCH = ['repo', 'view', 'me/aoyama', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'];
 
 const PRS = [
   { headRefName: 'feature/x', isCrossRepository: false, number: 7, title: 'Add x' },
@@ -24,13 +27,6 @@ const pushDatedBranch = async (repo: TmpRepo, branch: string, date: string): Pro
   vi.stubEnv('GIT_COMMITTER_DATE', undefined);
 };
 
-const useGithubOrigin = async (repo: TmpRepo): Promise<void> => {
-  const ssh = path.join(tempDir('ssh'), 'ssh');
-  writeFileSync(ssh, `#!/bin/sh\nexec git upload-pack '${repo.origin}'\n`, { mode: 0o755 });
-  vi.stubEnv('GIT_SSH_COMMAND', ssh);
-  await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:me/aoyama.git');
-};
-
 describe('branches command', () => {
   beforeEach(() => {
     sandbox = useSandbox();
@@ -42,8 +38,8 @@ describe('branches command', () => {
       await pushDatedBranch(repo, 'aaa', '2000-01-01T00:00:00Z');
       await pushDatedBranch(repo, 'zzz', '2031-01-01T00:00:00Z');
       await pushDatedBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
-      await useGithubOrigin(repo);
-      writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
+      await useGithubOrigin(GITHUB_ORIGIN);
+      ghFixture(PR_LIST, JSON.stringify(PRS));
       const managed = worktreePath('aoyama', 'feature/x');
       await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'feature/x');
       const outside = path.join(tempDir('wt'), 'zzz');
@@ -120,8 +116,8 @@ describe('branches command', () => {
 
     it('gives no PRs and makes no gh call offline', async () => {
       const repo = await tmpRepo('aoyama');
-      await useGithubOrigin(repo);
-      writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
+      await useGithubOrigin(GITHUB_ORIGIN);
+      ghFixture(PR_LIST, JSON.stringify(PRS));
       const offline = await run(['--repo', repo.dir, '--offline']);
       expect({ prs: offline.prs, warnings: offline.warnings }).toStrictEqual({ prs: [], warnings: [] });
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
@@ -130,14 +126,14 @@ describe('branches command', () => {
         { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
         { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
       ]);
-      expect(readFileSync(sandbox.ghLog, 'utf-8')).toContain('pr list');
+      expect(ghLog().join('\n')).toContain('pr list');
     });
 
     it('offline, gives the current branch as default when origin/HEAD is unset', async () => {
       const repo = await tmpRepo('aoyama');
-      await useGithubOrigin(repo);
+      await useGithubOrigin(GITHUB_ORIGIN);
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      writeFileSync(path.join(sandbox.ghDir, 'repo_view_me_aoyama_--json_defaultBranchRef_--jq_.defaultBranchRef.name.json'), 'develop\n');
+      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
       await git(repo.dir, 'switch', '--quiet', '-c', 'work');
       const offline = await run(['--repo', repo.dir, '--offline']);
       expect(offline.default).toBe('work');
@@ -157,7 +153,7 @@ describe('branches command', () => {
 
     it('warns and gives no PRs when gh fails', async () => {
       const repo = await tmpRepo('aoyama');
-      await useGithubOrigin(repo);
+      await useGithubOrigin(GITHUB_ORIGIN);
       const result = await run(['--repo', repo.dir]);
       expect(result.prs).toStrictEqual([]);
       expect(result.warnings).toStrictEqual(['pr list failed: fake gh: no fixture']);
@@ -204,12 +200,7 @@ describe('branches command', () => {
 
     it('raises git_failed when git cannot list the branches', async () => {
       const repo = await tmpRepo('aoyama');
-      const shimDir = tempDir('shim');
-      const realGit = await must(['sh', '-c', 'command -v git'], 'git_failed');
-      writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\ncase " $* " in *" for-each-ref "*) echo 'for-each-ref broke' >&2; exit 1;; esac\nexec '${realGit.trim()}' "$@"\n`, {
-        mode: 0o755,
-      });
-      vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+      await gitShim(`case " $* " in *" for-each-ref "*) echo 'for-each-ref broke' >&2; exit 1;; esac`);
       await expect(run(['--repo', repo.dir])).rejects.toMatchObject({ code: 'git_failed', message: 'for-each-ref broke' });
     });
   });

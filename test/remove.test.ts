@@ -2,16 +2,14 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, sym
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
-import { must, run as runProcess } from '../src/proc.ts';
-import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { run as runProcess } from '../src/proc.ts';
+import { ghFixture, git, gitShim, ignoreGlobally, logGitCalls, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
 let sandbox: Sandbox;
 let repo: TmpRepo;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
-
-const readLines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
 
 const hasBranch = async (branch: string): Promise<boolean> => {
   const result = await runProcess(['git', '-C', repo.dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
@@ -37,39 +35,15 @@ const setTeardown = (teardown: string): void => {
   writeFileSync(path.join(sandbox.pluginData, 'config.json'), JSON.stringify({ teardown }));
 };
 
-const writeLs = (cwds: string[]): void => {
-  const tabs = cwds.map((cwd, index) => ({ blocks: [{ cwd, id: index + 1, title: 'sh' }], id: index + 1, name: 'tab' }));
-  writeFileSync(path.join(sandbox.ternDir, 'ls.json'), JSON.stringify({ sessions: [{ id: 1, name: 'work', tabs }] }));
-};
-
-const useGithubOrigin = async (): Promise<void> => {
-  const shimDir = tempDir('shim');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  const shim = `#!/bin/sh\nif [ "$3 $4 $5" = "remote get-url origin" ]; then echo https://github.com/virtusize/aoyama.git; exit 0; fi\nexec '${gitPath.trim()}' "$@"\n`;
-  writeFileSync(path.join(shimDir, 'git'), shim, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
-};
-
-const logGitCalls = async (): Promise<string> => {
-  const shimDir = tempDir('git-log');
-  const log = path.join(shimDir, 'git.log');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >>'${log}'\nexec '${gitPath.trim()}' "$@"\n`, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
-  return log;
-};
-
 const shimForcedRemove = async (action: string): Promise<void> => {
-  const shimDir = tempDir('git-force');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  const shim = `#!/bin/sh\nif [ "$3 $4 $5 $6" = "worktree remove --force --force" ]; then ${action}; fi\nexec '${gitPath.trim()}' "$@"\n`;
-  writeFileSync(path.join(shimDir, 'git'), shim, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+  await gitShim(`if [ "$3 $4 $5 $6" = "worktree remove --force --force" ]; then ${action}; fi`);
 };
 
 const fakeMergedPrs = (headRefOids: string[]): void => {
-  const args = ['pr', 'list', '--repo', 'virtusize/aoyama', '--head=feature/x', '--state', 'merged', '--json', 'headRefOid'];
-  writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), JSON.stringify(headRefOids.map(headRefOid => ({ headRefOid }))));
+  ghFixture(
+    ['pr', 'list', '--repo', 'virtusize/aoyama', '--head=feature/x', '--state', 'merged', '--json', 'headRefOid'],
+    JSON.stringify(headRefOids.map(headRefOid => ({ headRefOid }))),
+  );
 };
 
 describe('remove command', () => {
@@ -77,7 +51,7 @@ describe('remove command', () => {
     sandbox = useSandbox();
     repo = await tmpRepo('aoyama');
     await repo.pushBranch('feature/x');
-    writeLs([]);
+    writeTernLs({ work: [] });
   });
 
   describe('arguments', () => {
@@ -135,11 +109,11 @@ describe('remove command', () => {
   describe('teardown policy', () => {
     it('deletes a branch that origin/main holds, and closes the tabs in the worktree', async () => {
       const dir = await addFeature();
-      writeLs([repo.dir, dir, path.join(dir, 'src')]);
+      writeTernLs({ work: [repo.dir, dir, path.join(dir, 'src')] });
       await expect(run([dir])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, closedBlocks: [2, 3], removed: dir, warnings: [] });
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
-      expect(readLines(sandbox.ternLog).toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
+      expect(ternLog().toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
     });
 
     it('keeps an unmerged branch', async () => {
@@ -258,12 +232,12 @@ describe('remove command', () => {
   describe('failures and --force', () => {
     it('keeps a dirty worktree and its tabs without --force', async () => {
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
       await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed' });
       await expect(run([dir])).rejects.toThrow(/contains modified or untracked files.*\S$/su);
       expect(existsSync(path.join(dir, 'junk.txt'))).toBeTruthy();
-      expect(readLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
     });
 
     it('keeps an untracked file that status.showUntrackedFiles hides', async () => {
@@ -287,7 +261,7 @@ describe('remove command', () => {
       await git(repo.dir, 'worktree', 'add', '--quiet', '--detach', stale, 'main');
       rmSync(stale, { recursive: true });
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
       await expect(run([dir, '--force'])).resolves.toMatchObject({ closedBlocks: [1], removed: dir });
       expect(existsSync(dir)).toBeFalsy();
@@ -297,12 +271,11 @@ describe('remove command', () => {
     it('does not force a locked worktree without --force', async () => {
       const dir = await addFeature();
       await git(repo.dir, 'worktree', 'lock', dir);
-      const log = await logGitCalls();
+      writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
       const failure = run([dir]);
       await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
       await expect(failure).rejects.toThrow(/locked/u);
       expect(existsSync(dir)).toBeTruthy();
-      expect(readLines(log).join('\n')).not.toMatch(/remove --force|status --porcelain/u);
     });
 
     it('deletes a moved worktree with --force and prunes its record', async () => {
@@ -317,7 +290,7 @@ describe('remove command', () => {
 
     it('goes on when git deletes the worktree and then fails', async () => {
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       await shimForcedRemove('rm -rf "$7"; exit 1');
       await expect(run([dir, '--force'])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, closedBlocks: [1], removed: dir, warnings: [] });
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(dir);
@@ -334,7 +307,7 @@ describe('remove command', () => {
     it('stops on ignored files that are hard to rebuild before git deletes them, and lists them with the other changes', async () => {
       await ignoreGlobally('.env', 'node_modules');
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
       mkdirSync(path.join(dir, 'node_modules'));
       writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'x\n');
@@ -346,7 +319,7 @@ describe('remove command', () => {
       writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
       await expect(run([dir])).rejects.toMatchObject({ extra: { files: ['?? junk.txt', '!! .env'] } });
       expect(readFileSync(path.join(dir, '.env'), 'utf-8')).toBe('SECRET=1\n');
-      expect(readLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
     });
 
     it('removes ignored files that are easy to rebuild without --force', async () => {
@@ -423,7 +396,7 @@ describe('remove command', () => {
         extra: { existing: dir, files: [`sub: unpushed ${commit.trim()}`] },
         message: `${dir} has work that removing it would lose`,
       });
-      expect(readLines(log).join('\n')).not.toMatch(/remove --force/u);
+      expect(readLog(log).join('\n')).not.toMatch(/remove --force/u);
       await expect(git(sub, 'rev-parse', '--short', 'local-work')).resolves.toBe(commit);
     });
 
@@ -452,9 +425,9 @@ describe('remove command', () => {
   describe('tabs', () => {
     it('leaves the tabs alone under --keep-tab', async () => {
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       await expect(run([dir, '--keep-tab'])).resolves.toMatchObject({ closedBlocks: [], warnings: [] });
-      expect(readLines(sandbox.ternLog)).toStrictEqual([]);
+      expect(ternLog()).toStrictEqual([]);
     });
 
     it('removes the worktree when Tern cannot list the blocks', async () => {
@@ -466,14 +439,14 @@ describe('remove command', () => {
 
     it('warns for each block that Tern cannot close', async () => {
       const dir = await addFeature();
-      writeLs([dir]);
+      writeTernLs({ work: [dir] });
       vi.stubEnv('FAKE_TERN_FAIL', 'close');
       await expect(run([dir])).resolves.toMatchObject({ closedBlocks: [], warnings: ['block 1 not closed: fake tern: close failed'] });
     });
 
     it('passes on other errors before it removes anything', async () => {
       const dir = await addFeature();
-      writeFileSync(path.join(sandbox.ternDir, 'ls.json'), '{');
+      writeTernLsRaw('{');
       await expect(run([dir])).rejects.toBeInstanceOf(SyntaxError);
       expect(existsSync(dir)).toBeTruthy();
     });

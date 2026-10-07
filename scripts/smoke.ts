@@ -1,23 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import type { CreateResult } from '../src/commands/create.ts';
+import type { ListResult } from '../src/commands/list.ts';
 import { must, run } from '../src/proc.ts';
 import { blocksUnder, ls, ternBin } from '../src/tern.ts';
-
-interface Tab {
-  opened: boolean;
-}
-
-interface Created {
-  path: string;
-  status: string;
-  tab: Tab | null;
-}
-
-interface Listed {
-  worktrees: unknown[];
-}
+import { buildRepo, gitWith } from './repo-fixture.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
 const smokeName = `twt-smoke-${Math.floor(Date.now() / 1000)}`;
@@ -37,7 +26,7 @@ const check = (ok: boolean, message: string): void => {
   }
 };
 
-const git = async (cwd: string, ...args: string[]): Promise<string> => await must(['git', '-C', cwd, ...args], 'git_failed', { env });
+const git = gitWith({ env });
 
 const cli = async <T>(...args: string[]): Promise<T> => {
   const result = await run([CLI, ...args], { env });
@@ -47,17 +36,9 @@ const cli = async <T>(...args: string[]): Promise<T> => {
 };
 
 const makeClone = async (): Promise<string> => {
-  const origin = path.join(tempRoot, 'origin.git');
-  const clone = path.join(tempRoot, smokeName);
-  await git(tempRoot, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
-  await git(tempRoot, 'clone', '--quiet', origin, clone);
-  await git(clone, 'symbolic-ref', 'HEAD', 'refs/heads/main');
-  writeFileSync(path.join(clone, 'README.md'), 'smoke\n');
-  await git(clone, 'add', 'README.md');
-  await git(clone, 'commit', '--quiet', '-m', 'initial');
-  await git(clone, 'push', '--quiet', '-u', 'origin', 'main', 'main:refs/heads/feature/x');
-  await git(clone, 'remote', 'set-head', 'origin', 'main');
-  return clone;
+  const repo = await buildRepo(git, tempRoot, smokeName, 'smoke\n');
+  await repo.pushBranch('feature/x');
+  return repo.dir;
 };
 
 const waitForBlock = async (dir: string, attempts = 50): Promise<void> => {
@@ -72,14 +53,14 @@ const waitForBlock = async (dir: string, attempts = 50): Promise<void> => {
 
 const smoke = async (): Promise<void> => {
   const clone = await makeClone();
-  const created = await cli<Created>('create', '--repo', clone, '--branch', 'feature/x');
+  const created = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(created.status === 'created', `create: status ${created.status}, not created`);
   check(created.tab?.opened === true, 'create: the tab did not open');
   await waitForBlock(created.path);
-  const reused = await cli<Created>('create', '--repo', clone, '--branch', 'feature/x');
+  const reused = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(reused.status === 'reused', `create again: status ${reused.status}, not reused`);
   check(reused.tab?.opened === false, 'create again: a new tab opened');
-  const listed = await cli<Listed>('list');
+  const listed = await cli<ListResult>('list');
   check(listed.worktrees.length === 1, `list: ${listed.worktrees.length} worktrees, not 1`);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);

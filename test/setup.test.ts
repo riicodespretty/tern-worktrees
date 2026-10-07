@@ -3,7 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run as setup } from '../src/commands/setup.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, tempDir, useSandbox } from './helpers.ts';
+import { REPO_DIR, tempDir, ternLog, useSandbox } from './helpers.ts';
 
 const PKG = realpathSync(REPO_DIR);
 
@@ -16,8 +16,6 @@ const binTarget = path.join(PKG, 'bin', 'tern-wt');
 const skillTarget = path.join(PKG, 'skills', 'tern-worktrees');
 
 const pluginPathFile = (): string => path.join(sandbox.configDir, 'plugins', 'tern-worktrees.path');
-
-const ternLog = (): string[] => (existsSync(sandbox.ternLog) ? readFileSync(sandbox.ternLog).toString().trim().split('\n') : []);
 
 const isAbsent = (target: string): boolean => {
   try {

@@ -1,23 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run as clone } from '../src/commands/clone.ts';
 import { run as newRepo } from '../src/commands/new-repo.ts';
 import { run as repos } from '../src/commands/repos.ts';
-import { must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { git, tempDir, useSandbox } from './helpers.ts';
+import { ghFixture, ghLog, git, logGitCalls, readLog, tempDir, useSandbox } from './helpers.ts';
 
 const LIST_ARGS = ['--limit', '200', '--json', 'nameWithOwner,isPrivate,description'];
 
 let sandbox: Sandbox;
 let cloneRoot: string;
-
-const ghFixture = (args: string[], content: string): void => {
-  writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), content);
-};
-
-const ghLog = (): string[] => (existsSync(sandbox.ghLog) ? readFileSync(sandbox.ghLog).toString().trim().split('\n') : []);
 
 const initRepo = async (dir: string, origin?: string): Promise<void> => {
   mkdirSync(dir, { recursive: true });
@@ -110,13 +103,9 @@ describe('GitHub repo commands', () => {
 
     it('runs git only for dirs present under the clone root', async () => {
       await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
-      const shimDir = tempDir('shim');
-      const log = path.join(shimDir, 'git.log');
-      const realGit = await must(['sh', '-c', 'command -v git'], 'git_failed');
-      writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${realGit.trim()}' "$@"\n`, { mode: 0o755 });
-      vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+      const log = await logGitCalls();
       await repos([]);
-      expect(readFileSync(log).toString().trim().split('\n')).toHaveLength(1);
+      expect(readLog(log)).toHaveLength(1);
     });
 
     it('rejects positional arguments', async () => {

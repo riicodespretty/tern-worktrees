@@ -2,8 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync,
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { must } from '../src/proc.ts';
-import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { ghFixture, git, ignoreGlobally, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
 const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
@@ -40,19 +39,6 @@ const pushSubmoduleBranch = async (branch: string): Promise<void> => {
   await git(repo.dir, 'push', '--quiet', 'origin', branch);
   await git(repo.dir, 'switch', '--quiet', 'main');
   await git(repo.dir, 'branch', '--quiet', '-D', branch);
-};
-
-const useGithubOrigin = async (): Promise<void> => {
-  const shimDir = tempDir('shim');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  const shim = `#!/bin/sh\nif [ "$3 $4 $5" = "remote get-url origin" ]; then echo https://github.com/virtusize/aoyama.git; exit 0; fi\nexec '${gitPath.trim()}' "$@"\n`;
-  writeFileSync(path.join(shimDir, 'git'), shim, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
-};
-
-const ghFixture = (args: string[], body: string): void => {
-  const key = args.join('_').replaceAll(/[/ ]/gu, '_');
-  writeFileSync(path.join(sandbox.ghDir, `${key}.json`), body);
 };
 
 const prView = (fork: boolean): void => {

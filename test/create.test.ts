@@ -1,47 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { must, run as runProcess } from '../src/proc.ts';
-import { FIXTURE_BIN, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { run as runProcess } from '../src/proc.ts';
+import { FIXTURE_BIN, ghFixture, ghLog, git, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
 let sandbox: Sandbox;
 let repo: TmpRepo;
+let originShim: string;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
 const currentBranch = async (dir: string): Promise<string> => {
   const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
   return out.trim();
-};
-
-const logLines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
-
-const writeTernLs = (cwds: Record<string, string[]>): void => {
-  const blocks = Object.values(cwds).flat();
-  const sessions = Object.entries(cwds).map(([name, dirs], index) => ({
-    id: index + 1,
-    name,
-    tabs: dirs.map(cwd => {
-      const id = blocks.indexOf(cwd) + 1;
-      return { blocks: [{ cwd, id, title: 'sh' }], id, name: 'tab' };
-    }),
-  }));
-  writeFileSync(path.join(sandbox.ternDir, 'ls.json'), JSON.stringify({ sessions }));
-};
-
-const useGithubOrigin = async (): Promise<void> => {
-  const shimDir = tempDir('shim');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  const shim = `#!/bin/sh\nif [ "$3 $4 $5" = "remote get-url origin" ]; then echo https://github.com/virtusize/aoyama.git; exit 0; fi\nexec '${gitPath.trim()}' "$@"\n`;
-  writeFileSync(path.join(shimDir, 'git'), shim, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
-};
-
-const ghFixture = (args: string[], body: string): void => {
-  const key = args.join('_').replaceAll(/[/ ]/gu, '_');
-  writeFileSync(path.join(sandbox.ghDir, `${key}.json`), body);
 };
 
 const prView = (fork: boolean): void => {
@@ -210,7 +183,7 @@ describe('create command', () => {
 
   describe('pull requests', () => {
     beforeEach(async () => {
-      await useGithubOrigin();
+      originShim = await useGithubOrigin();
     });
 
     it('creates the worktree of a same-repo pull request', async () => {
@@ -227,8 +200,8 @@ describe('create command', () => {
       writeFileSync(path.join(shimDir, 'gh'), `#!/bin/sh\npwd -P >> '${cwdLog}'\nexec '${path.join(FIXTURE_BIN, 'gh')}' "$@"\n`, { mode: 0o755 });
       vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', path: managedPath('pr-7'), status: 'created', warnings: [] });
-      expect(logLines(sandbox.ghLog)).toContain('pr checkout 7 --branch pr-7');
-      expect(logLines(cwdLog).at(-1)).toBe(managedPath('pr-7'));
+      expect(ghLog()).toContain('pr checkout 7 --branch pr-7');
+      expect(readLog(cwdLog).at(-1)).toBe(managedPath('pr-7'));
       await expect(git(managedPath('pr-7'), 'rev-parse', 'HEAD')).resolves.toBe(await git(repo.dir, 'rev-parse', 'origin/main'));
     });
 
@@ -236,7 +209,7 @@ describe('create command', () => {
       prView(true);
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', managedPath('pr-7'));
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', status: 'reused' });
-      expect(logLines(sandbox.ghLog)).not.toContain('pr checkout 7 --branch pr-7');
+      expect(ghLog()).not.toContain('pr checkout 7 --branch pr-7');
     });
 
     it('reports a gh failure and removes the worktree of a failed fork checkout', async () => {
@@ -249,7 +222,12 @@ describe('create command', () => {
     });
 
     it('needs a GitHub origin', async () => {
-      vi.stubEnv('PATH', process.env.PATH?.split(':').slice(1).join(':'));
+      vi.stubEnv(
+        'PATH',
+        process.env.PATH?.split(':')
+          .filter(dir => dir !== originShim)
+          .join(':'),
+      );
       await expect(run(['--repo', repo.dir, '--pr', '123', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: '--pr needs a GitHub origin' });
     });
   });
@@ -258,20 +236,20 @@ describe('create command', () => {
     it('opens a tab in the session of the repo', async () => {
       writeTernLs({ other: [tempDir('plain')], work: [repo.dir] });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'work' }, warnings: [] });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('opens a session named after the repo', async () => {
       writeTernLs({});
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'aoyama' } });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('focuses the tab that already shows the worktree', async () => {
       await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
       writeTernLs({ work: [repo.dir, path.join(managedPath('feature-x'), 'src')] });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ status: 'reused', tab: { block: 2, opened: false, session: 'work' } });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'focus 2 --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'focus 2 --json']);
     });
 
     it('keeps the worktree when Tern fails', async () => {
@@ -286,7 +264,7 @@ describe('create command', () => {
     });
 
     it('passes on other errors', async () => {
-      writeFileSync(path.join(sandbox.ternDir, 'ls.json'), '{');
+      writeTernLsRaw('{');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).rejects.toBeInstanceOf(SyntaxError);
     });
   });

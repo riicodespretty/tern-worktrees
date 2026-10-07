@@ -16,7 +16,9 @@ import {
   worktrees,
 } from '../src/git.ts';
 import type { Sandbox } from './helpers.ts';
-import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { ghFixture, git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+
+const VIEW_DEFAULT_BRANCH = ['repo', 'view', 'owner/name', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'];
 
 let sandbox: Sandbox;
 const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
@@ -147,7 +149,7 @@ describe('git helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      writeFileSync(path.join(sandbox.ghDir, 'repo_view_owner_name_--json_defaultBranchRef_--jq_.defaultBranchRef.name.json'), 'develop\n');
+      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
       await expect(defaultBranch(repo.dir)).resolves.toBe('develop');
     });
 
@@ -162,7 +164,7 @@ describe('git helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      writeFileSync(path.join(sandbox.ghDir, 'repo_view_owner_name_--json_defaultBranchRef_--jq_.defaultBranchRef.name.json'), 'develop\n');
+      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
       await git(repo.dir, 'switch', '--quiet', '-c', 'work');
       await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('work');
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
