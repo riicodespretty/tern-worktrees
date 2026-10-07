@@ -53,7 +53,9 @@ hardcode(?:s|d)?
 hostname
 param(?:s)?
 lowercased
-teardown
+[Tt]eardown
+[Rr]epo
+[Oo]ptions file
 errored
 boolean(?:s)?
 reinitialize
