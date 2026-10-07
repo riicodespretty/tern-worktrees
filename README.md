@@ -2,7 +2,7 @@
 
 Git worktrees as [Tern](https://docs.stencil.so/tern) tabs, in three parts:
 
-- The `tern-worktrees` Tern plugin. `ctrl+b w` opens the branch picker, and the branch you pick opens as a worktree tab. When you close a worktree tab, the plugin offers a teardown.
+- The `tern-worktrees` Tern plugin. `ctrl+b w` opens the branch picker, and the branch you pick opens as a worktree tab. The command palette also lists the branches and pull requests of the current repository as worktree rows. When you close a worktree tab, the plugin offers a teardown.
 - The `tern-wt` CLI, the one implementation of each git and GitHub step. The plugin runs it, and agents run it directly.
 - The `tern-worktrees` omp skill, the contract that agents follow.
 
@@ -47,10 +47,25 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 ### Open a worktree tab
 
 1. Press `ctrl+b w`. The branch picker opens for the repository of the current session. When the current session has no repository, the repo picker opens first.
-2. Type to filter the open pull requests and the branches. A branch with a worktree shows `· worktree`.
+2. Type to filter the open pull requests and the branches. A branch with a worktree shows the detail `worktree`.
 3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, type its name and press Enter on `Create branch “<name>” from <default>`.
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
+
+Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It follows the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
+
+### Open a worktree from the command palette
+
+In a pane of a repository or of one of its worktrees, the command palette (`cmd+shift+p`) lists a worktree row for each branch and each open pull request, in the `Worktrees` group:
+
+- `<repo>: <branch>`, with ` · worktree` at the end when the branch has a worktree.
+- `<repo>: #<n> <title>` for a pull request.
+
+Press Enter on a row to open its worktree tab, as the branch picker does. The rows of a repository show only in its panes.
+
+The rows refresh from local refs when a shell command ends in a pane of the repository, when one of its panes gets focus, and after a worktree is made or removed. That refresh uses no network. The fetch from `origin` and the list of open pull requests run at most once in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
+
+`ctrl+b w` still opens the dialog, for a new branch and for `Other repo…`.
 
 ### Select a different repository
 

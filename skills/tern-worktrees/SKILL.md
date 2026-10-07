@@ -62,7 +62,7 @@ Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. With `--
 
 Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once.
 
-- `--offline`: read only local refs. It does not run `git fetch --prune origin`, does not list the open pull requests, and does not ask GitHub for the default branch. `prs` is `[]`, and `branches` has the branches on `origin` as of the last fetch. When `origin/HEAD` is unset, `default` is the current branch.
+- `--offline`: read only local refs. It skips `git fetch --prune origin`, the open pull requests and the GitHub lookup of the default branch. `prs` is `[]`, and `branches` has the branches on `origin` as of the last fetch. When `origin/HEAD` is unset, `default` is the current branch.
 
 ### `resolve`
 

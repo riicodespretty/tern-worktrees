@@ -18,6 +18,10 @@ _Avoid_: Tern worktree, own worktree
 A Tern tab with its panes in a managed worktree.
 _Avoid_: Branch tab
 
+**Worktree row**:
+A row in the Tern command palette that opens the worktree tab of one branch or pull request. When the branch has no worktree, the row makes the managed worktree first.
+_Avoid_: Palette entry, worktree command
+
 **Relocate**:
 To move the worktree of a branch into the worktree root from a directory that is not in the root. The worktree then is a managed worktree. When the worktree must be made again, the files that are hard to rebuild come along.
 _Avoid_: Adopt, migrate, import
