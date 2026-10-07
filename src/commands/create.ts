@@ -214,7 +214,7 @@ const placeWorktree = async (ctx: Context, target: Target, options: Options): Pr
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
   if (existing?.prunable === true) {
-    await git(ctx.root, 'worktree', 'prune');
+    await git(ctx.root, 'worktree', 'remove', existing.path);
   }
   if (!existing || existing.prunable) {
     await addWorktree(ctx, target, options.new);

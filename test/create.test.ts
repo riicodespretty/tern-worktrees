@@ -275,6 +275,15 @@ describe('create command', () => {
       await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
     });
 
+    it('leaves the stale record of another branch alone', async () => {
+      const unmounted = await outsideWorktree('main', '-b', 'feature/b');
+      rmSync(unmounted, { force: true, recursive: true });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      rmSync(managedPath('feature-x'), { force: true, recursive: true });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.toContain(`worktree ${unmounted}\n`);
+    });
+
     it('creates the worktree when the one elsewhere is gone', async () => {
       const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
       rmSync(old, { force: true, recursive: true });
