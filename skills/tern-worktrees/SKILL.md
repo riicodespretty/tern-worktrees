@@ -30,8 +30,8 @@ Each command prints one JSON object to standard output.
 Makes the managed worktree of a branch, or reuses it. Then opens its tab, or focuses the tab that is open.
 
 - `--repo`: a dir in the repository.
-- `--branch`: a local branch or a branch on `origin`.
-- `--new`: make `--branch` a new branch from `origin/<default>`. When the branch is local or on `origin`, `--new` gives `bad_args`.
+- `--branch`: a local branch or a branch on `origin`. A name that git rejects gives `bad_args`.
+- `--new`: make `--branch` a new branch from `origin/<default>`. When the branch is local or on `origin`, `--new` gives `bad_args`, also when the branch has a worktree.
 - `--pr`: the branch of a pull request. A pull request from a fork gets the branch `pr-<number>`.
 - `--relocate`: move the worktree of the branch from a different path into the root. Pass it only after the user says yes.
 - `--no-tab`: skip the tab.
@@ -45,7 +45,7 @@ Output: `{"path", "branch", "repo", "status", "tab", "warnings"}`.
 
 `tern-wt remove <path> [--force] [--keep-tab]`
 
-Removes the managed worktree at `<path>`, applies the teardown policy to its branch, then closes its tabs. `--keep-tab` keeps the tabs open.
+Removes the managed worktree at `<path>`, applies the teardown policy to its branch, then closes its tabs. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, or a submodule commit that no remote holds gives `dirty_worktree` and stays. As with `git worktree remove`, the ignored files go with the worktree.
 
 Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `branch` is null for a detached `HEAD`. A branch that the policy keeps adds the warning `kept branch <branch>: not merged`.
 
@@ -75,7 +75,7 @@ Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "loc
 
 ### `clone`
 
-`tern-wt clone <owner/name>`
+`tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. Each other slug gives `bad_args`.
 
 Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. Output: `{"root", "cloned"}`.
 
@@ -83,7 +83,7 @@ Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clon
 
 `tern-wt new-repo <owner/name> --visibility private|public`
 
-Makes a GitHub repository with a README, then clones it. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
+Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The slug rule of `clone` applies. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
 
 ### `setup`
 
@@ -93,19 +93,19 @@ Links the Tern plugin, `~/.local/bin/tern-wt` and this skill to the checkout. A 
 
 ## Error codes
 
-| Code                        | Added fields         | Next step                                                            |
-| --------------------------- | -------------------- | -------------------------------------------------------------------- |
-| `bad_args`                  |                      | Fix the arguments from the message.                                  |
-| `config_invalid`            |                      | Show the user the message, which names the file and the key.         |
-| `not_a_repo`                |                      | Pass a dir in a git repository.                                      |
-| `not_managed`               |                      | `remove` acts only on a managed worktree. Get the paths from `list`. |
-| `path_conflict`             | `path`               | Show the user `path`. Keep it as it is.                              |
-| `branch_in_main_checkout`   | `existing`           | Tell the user. The main checkout holds the branch.                   |
-| `worktree_exists_elsewhere` | `existing`, `target` | Ask the user, then run `create` again with `--relocate`.             |
-| `dirty_worktree`            | `existing`, `files`  | Show the user `files`. Relocation needs a clean worktree.            |
-| `git_failed`                |                      | Show the user the message. For `remove`, ask before `--force`.       |
-| `gh_failed`                 |                      | Show the user the message. Check `gh auth status`.                   |
-| `tern_failed`               |                      | Show the user the message. Check that Tern runs.                     |
+| Code                        | Added fields         | Next step                                                                                                           |
+| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `bad_args`                  |                      | Fix the arguments from the message.                                                                                 |
+| `config_invalid`            |                      | Show the user the message, which names the file and the key.                                                        |
+| `not_a_repo`                |                      | Pass a dir in a git repository.                                                                                     |
+| `not_managed`               |                      | `remove` acts only on a managed worktree. Get the paths from `list`.                                                |
+| `path_conflict`             | `path`               | Show the user `path`. Keep it as it is.                                                                             |
+| `branch_in_main_checkout`   | `existing`           | Tell the user. The main checkout holds the branch.                                                                  |
+| `worktree_exists_elsewhere` | `existing`, `target` | Ask the user, then run `create` again with `--relocate`.                                                            |
+| `dirty_worktree`            | `existing`, `files`  | Show the user `files`. Relocate and `remove` keep a worktree with work to lose. For `remove`, ask before `--force`. |
+| `git_failed`                |                      | Show the user the message. For `remove`, ask before `--force`.                                                      |
+| `gh_failed`                 |                      | Show the user the message. Check `gh auth status`.                                                                  |
+| `tern_failed`               |                      | Show the user the message. Check that Tern runs.                                                                    |
 
 ## Options file
 
@@ -117,6 +117,6 @@ The file is `config.json` in the plugin data dir, the first of:
 
 An invalid file makes each command fail with `config_invalid`. The keys:
 
-- `teardown`: the teardown policy. It sets what `remove`, and the close of a worktree tab, do to the branch. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. A branch is merged when it is an ancestor of `origin/<default>`, or when it is the head branch of a merged pull request.
-- `cloneRoot`: the dir for `clone` and `new-repo`. The default is `~/Developer`.
+- `teardown`: the teardown policy. It sets what `remove`, and the close of a worktree tab, do to the branch. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
+- `cloneRoot`: the dir for `clone` and `new-repo`, an absolute path or a path that starts with `~`. The default is `~/Developer`.
 - `hotkeys.new`: the Tern key chords that open the picker for a new worktree tab. The default is `["ctrl+b>w"]`.

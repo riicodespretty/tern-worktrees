@@ -64,17 +64,17 @@ The branch picker of that repository opens next.
 
 ### Relocate
 
-A branch can have a worktree that is not in the worktree root, for example from Orca. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes a clean worktree again in the root. A worktree with uncommitted changes stays where it is, and a message lists the changed files.
+A branch can have a worktree that is not in the worktree root, for example from Orca. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, an ignored file, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
 
 ### Close a worktree tab
 
 When you close a worktree tab, a dialog shows the path and the teardown policy:
 
-- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab.
+- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. As with `git worktree remove`, the ignored files in the worktree go too.
 - Keep worktree: closes the tab and keeps the worktree.
 - Cancel: keeps the tab and the worktree.
 
-When the tab closes before the dialog opens, the dialog offers Tear down and Keep worktree.
+When the tab closes before the dialog opens, the dialog offers Keep worktree first, then Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
 
 When the teardown fails, for example because of uncommitted changes, a second dialog shows the error:
 
@@ -95,10 +95,10 @@ Each key in the file replaces its default:
 | Key           | Default                    | Value                                                                                                                                                        |
 | ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch. |
-| `cloneRoot`   | `"~/Developer"`            | The clone root. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                                                                        |
+| `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                       |
 | `hotkeys.new` | `["ctrl+b>w"]`             | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                |
 
-A branch is merged when it is an ancestor of `origin/<default>`, or when a merged pull request has it as its head branch.
+A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 
 ```json
 {
