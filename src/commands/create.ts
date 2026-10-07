@@ -1,7 +1,8 @@
-import { lstatSync, mkdirSync } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, originSlug, repoRoot, worktreeLosses, worktrees } from '../git.ts';
+import { defaultBranch, hardToRebuild, originSlug, repoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { isUnder, worktreePath } from '../paths.ts';
 import { CliError, must, run as runProcess } from '../proc.ts';
@@ -17,9 +18,10 @@ export interface CreatedTab {
   session: string;
 }
 
-/** The output of `create`. */
+/** The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise. */
 export interface CreateResult {
   branch: string;
+  carried: string[];
   path: string;
   repo: string;
   status: CreateStatus;
@@ -36,7 +38,13 @@ interface Options {
   'repo'?: string;
 }
 
+interface Carry {
+  files: string[];
+  staging: string;
+}
+
 interface Context {
+  carry: Carry | null;
   hasOrigin: boolean;
   repoName: string;
   root: string;
@@ -173,15 +181,55 @@ const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promis
   }
 };
 
+const copyEntry = (from: string, to: string): void => {
+  mkdirSync(path.dirname(to), { recursive: true });
+  if (lstatSync(from).isSymbolicLink()) {
+    symlinkSync(readlinkSync(from), to);
+    return;
+  }
+  copyFileSync(from, to);
+};
+
+const stage = (ctx: Context, dir: string, files: string[]): void => {
+  const staging = mkdtempSync(path.join(tmpdir(), 'tern-wt-carry-'));
+  ctx.carry = { files, staging };
+  for (const file of files) {
+    copyEntry(path.join(dir, file), path.join(staging, file));
+  }
+};
+
+const unstage = (ctx: Context, carry: Carry, dir: string): string[] => {
+  const carried: string[] = [];
+  for (const file of carry.files) {
+    const to = path.join(dir, file);
+    if (lstatSync(to, { throwIfNoEntry: false })) {
+      ctx.warnings.push(`not carried: ${file} exists in the new worktree; the old copy stays in ${carry.staging}`);
+      continue;
+    }
+    copyEntry(path.join(carry.staging, file), to);
+    carried.push(file);
+  }
+  if (carried.length === carry.files.length) {
+    rmSync(carry.staging, { recursive: true });
+  }
+  return carried;
+};
+
+const withStaging = (error: Error, staging: string): CliError => {
+  const [code, extra] = error instanceof CliError ? [error.code, error.extra] : (['git_failed', {}] as const);
+  return new CliError(code, `${error.message}; the carried files stay in ${staging}`, { ...extra, staging });
+};
+
 const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Promise<string | null> => {
   const moved = await runProcess(['git', '-C', ctx.root, 'worktree', 'move', existing.path, target.path]);
   if (moved.status === 0) {
     return null;
   }
-  const files = await worktreeLosses(existing.path, true);
+  const files = await worktreeLosses(existing.path);
   if (files.length > 0) {
     throw new CliError('dirty_worktree', `${existing.path} has work that recreating it would lose`, { existing: existing.path, files });
   }
+  stage(ctx, existing.path, await hardToRebuild(existing.path));
   await git(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);
   const [reason] = moved.stderr.split('\n');
   return reason;
@@ -280,14 +328,27 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   if (root === null) {
     throw new CliError('not_a_repo', `${repo} is not in a git repository`);
   }
-  const ctx: Context = { hasOrigin: await gitSucceeds(root, 'remote', 'get-url', 'origin'), repoName: path.basename(root), root, warnings: [] };
+  const ctx: Context = { carry: null, hasOrigin: await gitSucceeds(root, 'remote', 'get-url', 'origin'), repoName: path.basename(root), root, warnings: [] };
   await fetchOrigin(ctx);
   const target =
     options.branch === undefined ? await pullRequestTarget(ctx, String(options.pr)) : { branch: options.branch, forkPr: null, path: worktreePath(ctx.repoName, options.branch) };
-  const status = await placeWorktree(ctx, target, options);
-  if (status !== 'reused') {
-    await updateSubmodules(ctx, target.path);
+  let status: CreateStatus;
+  let carried: string[] = [];
+  try {
+    status = await placeWorktree(ctx, target, options);
+    if (status !== 'reused') {
+      await updateSubmodules(ctx, target.path);
+    }
+    if (ctx.carry !== null) {
+      carried = unstage(ctx, ctx.carry, target.path);
+    }
+  } catch (error) {
+    if (ctx.carry === null) {
+      throw error;
+    }
+    // SAFETY: the steps after staging throw a CliError, or an Error from node:fs.
+    throw withStaging(error as Error, ctx.carry.staging);
   }
   const tab = options['no-tab'] ? null : await tryOpenTab(ctx, target);
-  return { branch: target.branch, path: target.path, repo: root, status, tab, warnings: ctx.warnings };
+  return { branch: target.branch, carried, path: target.path, repo: root, status, tab, warnings: ctx.warnings };
 };

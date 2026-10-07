@@ -19,8 +19,12 @@ A Tern tab with its panes in a managed worktree.
 _Avoid_: Branch tab
 
 **Relocate**:
-To move the worktree of a branch into the worktree root from a directory that is not in the root. The worktree then is a managed worktree.
+To move the worktree of a branch into the worktree root from a directory that is not in the root. The worktree then is a managed worktree. When the worktree must be made again, the files that are hard to rebuild come along.
 _Avoid_: Adopt, migrate, import
+
+**Hard-to-rebuild file**:
+An ignored file that no build or install makes again, for example a `.env` file. Its loss counts as work to lose. Ignored build output and installed packages are not hard to rebuild.
+_Avoid_: Secret file, precious file
 
 ### Teardown
 

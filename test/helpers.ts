@@ -39,6 +39,7 @@ export interface Sandbox {
   ternLog: string;
   ghDir: string;
   ghLog: string;
+  tmp: string;
 }
 
 /** Stubs each environment variable that the CLI reads to a temporary directory or a fake. Call it in `beforeEach`. */
@@ -51,9 +52,10 @@ export const useSandbox = (): Sandbox => {
     pluginData: path.join(root, 'plugin-data'),
     ternDir: path.join(root, 'tern'),
     ternLog: path.join(root, 'tern.log'),
+    tmp: path.join(root, 'tmp'),
     wtHome: path.join(root, 'tern-wt'),
   };
-  for (const dir of [sandbox.configDir, sandbox.ghDir, sandbox.pluginData, sandbox.ternDir]) {
+  for (const dir of [sandbox.configDir, sandbox.ghDir, sandbox.pluginData, sandbox.ternDir, sandbox.tmp]) {
     mkdirSync(dir, { recursive: true });
   }
   const gitConfig = path.join(root, 'gitconfig');
@@ -73,6 +75,7 @@ export const useSandbox = (): Sandbox => {
   vi.stubEnv('GIT_COMMITTER_EMAIL', 'test@example.com');
   vi.stubEnv('GIT_CONFIG_GLOBAL', gitConfig);
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+  vi.stubEnv('TMPDIR', sandbox.tmp);
   vi.stubEnv('PATH', `${FIXTURE_BIN}:${process.env.PATH ?? ''}`);
   return sandbox;
 };
@@ -104,6 +107,13 @@ export const tmpRepo = async (name = 'repo'): Promise<TmpRepo> => {
       await git(dir, 'push', '--quiet', 'origin', `main:refs/heads/${branch}`);
     },
   };
+};
+
+/** Makes git ignore `patterns` in each repository and submodule, through the global `core.excludesFile`. Call it after {@link useSandbox}. */
+export const ignoreGlobally = async (...patterns: string[]): Promise<void> => {
+  const excludes = path.join(tempDir('excludes'), 'ignore');
+  writeFileSync(excludes, `${patterns.join('\n')}\n`);
+  await git(path.dirname(excludes), 'config', '--global', 'core.excludesFile', excludes);
 };
 
 /** Runs `bin/tern-wt` with `args` and returns its exit status and output. */

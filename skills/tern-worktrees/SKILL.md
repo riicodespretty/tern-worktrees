@@ -33,19 +33,20 @@ Makes the managed worktree of a branch, or reuses it. Then opens its tab, or foc
 - `--branch`: a local branch or a branch on `origin`. A name that git rejects gives `bad_args`.
 - `--new`: make `--branch` a new branch from `origin/<default>`. When the branch is local or on `origin`, `--new` gives `bad_args`, also when the branch has a worktree.
 - `--pr`: the branch of a pull request. A pull request from a fork gets the branch `pr-<number>`.
-- `--relocate`: move the worktree of the branch from a different path into the root. Pass it only after the user says yes.
+- `--relocate`: move the worktree of the branch from a different path into the root. Pass it only after the user says yes. When git refuses the move, `create` makes the worktree again in the root, but only when the first worktree has no work to lose: a changed file, a new file that git does not track, or a submodule commit that no remote holds. Ignored files that are hard to rebuild (see `remove`) are copied into the new worktree.
 - `--no-tab`: skip the tab.
 
-Output: `{"path", "branch", "repo", "status", "tab", "warnings"}`.
+Output: `{"path", "branch", "repo", "status", "carried", "tab", "warnings"}`.
 
 - `status`: `created`, `reused` or `relocated`.
+- `carried`: the ignored files, as paths in the worktree, that a rebuilt relocation copied into the new worktree. Empty otherwise. When the new worktree has a file at that path, the copy stays in the temporary folder, with a `not carried:` warning.
 - `tab`: `{"session", "block", "opened"}`, or null with a `tab not opened:` warning. `opened` is false when `create` focused a tab that was open before.
 
 ### `remove`
 
 `tern-wt remove <path> [--force] [--keep-tab]`
 
-Removes the managed worktree at `<path>`, applies the teardown policy to its branch, then closes its tabs. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, or a submodule commit that no remote holds gives `dirty_worktree` and stays. As with `git worktree remove`, the ignored files go with the worktree.
+Removes the managed worktree at `<path>`, applies the teardown policy to its branch, then closes its tabs. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, a submodule commit that no remote holds, or an ignored file that is hard to rebuild gives `dirty_worktree` and stays. An ignored file is build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. That output goes with the worktree. Each other ignored file, for example `.env`, is hard to rebuild. `--force` deletes all of them.
 
 Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `branch` is null for a detached `HEAD`. A branch that the policy keeps adds the warning `kept branch <branch>: not merged`.
 
@@ -93,19 +94,21 @@ Links the Tern plugin, `~/.local/bin/tern-wt` and this skill to the checkout. A 
 
 ## Error codes
 
-| Code                        | Added fields         | Next step                                                                                                           |
-| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `bad_args`                  |                      | Fix the arguments from the message.                                                                                 |
-| `config_invalid`            |                      | Show the user the message, which names the file and the key.                                                        |
-| `not_a_repo`                |                      | Pass a dir in a git repository.                                                                                     |
-| `not_managed`               |                      | `remove` acts only on a managed worktree. Get the paths from `list`.                                                |
-| `path_conflict`             | `path`               | Show the user `path`. Keep it as it is.                                                                             |
-| `branch_in_main_checkout`   | `existing`           | Tell the user. The main checkout holds the branch.                                                                  |
-| `worktree_exists_elsewhere` | `existing`, `target` | Ask the user, then run `create` again with `--relocate`.                                                            |
-| `dirty_worktree`            | `existing`, `files`  | Show the user `files`. Relocate and `remove` keep a worktree with work to lose. For `remove`, ask before `--force`. |
-| `git_failed`                |                      | Show the user the message. For `remove`, ask before `--force`.                                                      |
-| `gh_failed`                 |                      | Show the user the message. Check `gh auth status`.                                                                  |
-| `tern_failed`               |                      | Show the user the message. Check that Tern runs.                                                                    |
+| Code                        | Added fields         | Next step                                                                                                                                                                            |
+| --------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bad_args`                  |                      | Fix the arguments from the message.                                                                                                                                                  |
+| `config_invalid`            |                      | Show the user the message, which names the file and the key.                                                                                                                         |
+| `not_a_repo`                |                      | Pass a dir in a git repository.                                                                                                                                                      |
+| `not_managed`               |                      | `remove` acts only on a managed worktree. Get the paths from `list`.                                                                                                                 |
+| `path_conflict`             | `path`               | Show the user `path`. Keep it as it is.                                                                                                                                              |
+| `branch_in_main_checkout`   | `existing`           | Tell the user. The main checkout holds the branch.                                                                                                                                   |
+| `worktree_exists_elsewhere` | `existing`, `target` | Ask the user, then run `create` again with `--relocate`.                                                                                                                             |
+| `dirty_worktree`            | `existing`, `files`  | Show the user `files`. An entry `!! <path>` is an ignored file that is hard to rebuild. Relocate and `remove` keep a worktree with work to lose. For `remove`, ask before `--force`. |
+| `git_failed`                |                      | Show the user the message. For `remove`, ask before `--force`.                                                                                                                       |
+| `gh_failed`                 |                      | Show the user the message. Check `gh auth status`.                                                                                                                                   |
+| `tern_failed`               |                      | Show the user the message. Check that Tern runs.                                                                                                                                     |
+
+An error from `create` after a rebuilt relocation copied the ignored files adds the field `staging`: the temporary folder that keeps those copies. The message names it. Tell the user, and do not delete that folder.
 
 ## Options file
 

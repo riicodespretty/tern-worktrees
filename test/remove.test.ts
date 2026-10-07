@@ -3,7 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
 import { must, run as runProcess } from '../src/proc.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -316,6 +316,42 @@ describe('remove command', () => {
       expect(existsSync(dir)).toBeFalsy();
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(dir);
     });
+
+    it('stops on ignored files that are hard to rebuild before git deletes them, and lists them with the other changes', async () => {
+      await ignoreGlobally('.env', 'node_modules');
+      const dir = await addFeature();
+      writeLs([dir]);
+      writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+      mkdirSync(path.join(dir, 'node_modules'));
+      writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'x\n');
+      await expect(run([dir])).rejects.toMatchObject({
+        code: 'dirty_worktree',
+        extra: { existing: dir, files: ['!! .env'] },
+        message: `${dir} has work that removing it would lose`,
+      });
+      writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
+      await expect(run([dir])).rejects.toMatchObject({ extra: { files: ['?? junk.txt', '!! .env'] } });
+      expect(readFileSync(path.join(dir, '.env'), 'utf-8')).toBe('SECRET=1\n');
+      expect(readLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
+    });
+
+    it('removes ignored files that are easy to rebuild without --force', async () => {
+      await ignoreGlobally('node_modules', '.DS_Store');
+      const dir = await addFeature();
+      mkdirSync(path.join(dir, 'node_modules'));
+      writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'x\n');
+      writeFileSync(path.join(dir, '.DS_Store'), 'x\n');
+      await expect(run([dir])).resolves.toMatchObject({ removed: dir });
+      expect(existsSync(dir)).toBeFalsy();
+    });
+
+    it('deletes ignored files that are hard to rebuild with --force', async () => {
+      await ignoreGlobally('.env');
+      const dir = await addFeature();
+      writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+      await expect(run([dir, '--force'])).resolves.toMatchObject({ removed: dir });
+      expect(existsSync(dir)).toBeFalsy();
+    });
   });
 
   describe('with submodules', () => {
@@ -333,14 +369,15 @@ describe('remove command', () => {
       return dir;
     };
 
-    it('removes ignored files without --force, as git does for a worktree without submodules', async () => {
-      writeFileSync(path.join(repo.dir, '.git', 'info', 'exclude'), '.env\n');
-      const plain = await addFeature();
-      writeFileSync(path.join(plain, '.env'), 'SECRET=1\n');
-      await expect(run([plain])).resolves.toMatchObject({ removed: plain });
-      expect(existsSync(plain)).toBeFalsy();
+    it('stops on an ignored file inside a submodule that is hard to rebuild', async () => {
+      await ignoreGlobally('.env.local', 'node_modules');
       const dir = await subWorktree();
-      writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+      writeFileSync(path.join(dir, 'sub', '.env.local'), 'SECRET=1\n');
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { existing: dir, files: ['!! sub/.env.local'] } });
+      expect(readFileSync(path.join(dir, 'sub', '.env.local'), 'utf-8')).toBe('SECRET=1\n');
+      rmSync(path.join(dir, 'sub', '.env.local'));
+      mkdirSync(path.join(dir, 'sub', 'node_modules'));
+      writeFileSync(path.join(dir, 'sub', 'node_modules', 'x.js'), 'x\n');
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
       expect(existsSync(dir)).toBeFalsy();
     });

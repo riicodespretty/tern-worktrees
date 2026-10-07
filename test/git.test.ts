@@ -1,9 +1,9 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { defaultBranch, dirtyFiles, originSlug, repoRoot, worktreeLosses, worktrees } from '../src/git.ts';
+import { defaultBranch, dirtyFiles, hardToRebuild, originSlug, repoRoot, worktreeLosses, worktrees } from '../src/git.ts';
 import type { Sandbox } from './helpers.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
 const nestedSubmodules = async (): Promise<string> => {
@@ -160,14 +160,6 @@ describe('git helpers', () => {
       await expect(dirtyFiles(repo.dir)).resolves.toStrictEqual(['?? notes/draft.txt']);
     });
 
-    it('lists ignored files on request', async () => {
-      const repo = await tmpRepo();
-      writeFileSync(path.join(repo.dir, '.git', 'info', 'exclude'), '.env\n');
-      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
-      await expect(dirtyFiles(repo.dir)).resolves.toStrictEqual([]);
-      await expect(dirtyFiles(repo.dir, true)).resolves.toStrictEqual(['!! .env']);
-    });
-
     it('raises git_failed outside a repo', async () => {
       await expect(dirtyFiles(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
     });
@@ -176,10 +168,10 @@ describe('git helpers', () => {
   describe(worktreeLosses, () => {
     it('finds nothing in a clean worktree with pushed submodules', async () => {
       const dir = await nestedSubmodules();
-      await expect(worktreeLosses(dir, true)).resolves.toStrictEqual([]);
+      await expect(worktreeLosses(dir)).resolves.toStrictEqual([]);
     });
 
-    it('lists unpushed commits, dirty and ignored files at every submodule depth', async () => {
+    it('lists unpushed commits and dirty files at every submodule depth, and no ignored file', async () => {
       const dir = await nestedSubmodules();
       const outer = path.join(dir, 'outer');
       const nested = path.join(outer, 'inner');
@@ -188,11 +180,9 @@ describe('git helpers', () => {
       const local = await git(nested, 'rev-parse', '--short', 'work');
       await git(nested, 'switch', '--quiet', '--detach', 'HEAD~1');
       writeFileSync(path.join(outer, 'new.txt'), 'x\n');
+      await ignoreGlobally('secret.env');
       writeFileSync(path.join(outer, 'secret.env'), 'x\n');
-      const exclude = await git(outer, 'rev-parse', '--path-format=absolute', '--git-path', 'info/exclude');
-      writeFileSync(exclude.trim(), 'secret.env\n');
-      await expect(worktreeLosses(dir, false)).resolves.toStrictEqual([' M outer', 'outer: ?? new.txt', `outer/inner: unpushed ${local.trim()}`]);
-      await expect(worktreeLosses(dir, true)).resolves.toStrictEqual([' M outer', 'outer: ?? new.txt', 'outer: !! secret.env', `outer/inner: unpushed ${local.trim()}`]);
+      await expect(worktreeLosses(dir)).resolves.toStrictEqual([' M outer', 'outer: ?? new.txt', `outer/inner: unpushed ${local.trim()}`]);
     });
 
     it('lists the commit of a detached submodule HEAD that no remote holds', async () => {
@@ -200,13 +190,13 @@ describe('git helpers', () => {
       const outer = path.join(dir, 'outer');
       await git(outer, 'commit', '--quiet', '--allow-empty', '-m', 'detached work');
       const head = await git(outer, 'rev-parse', '--short', 'HEAD');
-      await expect(worktreeLosses(dir, false)).resolves.toStrictEqual([' M outer', `outer: unpushed ${head.trim()}`]);
+      await expect(worktreeLosses(dir)).resolves.toStrictEqual([' M outer', `outer: unpushed ${head.trim()}`]);
     });
 
     it('raises git_failed when it cannot list the submodules', async () => {
       const dir = await nestedSubmodules();
       writeFileSync(path.join(dir, '.gitmodules'), '[submodule "outer"\n');
-      const failure = worktreeLosses(dir, false);
+      const failure = worktreeLosses(dir);
       await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
       await expect(failure).rejects.toThrow(/bad config line/u);
     });
@@ -214,13 +204,66 @@ describe('git helpers', () => {
     it('raises git_failed when it cannot read the commits of a submodule', async () => {
       const dir = await nestedSubmodules();
       await git(path.join(dir, 'outer'), 'symbolic-ref', 'HEAD', 'refs/heads/unborn');
-      const failure = worktreeLosses(dir, false);
+      const failure = worktreeLosses(dir);
       await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
       await expect(failure).rejects.toThrow(/unknown revision/u);
     });
 
     it('raises git_failed outside a repo', async () => {
-      await expect(worktreeLosses(tempDir('plain'), false)).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(worktreeLosses(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(hardToRebuild, () => {
+    it('lists each ignored file outside the rebuildable dirs, in submodules at every depth too', async () => {
+      const dir = await nestedSubmodules();
+      await ignoreGlobally(
+        '.env*',
+        '*.pem',
+        'local.settings.json',
+        'secrets/',
+        'node_modules',
+        'dist',
+        'build',
+        'coverage',
+        '.DS_Store',
+        '.cache',
+        '.next',
+        '.nuxt',
+        '.output',
+        '.turbo',
+      );
+      const rebuildable = [
+        'node_modules/x/index.js',
+        'dist/app.js',
+        'build/a',
+        'coverage/lcov.info',
+        'src/.DS_Store',
+        '.cache/c',
+        '.next/n',
+        '.nuxt/n',
+        '.output/o',
+        '.turbo/t',
+        'outer/build/out.o',
+        'outer/inner/.cache/c',
+      ];
+      const files = ['.env', 'secrets/a.pem', 'secrets/deep/b.txt', 'outer/.env.local', 'outer/inner/local.settings.json', ...rebuildable];
+      for (const file of files) {
+        mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+        writeFileSync(path.join(dir, file), 'x\n');
+      }
+      symlinkSync('missing', path.join(dir, '.env.link'));
+      const found = await hardToRebuild(dir);
+      expect(found.toSorted()).toStrictEqual(['.env', '.env.link', 'outer/.env.local', 'outer/inner/local.settings.json', 'secrets/a.pem', 'secrets/deep/b.txt']);
+    });
+
+    it('finds nothing without ignored files', async () => {
+      const repo = await tmpRepo();
+      await expect(hardToRebuild(repo.dir)).resolves.toStrictEqual([]);
+    });
+
+    it('raises git_failed outside a repo', async () => {
+      await expect(hardToRebuild(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
     });
   });
 });

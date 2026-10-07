@@ -86,31 +86,52 @@ const lines = (output: string): string[] => output.split('\n').filter(line => li
 
 /**
  * The `git status --porcelain` lines of the worktree at `dir`, submodule changes included. It lists each file that git does not track,
- * also when `status.showUntrackedFiles` hides them, and the ignored files too when `ignored` is true.
+ * also when `status.showUntrackedFiles` hides them.
  */
-export const dirtyFiles = async (dir: string, ignored = false): Promise<string[]> => {
-  const flags = ['--porcelain', '--untracked-files=all', '--ignore-submodules=none', ...(ignored ? ['--ignored'] : [])];
-  return lines(await must(['git', '-C', dir, 'status', ...flags], 'git_failed'));
-};
+export const dirtyFiles = async (dir: string): Promise<string[]> =>
+  lines(await must(['git', '-C', dir, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'], 'git_failed'));
 
-const submoduleLosses = async (dir: string, sub: string, ignored: boolean): Promise<string[]> => {
+const submodules = async (dir: string): Promise<string[]> =>
+  lines(await must(['git', '-C', dir, 'submodule', 'foreach', '--quiet', '--recursive', 'printf "%s\\n" "$displaypath"'], 'git_failed'));
+
+const submoduleLosses = async (dir: string, sub: string): Promise<string[]> => {
   const subDir = path.join(dir, sub);
   const [files, unpushed] = await Promise.all([
-    dirtyFiles(subDir, ignored),
+    dirtyFiles(subDir),
     must(['git', '-C', subDir, 'rev-list', '--abbrev-commit', 'HEAD', '--branches', '--not', '--remotes'], 'git_failed'),
   ]);
   return [...files.map(file => `${sub}: ${file}`), ...lines(unpushed).map(commit => `${sub}: unpushed ${commit}`)];
 };
 
 /**
- * The work that a delete of the worktree at `dir` destroys: its {@link dirtyFiles}, and for each initialized submodule, at each depth,
- * its dirty files and the commits of its `HEAD` or its local branches that no remote branch holds. Empty when the delete destroys nothing.
+ * The work that a delete of the worktree at `dir` destroys, ignored files aside: its {@link dirtyFiles}, and for each initialized submodule,
+ * at each depth, its dirty files and the commits of its `HEAD` or its local branches that no remote branch holds. Empty when the delete destroys nothing.
  */
-export const worktreeLosses = async (dir: string, ignored: boolean): Promise<string[]> => {
-  const [files, subs] = await Promise.all([
-    dirtyFiles(dir, ignored),
-    must(['git', '-C', dir, 'submodule', 'foreach', '--quiet', '--recursive', 'printf "%s\\n" "$displaypath"'], 'git_failed'),
-  ]);
-  const subLosses = await Promise.all(lines(subs).map(async sub => await submoduleLosses(dir, sub, ignored)));
+export const worktreeLosses = async (dir: string): Promise<string[]> => {
+  const [files, subs] = await Promise.all([dirtyFiles(dir), submodules(dir)]);
+  const subLosses = await Promise.all(subs.map(async sub => await submoduleLosses(dir, sub)));
   return [...files, ...subLosses.flat()];
+};
+
+/** The path segments of the ignored files that a build or an install makes again. An ignored file with none of them in its path is hard to rebuild. */
+export const REBUILDABLE: readonly string[] = ['node_modules', 'dist', 'build', 'coverage', '.DS_Store', '.cache', '.next', '.nuxt', '.output', '.turbo'];
+
+const ignoredFiles = async (dir: string): Promise<string[]> => {
+  const output = await must(['git', '-C', dir, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard'], 'git_failed');
+  return output.split('\0').filter(file => file !== '');
+};
+
+/**
+ * The ignored files of the worktree at `dir` and of its initialized submodules at each depth that are hard to rebuild, one entry for each file,
+ * as paths relative to `dir`.
+ */
+export const hardToRebuild = async (dir: string): Promise<string[]> => {
+  const [own, subs] = await Promise.all([ignoredFiles(dir), submodules(dir)]);
+  const nested = await Promise.all(
+    subs.map(async sub => {
+      const files = await ignoredFiles(path.join(dir, sub));
+      return files.map(file => `${sub}/${file}`);
+    }),
+  );
+  return [...own, ...nested.flat()].filter(file => !file.split('/').some(segment => REBUILDABLE.includes(segment)));
 };

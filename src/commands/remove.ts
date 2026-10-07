@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { defaultBranch, originSlug, repoRoot, worktreeLosses } from '../git.ts';
+import { defaultBranch, hardToRebuild, originSlug, repoRoot, worktreeLosses } from '../git.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
 import { CliError, must, run as runProcess } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
@@ -71,14 +71,17 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
     }
     return;
   }
-  const removal = await runProcess(['git', '-c', 'status.showUntrackedFiles=all', '-C', ctx.root, 'worktree', 'remove', ctx.target]);
-  if (removal.status === 0) {
-    return;
+  const ignored = await hardToRebuild(ctx.target);
+  if (ignored.length === 0) {
+    const removal = await runProcess(['git', '-c', 'status.showUntrackedFiles=all', '-C', ctx.root, 'worktree', 'remove', ctx.target]);
+    if (removal.status === 0) {
+      return;
+    }
+    if (!removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
+      throw new CliError('git_failed', removal.stderr.trim());
+    }
   }
-  if (!removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
-    throw new CliError('git_failed', removal.stderr.trim());
-  }
-  const files = await worktreeLosses(ctx.target, false);
+  const files = [...(await worktreeLosses(ctx.target)), ...ignored.map(file => `!! ${file}`)];
   if (files.length > 0) {
     throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
   }
@@ -150,7 +153,8 @@ const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Pr
 
 /**
  * `remove <path> [--force] [--keep-tab]`: removes a managed worktree, closes the Tern blocks in the worktree,
- * then deletes its branch if the teardown policy tells it to. `--force` discards uncommitted changes.
+ * then deletes its branch if the teardown policy tells it to. Ignored files that are hard to rebuild stop it like uncommitted changes do.
+ * `--force` discards the two.
  */
 export const run = async (args: string[]): Promise<RemoveResult> => {
   const options = parse(args);

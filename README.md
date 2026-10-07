@@ -64,19 +64,21 @@ The branch picker of that repository opens next.
 
 ### Relocate
 
-A branch can have a worktree that is not in the worktree root, for example from Orca. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, an ignored file, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+A branch can have a worktree that is not in the worktree root, for example from Orca. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+
+Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not stop the rebuild: `tern-wt` copies them into the new worktree, in the submodules too, and lists them in `carried`. An ignored file is a build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. Those files stay behind. When a step after the copy fails, the error names the temporary folder that keeps the copies.
 
 ### Close a worktree tab
 
 When you close a worktree tab, a dialog shows the path and the teardown policy:
 
-- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. As with `git worktree remove`, the ignored files in the worktree go too.
+- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do.
 - Keep worktree: closes the tab and keeps the worktree.
 - Cancel: keeps the tab and the worktree.
 
 When the tab closes before the dialog opens, the dialog offers Keep worktree first, then Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
 
-When the teardown fails, for example because of uncommitted changes, a second dialog shows the error:
+When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, a second dialog shows the error and lists the files:
 
 - Retry: runs the teardown again.
 - Force delete: removes the worktree and discards its uncommitted work.
