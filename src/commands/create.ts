@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { lstatSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, dirtyFiles, originSlug, repoRoot, worktrees } from '../git.ts';
+import { defaultBranch, originSlug, repoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { isUnder, worktreePath } from '../paths.ts';
 import { CliError, must, run as runProcess } from '../proc.ts';
@@ -128,26 +128,32 @@ const startPoint = async (ctx: Context): Promise<string> => {
   return ctx.hasOrigin ? `origin/${name}` : name;
 };
 
+const hasRef = async (ctx: Context, ref: string): Promise<boolean> => await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', ref);
+
+const checkBranch = async (ctx: Context, target: Target, isNew: boolean): Promise<void> => {
+  if (!(await gitSucceeds(ctx.root, 'check-ref-format', '--branch', target.branch))) {
+    throw badArgs(`bad branch name ${target.branch}`);
+  }
+  if (isNew && ((await hasRef(ctx, `refs/heads/${target.branch}`)) || (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)))) {
+    throw badArgs(`branch ${target.branch} already exists`);
+  }
+};
+
 const worktreeAddArgs = async (ctx: Context, target: Target, isNew: boolean): Promise<string[]> => {
-  const hasLocal = await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${target.branch}`);
-  const hasRemote = await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${target.branch}`);
   if (isNew) {
-    if (hasLocal || hasRemote) {
-      throw badArgs(`branch ${target.branch} already exists`);
-    }
-    return ['-b', target.branch, target.path, await startPoint(ctx)];
+    return ['-b', target.branch, '--', target.path, await startPoint(ctx)];
   }
-  if (hasLocal) {
-    return [target.path, target.branch];
+  if (await hasRef(ctx, `refs/heads/${target.branch}`)) {
+    return ['--', target.path, target.branch];
   }
-  if (hasRemote) {
-    return ['--track', '-b', target.branch, target.path, `origin/${target.branch}`];
+  if (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)) {
+    return ['--track', '-b', target.branch, '--', target.path, `origin/${target.branch}`];
   }
   throw badArgs(`no branch ${target.branch}; pass --new to create it`);
 };
 
 const assertPathFree = (target: Target): void => {
-  if (existsSync(target.path)) {
+  if (lstatSync(target.path, { throwIfNoEntry: false })) {
     throw new CliError('path_conflict', `${target.path} exists and is not the worktree of ${target.branch}`, { path: target.path });
   }
 };
@@ -158,34 +164,59 @@ const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promis
     await git(ctx.root, 'worktree', 'add', ...(await worktreeAddArgs(ctx, target, isNew)));
     return;
   }
-  await git(ctx.root, 'worktree', 'add', '--detach', target.path, await startPoint(ctx));
-  await must(['gh', 'pr', 'checkout', target.forkPr, '--branch', target.branch], 'gh_failed', { cwd: target.path });
+  await git(ctx.root, 'worktree', 'add', '--detach', '--', target.path, await startPoint(ctx));
+  try {
+    await must(['gh', 'pr', 'checkout', target.forkPr, '--branch', target.branch], 'gh_failed', { cwd: target.path });
+  } catch (error) {
+    await git(ctx.root, 'worktree', 'remove', '--force', target.path);
+    throw error;
+  }
+};
+
+const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Promise<string | null> => {
+  const moved = await runProcess(['git', '-C', ctx.root, 'worktree', 'move', existing.path, target.path]);
+  if (moved.status === 0) {
+    return null;
+  }
+  const files = await worktreeLosses(existing.path, true);
+  if (files.length > 0) {
+    throw new CliError('dirty_worktree', `${existing.path} has work that recreating it would lose`, { existing: existing.path, files });
+  }
+  await git(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);
+  const [reason] = moved.stderr.split('\n');
+  return reason;
 };
 
 const relocate = async (ctx: Context, target: Target, existing: Worktree): Promise<void> => {
   assertPathFree(target);
-  if (existing.locked) {
+  mkdirSync(path.dirname(target.path), { recursive: true });
+  const lockReason = existing.locked;
+  if (lockReason !== null) {
     await git(ctx.root, 'worktree', 'unlock', existing.path);
   }
-  mkdirSync(path.dirname(target.path), { recursive: true });
-  const moved = await runProcess(['git', '-C', ctx.root, 'worktree', 'move', existing.path, target.path]);
-  if (moved.status === 0) {
-    return;
+  let refusal: string | null;
+  try {
+    refusal = await moveOrClear(ctx, target, existing);
+  } catch (error) {
+    if (lockReason !== null) {
+      await git(ctx.root, 'worktree', 'lock', '--reason', lockReason, existing.path);
+    }
+    throw error;
   }
-  const files = await dirtyFiles(existing.path);
-  if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${existing.path} has uncommitted changes`, { existing: existing.path, files });
+  if (refusal !== null) {
+    await addWorktree(ctx, target, false);
+    ctx.warnings.push(`recreated: git worktree move refused (${refusal})`);
   }
-  await git(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);
-  await addWorktree(ctx, target, false);
-  const [reason] = moved.stderr.split('\n');
-  ctx.warnings.push(`recreated: git worktree move refused (${reason})`);
 };
 
 const placeWorktree = async (ctx: Context, target: Target, options: Options): Promise<CreateStatus> => {
+  await checkBranch(ctx, target, options.new);
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
-  if (!existing) {
+  if (existing?.prunable === true) {
+    await git(ctx.root, 'worktree', 'prune');
+  }
+  if (!existing || existing.prunable) {
     await addWorktree(ctx, target, options.new);
     return 'created';
   }

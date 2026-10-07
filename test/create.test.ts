@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
@@ -191,6 +191,13 @@ describe('create command', () => {
       });
     });
 
+    it('reports git refusing to add the worktree', async () => {
+      writeFileSync(path.join(repo.dir, '.git', 'worktrees'), '');
+      const failure = run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(failure).rejects.toThrow(/could not create leading directories/u);
+    });
+
     it('bases the branch on the current branch without origin and skips the fetch', async () => {
       await git(repo.dir, 'remote', 'remove', 'origin');
       await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
@@ -198,10 +205,21 @@ describe('create command', () => {
       await expect(git(managedPath('feature-z'), 'rev-parse', 'HEAD')).resolves.toBe(await git(repo.dir, 'rev-parse', 'main'));
     });
 
-    it('reports a git failure', async () => {
-      const args = ['--repo', repo.dir, '--branch', 'bad..name', '--new', '--no-tab'];
-      await expect(run(args)).rejects.toMatchObject({ code: 'git_failed' });
-      await expect(run(args)).rejects.toThrow(/'bad\.\.name' is not a valid branch name/u);
+    it.each([['bad..name'], ['-x'], ['HEAD']])('rejects the bad branch name %s and adds no worktree', async name => {
+      await expect(run(['--repo', repo.dir, `--branch=${name}`, '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: `bad branch name ${name}` });
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(sandbox.wtHome);
+    });
+
+    it('rejects a flag-shaped ref instead of reading it as an option', async () => {
+      await git(repo.dir, 'update-ref', 'refs/heads/--detach', 'HEAD');
+      await expect(run(['--repo', repo.dir, '--branch=--detach', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'bad branch name --detach' });
+      expect(existsSync(managedPath('--detach'))).toBeFalsy();
+    });
+
+    it('rejects --new for a branch that already has a worktree', async () => {
+      await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'branch feature/x already exists' });
+      await expect(run(['--repo', repo.dir, '--branch', 'main', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'branch main already exists' });
     });
   });
 
@@ -244,6 +262,27 @@ describe('create command', () => {
       await expect(currentBranch(old)).resolves.toBe('feature/x');
     });
 
+    it('rejects a dangling symbolic link at the target path', async () => {
+      mkdirSync(path.dirname(managedPath('feature-x')), { recursive: true });
+      symlinkSync(path.join(tempDir('gone'), 'missing'), managedPath('feature-x'));
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({ code: 'path_conflict', extra: { path: managedPath('feature-x') } });
+    });
+
+    it('recreates a managed worktree whose dir is gone', async () => {
+      await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      rmSync(managedPath('feature-x'), { force: true, recursive: true });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
+    });
+
+    it('creates the worktree when the one elsewhere is gone', async () => {
+      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
+      rmSync(old, { force: true, recursive: true });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(old);
+    });
+
     describe('with submodules', () => {
       beforeEach(async () => {
         await pushSubmoduleBranch('feature/s');
@@ -255,16 +294,56 @@ describe('create command', () => {
         return old;
       };
 
+      const expectKept = async (old: string, files: string[]): Promise<void> => {
+        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).rejects.toMatchObject({
+          code: 'dirty_worktree',
+          extra: { existing: old, files },
+          message: `${old} has work that recreating it would lose`,
+        });
+        await expect(currentBranch(old)).resolves.toBe('feature/s');
+        expect(existsSync(managedPath('feature-s'))).toBeFalsy();
+      };
+
       it('stops on a dirty worktree that git refuses to move', async () => {
         const old = await submoduleWorktree();
         writeFileSync(path.join(old, 'junk.txt'), 'x\n');
-        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).rejects.toMatchObject({
-          code: 'dirty_worktree',
-          extra: { existing: old, files: ['?? junk.txt'] },
-          message: `${old} has uncommitted changes`,
-        });
+        await expectKept(old, ['?? junk.txt']);
         expect(existsSync(path.join(old, 'junk.txt'))).toBeTruthy();
-        expect(existsSync(managedPath('feature-s'))).toBeFalsy();
+        await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain('locked');
+      });
+
+      it('stops on an untracked file that status.showUntrackedFiles hides', async () => {
+        const old = await submoduleWorktree();
+        await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
+        writeFileSync(path.join(old, 'notes.txt'), 'x\n');
+        await expectKept(old, ['?? notes.txt']);
+        expect(existsSync(path.join(old, 'notes.txt'))).toBeTruthy();
+      });
+
+      it('stops on an ignored file', async () => {
+        const old = await submoduleWorktree();
+        writeFileSync(path.join(repo.dir, '.git', 'info', 'exclude'), '.env\n');
+        writeFileSync(path.join(old, '.env'), 'SECRET=1\n');
+        await expectKept(old, ['!! .env']);
+        expect(readFileSync(path.join(old, '.env'), 'utf-8')).toBe('SECRET=1\n');
+      });
+
+      it('stops on a submodule commit that no remote holds', async () => {
+        const old = await submoduleWorktree();
+        const sub = path.join(old, 'sub');
+        await git(sub, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
+        const commit = await git(sub, 'rev-parse', '--short', 'HEAD');
+        await git(old, 'commit', '--quiet', '-am', 'bump sub');
+        await expectKept(old, [`sub: unpushed ${commit.trim()}`]);
+        await expect(git(sub, 'rev-parse', '--short', 'HEAD')).resolves.toBe(commit);
+      });
+
+      it('locks a locked worktree again when it stops', async () => {
+        const old = await submoduleWorktree();
+        await git(repo.dir, 'worktree', 'lock', '--reason', 'on usb', old);
+        writeFileSync(path.join(old, 'junk.txt'), 'x\n');
+        await expectKept(old, ['?? junk.txt']);
+        await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.toContain('locked on usb');
       });
 
       it('recreates a clean worktree that git refuses to move', async () => {
@@ -321,10 +400,13 @@ describe('create command', () => {
       expect(logLines(sandbox.ghLog)).not.toContain('pr checkout 7 --branch pr-7');
     });
 
-    it('reports a gh failure', async () => {
+    it('reports a gh failure and removes the worktree of a failed fork checkout', async () => {
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
       prView(true);
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed' });
+      expect(existsSync(managedPath('pr-7'))).toBeFalsy();
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(managedPath('pr-7'));
+      await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
 
     it('needs a GitHub origin', async () => {

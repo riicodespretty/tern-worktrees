@@ -1,13 +1,13 @@
 import path from 'node:path';
 import { must, run } from './proc.ts';
 
-/** One entry of `git worktree list`. */
+/** One entry of `git worktree list`. `locked` holds the text of the lock, empty when the lock has no text, or null when the worktree has no lock. */
 export interface Worktree {
   path: string;
   head: string;
   branch: string | null;
   main: boolean;
-  locked: boolean;
+  locked: string | null;
   prunable: boolean;
 }
 
@@ -56,7 +56,7 @@ export const defaultBranch = async (root: string): Promise<string> => {
 
 const parseWorktree = (record: string, index: number): Worktree => {
   const [first, ...fields] = record.split('\0');
-  const worktree: Worktree = { branch: null, head: '', locked: false, main: index === 0, path: first.slice('worktree '.length), prunable: false };
+  const worktree: Worktree = { branch: null, head: '', locked: null, main: index === 0, path: first.slice('worktree '.length), prunable: false };
   for (const field of fields) {
     const [key] = field.split(' ');
     const value = field.slice(key.length + 1);
@@ -65,7 +65,7 @@ const parseWorktree = (record: string, index: number): Worktree => {
     } else if (key === 'branch') {
       worktree.branch = value.slice('refs/heads/'.length);
     } else if (key === 'locked') {
-      worktree.locked = true;
+      worktree.locked = value;
     } else if (key === 'prunable') {
       worktree.prunable = true;
     }
@@ -82,8 +82,35 @@ export const worktrees = async (root: string): Promise<Worktree[]> => {
     .map(parseWorktree);
 };
 
-/** The `git status --porcelain` lines of the worktree at `dir`, submodule changes included. */
-export const dirtyFiles = async (dir: string): Promise<string[]> => {
-  const output = await must(['git', '-C', dir, 'status', '--porcelain', '--ignore-submodules=none'], 'git_failed');
-  return output.split('\n').filter(line => line !== '');
+const lines = (output: string): string[] => output.split('\n').filter(line => line !== '');
+
+/**
+ * The `git status --porcelain` lines of the worktree at `dir`, submodule changes included. It lists each file that git does not track,
+ * also when `status.showUntrackedFiles` hides them, and the ignored files too when `ignored` is true.
+ */
+export const dirtyFiles = async (dir: string, ignored = false): Promise<string[]> => {
+  const flags = ['--porcelain', '--untracked-files=all', '--ignore-submodules=none', ...(ignored ? ['--ignored'] : [])];
+  return lines(await must(['git', '-C', dir, 'status', ...flags], 'git_failed'));
+};
+
+const submoduleLosses = async (dir: string, sub: string, ignored: boolean): Promise<string[]> => {
+  const subDir = path.join(dir, sub);
+  const [files, unpushed] = await Promise.all([
+    dirtyFiles(subDir, ignored),
+    must(['git', '-C', subDir, 'rev-list', '--abbrev-commit', 'HEAD', '--branches', '--not', '--remotes'], 'git_failed'),
+  ]);
+  return [...files.map(file => `${sub}: ${file}`), ...lines(unpushed).map(commit => `${sub}: unpushed ${commit}`)];
+};
+
+/**
+ * The work that a delete of the worktree at `dir` destroys: its {@link dirtyFiles}, and for each initialized submodule, at each depth,
+ * its dirty files and the commits of its `HEAD` or its local branches that no remote branch holds. Empty when the delete destroys nothing.
+ */
+export const worktreeLosses = async (dir: string, ignored: boolean): Promise<string[]> => {
+  const [files, subs] = await Promise.all([
+    dirtyFiles(dir, ignored),
+    must(['git', '-C', dir, 'submodule', 'foreach', '--quiet', '--recursive', 'printf "%s\\n" "$displaypath"'], 'git_failed'),
+  ]);
+  const subLosses = await Promise.all(lines(subs).map(async sub => await submoduleLosses(dir, sub, ignored)));
+  return [...files, ...subLosses.flat()];
 };

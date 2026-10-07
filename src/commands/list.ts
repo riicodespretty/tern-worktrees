@@ -26,11 +26,11 @@ export const linkedWorktreeRoot = async (dir: string): Promise<string | null> =>
   return topLevel.stdout.trim() === realDir && root !== realDir ? root : null;
 };
 
-/** The branch checked out at `dir`, or null when `dir` has a detached `HEAD`. */
+/** The branch checked out at `dir`, or null when `dir` has a detached `HEAD`. A tag of the same name does not change it. */
 export const currentBranch = async (dir: string): Promise<string | null> => {
-  const result = await runProcess(['git', '-C', dir, 'symbolic-ref', '--short', '-q', 'HEAD']);
-  const name = result.stdout.trim();
-  return name === '' ? null : name;
+  const result = await runProcess(['git', '-C', dir, 'symbolic-ref', '-q', 'HEAD']);
+  const ref = result.stdout.trim();
+  return ref === '' ? null : ref.slice('refs/heads/'.length);
 };
 
 const subdirs = (dir: string): string[] => {
@@ -50,17 +50,6 @@ const readWorktree = async (dir: string): Promise<ListedWorktree | null> => {
   return { branch, dirty: changedFiles.length > 0, path: dir, repo };
 };
 
-const repoDirs = async (root: string, repo: string | undefined): Promise<string[]> => {
-  if (repo === undefined) {
-    return subdirs(root);
-  }
-  const mainCheckout = await repoRoot(repo);
-  if (mainCheckout === null) {
-    throw new CliError('not_a_repo', `${repo} is not in a git repository`);
-  }
-  return [path.join(root, path.basename(mainCheckout))];
-};
-
 /** `list [--repo <dir>]`: the managed worktrees of all repositories, or only of the repository that holds `dir`. */
 export const run = async (args: string[]): Promise<ListResult> => {
   let repo: string | undefined;
@@ -71,7 +60,14 @@ export const run = async (args: string[]): Promise<ListResult> => {
     throw new CliError('bad_args', (error as TypeError).message);
   }
   const root = worktreeRoot();
-  const repos = await repoDirs(root, repo);
+  let mainCheckout: string | null = null;
+  if (repo !== undefined) {
+    mainCheckout = await repoRoot(repo);
+    if (mainCheckout === null) {
+      throw new CliError('not_a_repo', `${repo} is not in a git repository`);
+    }
+  }
+  const repos = mainCheckout === null ? subdirs(root) : [path.join(root, path.basename(mainCheckout))];
   const found = await Promise.all(repos.flatMap(subdirs).map(readWorktree));
-  return { root, worktrees: found.filter((entry): entry is ListedWorktree => entry !== null) };
+  return { root, worktrees: found.filter((entry): entry is ListedWorktree => entry !== null && (mainCheckout === null || entry.repo === mainCheckout)) };
 };

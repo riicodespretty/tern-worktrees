@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
@@ -67,9 +67,9 @@ const shimForcedRemove = async (action: string): Promise<void> => {
   vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
 };
 
-const fakeMergedPrCount = (count: string): void => {
-  const args = ['pr', 'list', '--repo', 'virtusize/aoyama', '--head', 'feature/x', '--state', 'merged', '--json', 'number', '--jq', 'length'];
-  writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), `${count}\n`);
+const fakeMergedPrs = (headRefOids: string[]): void => {
+  const args = ['pr', 'list', '--repo', 'virtusize/aoyama', '--head=feature/x', '--state', 'merged', '--json', 'headRefOid'];
+  writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), JSON.stringify(headRefOids.map(headRefOid => ({ headRefOid }))));
 };
 
 describe('remove command', () => {
@@ -153,19 +153,39 @@ describe('remove command', () => {
       expect(result.warnings[0]).toMatch(/^fetch failed: fatal: .*missing\.git.*\S$/su);
     });
 
-    it('deletes a squash-merged branch with a merged pull request', async () => {
+    it('deletes a squash-merged branch whose tip a merged pull request holds', async () => {
       await useGithubOrigin();
-      fakeMergedPrCount('1');
       const dir = await addUnmerged();
+      const tip = await git(dir, 'rev-parse', 'HEAD');
+      fakeMergedPrs(['0000000000000000000000000000000000000000', tip.trim()]);
       await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
     });
 
+    it('keeps a branch with commits after its merged pull request', async () => {
+      await useGithubOrigin();
+      const dir = await addUnmerged();
+      const merged = await git(dir, 'rev-parse', 'HEAD');
+      fakeMergedPrs([merged.trim()]);
+      await git(dir, 'commit', '--quiet', '--allow-empty', '-m', 'follow-up after the merge');
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
+      await expect(hasBranch('feature/x')).resolves.toBeTruthy();
+    });
+
     it('keeps a branch without a merged pull request', async () => {
       await useGithubOrigin();
-      fakeMergedPrCount('0');
+      fakeMergedPrs([]);
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
+    });
+
+    it('deletes a branch that shares its name with a tag', async () => {
+      setTeardown('worktree+branch');
+      await git(repo.dir, 'tag', 'v1', 'main');
+      const dir = managedPath('v1');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'v1', dir, 'main');
+      await expect(run([dir])).resolves.toMatchObject({ branch: 'v1', branchDeleted: true, warnings: [] });
+      await expect(hasBranch('v1')).resolves.toBeFalsy();
     });
 
     it('keeps the branch when gh fails', async () => {
@@ -230,6 +250,22 @@ describe('remove command', () => {
       await expect(run([dir])).rejects.toThrow(/contains modified or untracked files.*\S$/su);
       expect(existsSync(path.join(dir, 'junk.txt'))).toBeTruthy();
       expect(readLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
+    });
+
+    it('keeps an untracked file that status.showUntrackedFiles hides', async () => {
+      const dir = await addFeature();
+      await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(path.join(dir, 'draft.txt'), 'draft\n');
+      await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed' });
+      expect(readFileSync(path.join(dir, 'draft.txt'), 'utf-8')).toBe('draft\n');
+    });
+
+    it('removes the real worktree when given a symbolic link to it', async () => {
+      const dir = await addFeature();
+      const alias = managedPath('alias');
+      symlinkSync(dir, alias);
+      await expect(run([alias, '--force'])).resolves.toMatchObject({ branch: 'feature/x', removed: dir });
+      expect(existsSync(dir)).toBeFalsy();
     });
 
     it('removes a dirty worktree and closes its tabs with --force, and leaves other stale records alone', async () => {
@@ -297,6 +333,18 @@ describe('remove command', () => {
       return dir;
     };
 
+    it('removes ignored files without --force, as git does for a worktree without submodules', async () => {
+      writeFileSync(path.join(repo.dir, '.git', 'info', 'exclude'), '.env\n');
+      const plain = await addFeature();
+      writeFileSync(path.join(plain, '.env'), 'SECRET=1\n');
+      await expect(run([plain])).resolves.toMatchObject({ removed: plain });
+      expect(existsSync(plain)).toBeFalsy();
+      const dir = await subWorktree();
+      writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+      await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
+      expect(existsSync(dir)).toBeFalsy();
+    });
+
     it('removes a clean worktree without --force', async () => {
       const dir = await subWorktree();
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
@@ -306,8 +354,34 @@ describe('remove command', () => {
     it('keeps a worktree with changes inside a submodule', async () => {
       const dir = await subWorktree();
       writeFileSync(path.join(dir, 'sub', 'README.md'), 'changed\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed', message: 'fatal: working trees containing submodules cannot be moved or removed' });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { existing: dir, files: [' M sub', 'sub:  M README.md'] } });
       expect(readFileSync(path.join(dir, 'sub', 'README.md'), 'utf-8')).toBe('changed\n');
+    });
+
+    it('keeps a worktree whose submodule holds a commit that no remote has', async () => {
+      setTeardown('worktree');
+      const dir = await subWorktree();
+      const sub = path.join(dir, 'sub');
+      await git(sub, 'switch', '--quiet', '-c', 'local-work');
+      await git(sub, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
+      const commit = await git(sub, 'rev-parse', '--short', 'HEAD');
+      await git(dir, 'commit', '--quiet', '-am', 'bump sub');
+      const log = await logGitCalls();
+      await expect(run([dir])).rejects.toMatchObject({
+        code: 'dirty_worktree',
+        extra: { existing: dir, files: [`sub: unpushed ${commit.trim()}`] },
+        message: `${dir} has work that removing it would lose`,
+      });
+      expect(readLines(log).join('\n')).not.toMatch(/remove --force/u);
+      await expect(git(sub, 'rev-parse', '--short', 'local-work')).resolves.toBe(commit);
+    });
+
+    it('keeps an untracked file that status.showUntrackedFiles hides', async () => {
+      const dir = await subWorktree();
+      await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(path.join(dir, 'draft.txt'), 'draft\n');
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? draft.txt'] } });
+      expect(existsSync(path.join(dir, 'draft.txt'))).toBeTruthy();
     });
 
     it('reports git refusing the forced removal of a clean worktree', async () => {

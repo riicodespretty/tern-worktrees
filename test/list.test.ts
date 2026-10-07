@@ -54,6 +54,23 @@ describe('list command', () => {
     await expect(run(['--repo', mine])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
   });
 
+  it('leaves out the worktrees of another repo with the same name under --repo', async () => {
+    const twin = await tmpRepo('aoyama');
+    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    await addWorktree(twin, 'feature-y', '-b', 'feature/y');
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+  });
+
+  it('lists the worktrees of --repo when a worktree of another repo cannot be read', async () => {
+    const other = await tmpRepo('maui');
+    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    const broken = await addWorktree(other, 'feature-y', '-b', 'feature/y');
+    const index = await git(broken, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
+    writeFileSync(index.trim(), 'not an index');
+    await expect(run([])).rejects.toMatchObject({ code: 'git_failed' });
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+  });
+
   it('rejects a --repo outside a repo', async () => {
     const plain = tempDir('plain');
     await expect(run(['--repo', plain])).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });

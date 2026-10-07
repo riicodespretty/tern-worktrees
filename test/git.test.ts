@@ -1,11 +1,23 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { defaultBranch, dirtyFiles, originSlug, repoRoot, worktrees } from '../src/git.ts';
+import { defaultBranch, dirtyFiles, originSlug, repoRoot, worktreeLosses, worktrees } from '../src/git.ts';
 import type { Sandbox } from './helpers.ts';
 import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
+const nestedSubmodules = async (): Promise<string> => {
+  const inner = await tmpRepo('inner');
+  const outer = await tmpRepo('outer');
+  await git(outer.dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', inner.dir, 'inner');
+  await git(outer.dir, 'commit', '--quiet', '-m', 'add inner');
+  await git(outer.dir, 'push', '--quiet', 'origin', 'main');
+  const repo = await tmpRepo();
+  await git(repo.dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', outer.origin, 'outer');
+  await git(repo.dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'update', '--init', '--recursive');
+  await git(repo.dir, 'commit', '--quiet', '-m', 'add outer');
+  return repo.dir;
+};
 
 describe('git helpers', () => {
   beforeEach(() => {
@@ -97,20 +109,21 @@ describe('git helpers', () => {
       const headLine = await git(repo.dir, 'rev-parse', 'HEAD');
       const head = headLine.trim();
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', path.join(base, 'a-linked'));
-      await git(repo.dir, 'worktree', 'add', '--quiet', '--lock', '--detach', path.join(base, 'b-locked'));
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--detach', path.join(base, 'b-locked'));
+      await git(repo.dir, 'worktree', 'lock', path.join(base, 'b-locked'));
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'kept', path.join(base, 'c kept'));
       await git(repo.dir, 'worktree', 'lock', '--reason', 'kept for review', path.join(base, 'c kept'));
       await expect(worktrees(repo.dir)).resolves.toStrictEqual([
-        { branch: 'main', head, locked: false, main: true, path: repo.dir, prunable: false },
-        { branch: 'feature/x', head, locked: false, main: false, path: path.join(base, 'a-linked'), prunable: false },
-        { branch: null, head, locked: true, main: false, path: path.join(base, 'b-locked'), prunable: false },
-        { branch: 'kept', head, locked: true, main: false, path: path.join(base, 'c kept'), prunable: false },
+        { branch: 'main', head, locked: null, main: true, path: repo.dir, prunable: false },
+        { branch: 'feature/x', head, locked: null, main: false, path: path.join(base, 'a-linked'), prunable: false },
+        { branch: null, head, locked: '', main: false, path: path.join(base, 'b-locked'), prunable: false },
+        { branch: 'kept', head, locked: 'kept for review', main: false, path: path.join(base, 'c kept'), prunable: false },
       ]);
     });
 
     it('lists a bare repository without a HEAD', async () => {
       const repo = await tmpRepo();
-      await expect(worktrees(repo.origin)).resolves.toStrictEqual([{ branch: null, head: '', locked: false, main: true, path: repo.origin, prunable: false }]);
+      await expect(worktrees(repo.origin)).resolves.toStrictEqual([{ branch: null, head: '', locked: null, main: true, path: repo.origin, prunable: false }]);
     });
 
     it('marks a worktree whose dir is gone as prunable', async () => {
@@ -139,8 +152,75 @@ describe('git helpers', () => {
       await expect(dirtyFiles(repo.dir)).resolves.toStrictEqual([' M README.md', '?? new.txt']);
     });
 
+    it('lists untracked files when status.showUntrackedFiles is no', async () => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
+      mkdirSync(path.join(repo.dir, 'notes'));
+      writeFileSync(path.join(repo.dir, 'notes', 'draft.txt'), 'x\n');
+      await expect(dirtyFiles(repo.dir)).resolves.toStrictEqual(['?? notes/draft.txt']);
+    });
+
+    it('lists ignored files on request', async () => {
+      const repo = await tmpRepo();
+      writeFileSync(path.join(repo.dir, '.git', 'info', 'exclude'), '.env\n');
+      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
+      await expect(dirtyFiles(repo.dir)).resolves.toStrictEqual([]);
+      await expect(dirtyFiles(repo.dir, true)).resolves.toStrictEqual(['!! .env']);
+    });
+
     it('raises git_failed outside a repo', async () => {
       await expect(dirtyFiles(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(worktreeLosses, () => {
+    it('finds nothing in a clean worktree with pushed submodules', async () => {
+      const dir = await nestedSubmodules();
+      await expect(worktreeLosses(dir, true)).resolves.toStrictEqual([]);
+    });
+
+    it('lists unpushed commits, dirty and ignored files at every submodule depth', async () => {
+      const dir = await nestedSubmodules();
+      const outer = path.join(dir, 'outer');
+      const nested = path.join(outer, 'inner');
+      await git(nested, 'switch', '--quiet', '-c', 'work');
+      await git(nested, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
+      const local = await git(nested, 'rev-parse', '--short', 'work');
+      await git(nested, 'switch', '--quiet', '--detach', 'HEAD~1');
+      writeFileSync(path.join(outer, 'new.txt'), 'x\n');
+      writeFileSync(path.join(outer, 'secret.env'), 'x\n');
+      const exclude = await git(outer, 'rev-parse', '--path-format=absolute', '--git-path', 'info/exclude');
+      writeFileSync(exclude.trim(), 'secret.env\n');
+      await expect(worktreeLosses(dir, false)).resolves.toStrictEqual([' M outer', 'outer: ?? new.txt', `outer/inner: unpushed ${local.trim()}`]);
+      await expect(worktreeLosses(dir, true)).resolves.toStrictEqual([' M outer', 'outer: ?? new.txt', 'outer: !! secret.env', `outer/inner: unpushed ${local.trim()}`]);
+    });
+
+    it('lists the commit of a detached submodule HEAD that no remote holds', async () => {
+      const dir = await nestedSubmodules();
+      const outer = path.join(dir, 'outer');
+      await git(outer, 'commit', '--quiet', '--allow-empty', '-m', 'detached work');
+      const head = await git(outer, 'rev-parse', '--short', 'HEAD');
+      await expect(worktreeLosses(dir, false)).resolves.toStrictEqual([' M outer', `outer: unpushed ${head.trim()}`]);
+    });
+
+    it('raises git_failed when it cannot list the submodules', async () => {
+      const dir = await nestedSubmodules();
+      writeFileSync(path.join(dir, '.gitmodules'), '[submodule "outer"\n');
+      const failure = worktreeLosses(dir, false);
+      await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(failure).rejects.toThrow(/bad config line/u);
+    });
+
+    it('raises git_failed when it cannot read the commits of a submodule', async () => {
+      const dir = await nestedSubmodules();
+      await git(path.join(dir, 'outer'), 'symbolic-ref', 'HEAD', 'refs/heads/unborn');
+      const failure = worktreeLosses(dir, false);
+      await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(failure).rejects.toThrow(/unknown revision/u);
+    });
+
+    it('raises git_failed outside a repo', async () => {
+      await expect(worktreeLosses(tempDir('plain'), false)).rejects.toMatchObject({ code: 'git_failed' });
     });
   });
 });
