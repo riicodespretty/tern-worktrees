@@ -1,11 +1,11 @@
-import { writeFileSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import type { CommandModule } from '../src/cli.ts';
 import { checkCommandName, commandLoader, main } from '../src/cli.ts';
 import { CliError } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { spawnCli, tmpRepo, useSandbox } from './helpers.ts';
+import { REPO_DIR, spawnCli, tmpRepo, useSandbox } from './helpers.ts';
 
 interface Envelope {
   error: { code: string; message: string };
@@ -22,6 +22,8 @@ const fixtures = commandLoader(
     // SAFETY: each module in `fixtures/commands/` exports `run(args)`.
     (await import(`./fixtures/commands/${name}.ts`)) as CommandModule,
 );
+
+const COMMANDS = readdirSync(path.join(REPO_DIR, 'src', 'commands')).map(file => path.basename(file, '.ts'));
 
 let sandbox: Sandbox;
 
@@ -59,8 +61,8 @@ describe('cli', () => {
       await expect(main([])).resolves.toStrictEqual({ code: 1, stderr: 'unknown command \n', stdout: envelope('bad_args', 'unknown command ') });
     });
 
-    it('turns an unknown option into bad_args', async () => {
-      const result = await main(['resolve', '--nope']);
+    it.each(COMMANDS)('loads %s and turns an unknown option into bad_args', async name => {
+      const result = await main([name, '--nope']);
       const { error } = parseEnvelope(result.stdout);
       expect([result.code, error.code]).toStrictEqual([1, 'bad_args']);
       expect(error.message).toContain("'--nope'");
