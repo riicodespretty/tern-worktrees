@@ -107,7 +107,7 @@ Links the Tern plugin, `~/.local/bin/tern-wt` and this skill to the checkout. A 
 | `gh_failed`                 |                      | Show the user the message. Check `gh auth status`.                   |
 | `tern_failed`               |                      | Show the user the message. Check that Tern runs.                     |
 
-## Config file
+## Options file
 
 The file is `config.json` in the plugin data dir, the first of:
 

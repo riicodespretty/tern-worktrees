@@ -82,7 +82,7 @@ const decode = (text: string, fail: Fail): RawOptions => {
 };
 
 /**
- * Reads the settings file. A missing file gives the defaults, and each key in the file replaces its default.
+ * Reads the options file. A missing file gives the defaults, and each key in the file replaces its default.
  * Throws `config_invalid` on invalid JSON, an unknown key or an incorrect value.
  */
 export const loadConfig = (): Config => {

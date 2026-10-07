@@ -40,7 +40,7 @@ const ternDir = (platform: NodeJS.Platform, xdgVar: 'XDG_CONFIG_HOME' | 'XDG_STA
 /** The Tern configuration directory: `$TERN_CONFIG_DIR`, else the platform default. */
 export const ternConfigDir = (platform: NodeJS.Platform = process.platform): string => ternDir(platform, 'XDG_CONFIG_HOME', '.config');
 
-/** The plugin data directory that holds the settings file: `$TERN_PLUGIN_DATA`, else in the Tern state directory. */
+/** The plugin data directory that holds the options file: `$TERN_PLUGIN_DATA`, else in the Tern state directory. */
 export const pluginData = (platform: NodeJS.Platform = process.platform): string =>
   envVar('TERN_PLUGIN_DATA') ?? path.join(ternDir(platform, 'XDG_STATE_HOME', path.join('.local', 'state')), 'plugin-data', PLUGIN_ID);
 
