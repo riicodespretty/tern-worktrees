@@ -4,13 +4,8 @@ local CLI = tern.plugin.dir .. "/bin/tern-wt"
 local DIALOG = "tern-worktrees.dialog"
 local FLOAT_SHEET = "dialog-float"
 
-local floatRules: string? = nil
-do
-	local ok, source = pcall(tern.fs.read, tern.plugin.dir .. "/dialog-float.css")
-	if ok then
-		floatRules = source
-	end
-end
+local floatOk, floatSource = pcall(tern.fs.read, tern.plugin.dir .. "/dialog-float.css")
+local floatRules: string? = if floatOk then floatSource else nil
 tern.css(FLOAT_SHEET, "")
 
 local function env(name: string): string?
@@ -32,13 +27,63 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
-type Answer = { [string]: any }
+type Answer =
+	{ action: "cancel" }
+	| { action: "button", id: string }
+	| { action: "select", id: string }
+	| { action: "new", text: string }
+	| { action: "text", text: string }
 type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
-type CliCb = (result: any, err: any, cx: WindowCx) -> ()
+type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
+type ConfirmRequest = {
+	title: string,
+	path: string,
+	message: string,
+	listing: { string }?,
+	buttons: { any },
+	reveal: boolean?,
+}
+type PullRequest = { number: number, title: string, branch: string }
+type BranchWorktree = { branch: string?, path: string }
+type BranchesResult = {
+	name: string,
+	default: string,
+	branches: { string },
+	prs: { PullRequest },
+	worktrees: { BranchWorktree },
+	warnings: { string },
+}
+type CreateResult = {
+	branch: string,
+	carried: { string },
+	path: string,
+	repo: string,
+	status: string,
+	warnings: { string },
+}
+type GithubRepo = { nameWithOwner: string, description: string? }
+type ReposResult = { owners: { string }, repos: { GithubRepo } }
+type ResolvedDir = { dir: string, root: string?, name: string? }
+type ResolveResult = { repos: { ResolvedDir } }
+type RemoveResult = { branch: string?, warnings: { string } }
+type RootResult = { root: string }
+type Pending = { reqid: string, cb: AnswerCb }
+type RootState = {
+	rows: { string }?,
+	prs: { PullRequest }?,
+	networkAt: number?,
+	refreshing: boolean,
+	again: boolean,
+}
+type SessionIndex = {
+	byId: { [number]: SessionInfo },
+	byTab: { [number]: SessionInfo },
+	current: SessionInfo?,
+}
 type Config = { hotkeys: { new: { string } }, teardown: string }
 type Repo = { root: string, name: string }
 
-local pending: { [number]: { reqid: string, cb: AnswerCb } } = {}
+local pending: { [number]: Pending } = {}
 local counter = 0
 local managed: { [number]: { string } } = {}
 local handled: { [string]: boolean } = {}
@@ -46,17 +91,38 @@ local rootOfSession: { [number]: string } = {}
 local localRepos: { Repo } = {}
 local queuedErrors: { string } = {}
 local configWarned = false
-local NOT_A_REPO = ""
-local rootOfDir: { [string]: string } = {}
+local rootOfDir: { [string]: string | false } = {}
 local cwdOfPane: { [number]: string } = {}
 local resolving: { [string]: boolean } = {}
 local rootOfLiveRow: { [string]: string } = {}
-local rowsOfRoot: { [string]: { string } } = {}
-local prsOfRoot: { [string]: { any } } = {}
-local networkAt: { [string]: number } = {}
-local refreshing: { [string]: boolean } = {}
-local refreshAgain: { [string]: boolean } = {}
+local stateOfRoot: { [string]: RootState } = {}
 local refresh: (cx: WindowCx, root: string) -> ()
+
+local function state_of(root: string): RootState
+	local existing = stateOfRoot[root]
+	if existing ~= nil then
+		return existing
+	end
+	local created: RootState = { refreshing = false, again = false }
+	stateOfRoot[root] = created
+	return created
+end
+
+local function refresh_all_roots(cx: WindowCx)
+	for root, state in pairs(stateOfRoot) do
+		if state.rows ~= nil then
+			refresh(cx, root)
+		end
+	end
+end
+
+local function after_change(cx: WindowCx, root: string?)
+	if root == nil then
+		refresh_all_roots(cx)
+	else
+		refresh(cx, root)
+	end
+end
 
 local function flush(cx: WindowCx)
 	for _, text in ipairs(queuedErrors) do
@@ -65,18 +131,18 @@ local function flush(cx: WindowCx)
 	table.clear(queuedErrors)
 end
 
-local function cli(args: { string }, cb: CliCb)
+local function cli<T>(args: { string }, cb: CliCb<T>)
 	tern.process.run({ CLI, table.unpack(args) }, { timeout_ms = 120000 }, function(r: ProcessResult, cx: WindowCx?)
 		if cx == nil then
 			return
 		end
 		local ok, decoded = pcall(tern.json.decode, r.stdout)
 		if not ok or type(decoded) ~= "table" then
-			cb(nil, { code = "cli_failed", message = if r.stderr ~= "" then r.stderr else "tern-wt failed" }, cx)
+			cb(nil :: any, { code = "cli_failed", message = if r.stderr ~= "" then r.stderr else "tern-wt failed" }, cx)
 		elseif r.status ~= 0 then
-			cb(nil, decoded.error or { code = "cli_failed", message = r.stderr }, cx)
+			cb(nil :: any, decoded.error or { code = "cli_failed", message = r.stderr }, cx)
 		else
-			cb(decoded, nil, cx)
+			cb(decoded :: any, nil, cx)
 		end
 	end)
 end
@@ -163,34 +229,35 @@ local function join_or_nil(list: any, sep: string): string?
 	return table.concat(list, sep)
 end
 
-local function session_of_tab(cx: WindowCx, tab: number?): number?
+local function session_index(cx: WindowCx): SessionIndex
+	local index: SessionIndex = { byId = {}, byTab = {}, current = nil }
+	for _, s in ipairs(cx.session:sessions()) do
+		index.byId[s.id] = s
+		for _, tab in ipairs(s.tabs) do
+			if index.byTab[tab] == nil then
+				index.byTab[tab] = s
+			end
+		end
+		if s.current and index.current == nil then
+			index.current = s
+		end
+	end
+	return index
+end
+
+local function session_of_tab(index: SessionIndex, tab: number?): number?
 	if tab == nil then
 		return nil
 	end
-	for _, s in ipairs(cx.session:sessions()) do
-		if table.find(s.tabs, tab) ~= nil then
-			return s.id
-		end
-	end
-	return nil
+	local session = index.byTab[tab]
+	return if session ~= nil then session.id else nil
 end
 
-local function current_session(cx: WindowCx): SessionInfo?
-	for _, s in ipairs(cx.session:sessions()) do
-		if s.current then
-			return s
-		end
+local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number)
+	local current = index.current
+	if current == nil or current.id ~= sid then
+		cx.sessions:switch(sid)
 	end
-	return nil
-end
-
-local function session_exists(cx: WindowCx, id: number): boolean
-	for _, s in ipairs(cx.session:sessions()) do
-		if s.id == id then
-			return true
-		end
-	end
-	return false
 end
 
 local function tab_paths(cx: WindowCx, tab: number): { string }
@@ -217,10 +284,10 @@ local function close_tab(cx: WindowCx, tab: number)
 	if target == nil then
 		return
 	end
-	local sid = session_of_tab(cx, tab)
-	local cur = current_session(cx)
-	if sid ~= nil and cur ~= nil and sid ~= cur.id then
-		cx.sessions:switch(sid)
+	local index = session_index(cx)
+	local sid = session_of_tab(index, tab)
+	if sid ~= nil then
+		switch_to_session(cx, index, sid)
 	end
 	cx.layout:focus(target)
 	local focused = cx.session:focused()
@@ -270,6 +337,30 @@ local function end_wait(pane: number)
 	end
 end
 
+local function begin_wait(pane: number, entry: Pending)
+	if next(pending) == nil and floatRules ~= nil then
+		tern.css(FLOAT_SHEET, floatRules)
+	end
+	pending[pane] = entry
+end
+
+local function parse_answer(decoded: any): Answer
+	if type(decoded) ~= "table" then
+		return { action = "cancel" }
+	end
+	local action, id, text = decoded.action, decoded.id, decoded.text
+	if action == "button" and type(id) == "string" then
+		return { action = "button", id = id }
+	elseif action == "select" and type(id) == "string" then
+		return { action = "select", id = id }
+	elseif action == "new" and type(text) == "string" then
+		return { action = "new", text = text }
+	elseif action == "text" and type(text) == "string" then
+		return { action = "text", text = text }
+	end
+	return { action = "cancel" }
+end
+
 local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: boolean?): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
@@ -284,10 +375,7 @@ local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: b
 		cx.layout:float(pane)
 		cx.layout:focus(pane)
 	end
-	if next(pending) == nil and floatRules ~= nil then
-		tern.css(FLOAT_SHEET, floatRules)
-	end
-	pending[pane] = { reqid = reqid, cb = cb }
+	begin_wait(pane, { reqid = reqid, cb = cb })
 	return true
 end
 
@@ -313,30 +401,23 @@ local function short_path(path: string): string
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
-local function confirm(
-	cx: WindowCx,
-	title: string,
-	path: string,
-	message: string,
-	listing: { string }?,
-	buttons: { any },
-	cb: AnswerCb,
-	reveal: boolean?
-): boolean
+local function confirm(cx: WindowCx, req: ConfirmRequest, cb: AnswerCb): boolean
+	local listing = req.listing
 	return ask(cx, {
 		mode = "confirm",
-		title = title,
-		path = path,
-		message = message,
+		title = req.title,
+		path = req.path,
+		message = req.message,
 		listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil,
-		buttons = tern.json.array(buttons),
-	}, cb, reveal)
+		buttons = tern.json.array(req.buttons),
+	}, cb, req.reveal)
 end
 
 local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
-	req.mode = "pick"
-	req.items = tern.json.array(req.items)
-	ask(cx, req, cb)
+	local picked = table.clone(req)
+	picked.mode = "pick"
+	picked.items = tern.json.array(req.items)
+	ask(cx, picked, cb)
 end
 
 local MAX_LISTED_FILES = 8
@@ -350,6 +431,20 @@ end
 
 local function toast_error(cx: WindowCx, err: any)
 	cx:toast("error", tostring(err and err.message or "tern-wt failed"), staging_line(err))
+end
+
+local function cli_or_else<T>(args: { string }, on_error: (cx: WindowCx, err: any) -> (), cb: (res: T, cx: WindowCx) -> ())
+	cli(args, function(res: T, err: any, cx: WindowCx)
+		if err ~= nil then
+			on_error(cx, err)
+			return
+		end
+		cb(res, cx)
+	end)
+end
+
+local function cli_or_toast<T>(args: { string }, cb: (res: T, cx: WindowCx) -> ())
+	cli_or_else(args, toast_error, cb)
 end
 
 local function replace_plain(text: string, old: string, new: string): string
@@ -410,20 +505,31 @@ local function fnv1a(text: string): string
 	return string.format("%08x", h)
 end
 
-local function learn_roots(res: any)
+local function learn_roots(res: ResolveResult)
 	for _, r in ipairs(res.repos or {}) do
 		if type(r.dir) == "string" then
-			rootOfDir[r.dir] = if type(r.root) == "string" then r.root else NOT_A_REPO
+			if type(r.root) == "string" then
+				rootOfDir[r.dir] = r.root
+			else
+				rootOfDir[r.dir] = false
+			end
 		end
 	end
+end
+
+local function known_cwd(cwd: string?): string?
+	if cwd == nil or cwd == "" then
+		return nil
+	end
+	return cwd
 end
 
 local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	local cwds: { string } = {}
 	local seen: { [string]: boolean } = {}
 	for _, pane in ipairs(cx.session:panes()) do
-		local cwd = pane.cwd
-		if cwd ~= nil and cwd ~= "" and not seen[cwd] then
+		local cwd = known_cwd(pane.cwd)
+		if cwd ~= nil and not seen[cwd] then
 			seen[cwd] = true
 			table.insert(cwds, cwd)
 		end
@@ -435,26 +541,26 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 		return
 	end
 	table.insert(cwds, 1, "resolve")
-	cli(cwds, function(res, err, cx2)
-		if err ~= nil then
-			toast_error(cx2, err)
-			cb(cx2)
-			return
-		end
+	cli_or_else(cwds, function(cx2, err)
+		toast_error(cx2, err)
+		cb(cx2)
+	end, function(res: ResolveResult, cx2)
 		learn_roots(res)
 		table.clear(localRepos)
 		local listedRoots: { [string]: boolean } = {}
 		for _, r in ipairs(res.repos or {}) do
-			if type(r.root) == "string" and not listedRoots[r.root] then
-				listedRoots[r.root] = true
-				table.insert(localRepos, { root = r.root, name = r.name or basename(r.root) })
+			local repoRoot = r.root
+			if type(repoRoot) == "string" and not listedRoots[repoRoot] then
+				listedRoots[repoRoot] = true
+				table.insert(localRepos, { root = repoRoot, name = r.name or basename(repoRoot) })
 			end
 		end
 		table.clear(rootOfSession)
+		local index = session_index(cx2)
 		for _, pane in ipairs(cx2.session:panes()) do
-			local sid = session_of_tab(cx2, pane.tab)
+			local sid = session_of_tab(index, pane.tab)
 			local root = pane.cwd and rootOfDir[pane.cwd]
-			if sid ~= nil and root ~= nil and root ~= NOT_A_REPO and rootOfSession[sid] == nil then
+			if sid ~= nil and type(root) == "string" and rootOfSession[sid] == nil then
 				rootOfSession[sid] = root
 			end
 		end
@@ -462,15 +568,15 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	end)
 end
 
-local function open_tab(cx: WindowCx, res: any)
-	local path: string = res.path
+local function open_tab(cx: WindowCx, res: CreateResult)
+	local path = res.path
 	local tab: number? = nil
+	local index = session_index(cx)
 	for _, pane in ipairs(cx.session:panes()) do
 		if is_under(pane.cwd, path) and not pending[pane.pane] then
-			local sid = session_of_tab(cx, pane.tab)
-			local cur = current_session(cx)
-			if sid ~= nil and cur ~= nil and sid ~= cur.id then
-				cx.sessions:switch(sid)
+			local sid = session_of_tab(index, pane.tab)
+			if sid ~= nil then
+				switch_to_session(cx, index, sid)
 			end
 			cx.layout:focus(pane.pane)
 			tab = pane.tab
@@ -480,25 +586,21 @@ local function open_tab(cx: WindowCx, res: any)
 	if tab == nil then
 		local sid: number? = nil
 		for id, root in pairs(rootOfSession) do
-			if root == res.repo and session_exists(cx, id) then
+			if root == res.repo and index.byId[id] ~= nil then
 				sid = id
 				break
 			end
 		end
 		if sid ~= nil then
-			local cur = current_session(cx)
-			if cur == nil or cur.id ~= sid then
-				cx.sessions:switch(sid)
-			end
+			switch_to_session(cx, index, sid)
 			local pane = cx.layout:new_tab({ cwd = path })
 			tab = if pane ~= nil then cx.session:tab_of(pane) else nil
 		else
 			local newSession = cx.sessions:create({ name = basename(res.repo), cwd = path })
 			rootOfSession[newSession.id] = res.repo
-			for _, info in ipairs(cx.session:sessions()) do
-				if info.id == newSession.id then
-					tab = info.tabs[1]
-				end
+			local created = session_index(cx).byId[newSession.id]
+			if created ~= nil then
+				tab = created.tabs[1]
 			end
 		end
 		if tab ~= nil then
@@ -519,24 +621,24 @@ local function create(cx: WindowCx, root: string, extra: { string })
 	for _, a in ipairs(extra) do
 		table.insert(args, a)
 	end
-	cli(args, function(res, err, cx2)
+	cli(args, function(res: CreateResult, err, cx2)
 		if err ~= nil then
 			if err.code == "worktree_exists_elsewhere" then
-				confirm(
-					cx2,
-					"Branch has a worktree elsewhere",
-					short_path(tostring(err.existing)),
-					"Relocate it to " .. short_path(tostring(err.target)) .. "?",
-					nil,
-					{ { id = "relocate", label = "Relocate", kind = "primary" }, { id = "cancel", label = "Cancel" } },
-					function(answer, cx3)
-						if answer.action == "button" and answer.id == "relocate" then
-							local again = table.clone(extra)
-							table.insert(again, "--relocate")
-							create(cx3, root, again)
-						end
+				confirm(cx2, {
+					title = "Branch has a worktree elsewhere",
+					path = short_path(tostring(err.existing)),
+					message = "Relocate it to " .. short_path(tostring(err.target)) .. "?",
+					buttons = {
+						{ id = "relocate", label = "Relocate", kind = "primary" },
+						{ id = "cancel", label = "Cancel" },
+					},
+				}, function(answer, cx3)
+					if answer.action == "button" and answer.id == "relocate" then
+						local again = table.clone(extra)
+						table.insert(again, "--relocate")
+						create(cx3, root, again)
 					end
-				)
+				end)
 			elseif err.code == "dirty_worktree" then
 				local files: { string } = table.move(err.files or {}, 1, 5, 1, {})
 				cx2:toast("error", "Cannot relocate: uncommitted changes", table.concat(files, ", "))
@@ -548,7 +650,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 			return
 		end
 		open_tab(cx2, res)
-		refresh(cx2, root)
+		after_change(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
 		if warnings then
@@ -583,19 +685,28 @@ local function add_row(root: string, id: string, title: string, createArgs: { st
 	})
 end
 
-local function register_rows(root: string, res: any, prs: { any })
-	local name: string = if type(res.name) == "string" then res.name else basename(root)
-	local prefix = "wt-" .. fnv1a(root) .. "-"
+local function pr_label(pr: PullRequest): string
+	return "#" .. tostring(pr.number) .. " " .. tostring(pr.title)
+end
+
+local function branches_with_worktree(res: BranchesResult): { [string]: boolean }
 	local hasWorktree: { [string]: boolean } = {}
 	for _, w in ipairs(res.worktrees or {}) do
 		if type(w.branch) == "string" then
 			hasWorktree[w.branch] = true
 		end
 	end
+	return hasWorktree
+end
+
+local function register_rows(root: string, res: BranchesResult, prs: { PullRequest })
+	local name: string = if type(res.name) == "string" then res.name else basename(root)
+	local prefix = "wt-" .. fnv1a(root) .. "-"
+	local hasWorktree = branches_with_worktree(res)
 	local ids: { string } = {}
 	for _, pr in ipairs(prs) do
 		local n = tostring(pr.number)
-		add_row(root, prefix .. fnv1a("pr:" .. n), name .. ": #" .. n .. " " .. tostring(pr.title), { "--pr", n }, ids)
+		add_row(root, prefix .. fnv1a("pr:" .. n), name .. ": " .. pr_label(pr), { "--pr", n }, ids)
 	end
 	for _, branch in ipairs(res.branches or {}) do
 		if type(branch) == "string" then
@@ -607,12 +718,13 @@ local function register_rows(root: string, res: any, prs: { any })
 	for _, id in ipairs(ids) do
 		currentIds[id] = true
 	end
-	for _, id in ipairs(rowsOfRoot[root] or {}) do
+	local state = state_of(root)
+	for _, id in ipairs(state.rows or {}) do
 		if not currentIds[id] then
 			rootOfLiveRow[id] = nil
 		end
 	end
-	rowsOfRoot[root] = ids
+	state.rows = ids
 end
 
 local function fetch_interval_ms(cx: WindowCx): number
@@ -625,9 +737,9 @@ local function fetch_interval_ms(cx: WindowCx): number
 	return 5 * 60000
 end
 
-local function pr_list_failed(res: any): boolean
+local function pr_list_failed(res: BranchesResult): boolean
 	for _, w in ipairs(res.warnings or {}) do
-		if type(w) == "string" and string.sub(w, 1, 15) == "pr list failed:" then
+		if type(w) == "string" and string.find(w, "pr list failed:", 1, true) == 1 then
 			return true
 		end
 	end
@@ -635,72 +747,69 @@ local function pr_list_failed(res: any): boolean
 end
 
 refresh = function(cx: WindowCx, root: string)
-	if refreshing[root] then
-		refreshAgain[root] = true
+	local state = state_of(root)
+	if state.refreshing then
+		state.again = true
 		return
 	end
-	refreshing[root] = true
+	state.refreshing = true
 	local interval = fetch_interval_ms(cx)
-	local lastNetworkAt = networkAt[root]
+	local lastNetworkAt = state.networkAt
 	local useNetwork = interval > 0 and (lastNetworkAt == nil or tern.now() - lastNetworkAt >= interval)
 	local args = { "branches", "--repo", root }
 	if useNetwork then
-		networkAt[root] = tern.now()
+		state.networkAt = tern.now()
 	else
 		table.insert(args, "--offline")
 	end
-	cli(args, function(res, err, cx2)
-		refreshing[root] = nil
+	cli(args, function(res: BranchesResult, err, cx2)
+		state.refreshing = false
 		if err == nil then
 			if useNetwork and not pr_list_failed(res) then
-				prsOfRoot[root] = if type(res.prs) == "table" then res.prs else {}
+				state.prs = if type(res.prs) == "table" then res.prs else {}
 			end
-			register_rows(root, res, prsOfRoot[root] or {})
+			register_rows(root, res, state.prs or {})
 		end
-		if refreshAgain[root] then
-			refreshAgain[root] = nil
+		if state.again then
+			state.again = false
 			refresh(cx2, root)
 		end
 	end)
 end
 
-local function refresh_all_roots(cx: WindowCx)
-	for root in pairs(rowsOfRoot) do
-		refresh(cx, root)
-	end
-end
-
 local function remember_cwd(pane: number, cwd: string?)
-	if cwd == nil or cwd == "" then
+	local known = known_cwd(cwd)
+	if known == nil then
 		cwdOfPane[pane] = nil
 	else
-		cwdOfPane[pane] = cwd
+		cwdOfPane[pane] = known
 	end
 end
 
 local function refresh_dir(cx: WindowCx, cwd: string?)
-	if cwd == nil or cwd == "" then
+	local dir = known_cwd(cwd)
+	if dir == nil then
 		return
 	end
-	local root = rootOfDir[cwd]
+	local root = rootOfDir[dir]
 	if root ~= nil then
-		if root ~= NOT_A_REPO then
+		if type(root) == "string" then
 			refresh(cx, root)
 		end
 		return
 	end
-	if resolving[cwd] then
+	if resolving[dir] then
 		return
 	end
-	resolving[cwd] = true
-	cli({ "resolve", cwd }, function(res, err, cx2)
-		resolving[cwd] = nil
+	resolving[dir] = true
+	cli({ "resolve", dir }, function(res: ResolveResult, err, cx2)
+		resolving[dir] = nil
 		if err ~= nil then
 			return
 		end
 		learn_roots(res)
-		local found = rootOfDir[cwd]
-		if found ~= nil and found ~= NOT_A_REPO then
+		local found = rootOfDir[dir]
+		if type(found) == "string" then
 			refresh(cx2, found)
 		end
 	end)
@@ -709,33 +818,23 @@ end
 local repo_picker: (cx: WindowCx) -> ()
 
 local function branch_picker(cx: WindowCx, root: string)
-	cli({ "branches", "--repo", root }, function(res, err, cx2)
-		if err ~= nil then
-			toast_error(cx2, err)
-			return
-		end
-		local worktreeOfBranch: { [string]: string } = {}
-		for _, w in ipairs(res.worktrees or {}) do
-			if type(w.branch) == "string" then
-				worktreeOfBranch[w.branch] = w.path
-			end
-		end
+	cli_or_toast({ "branches", "--repo", root }, function(res: BranchesResult, cx2)
+		local hasWorktree = branches_with_worktree(res)
 		local items: { any } = { { id = "other", label = "Other repo…", icon = "folder" } }
 		for _, pr in ipairs(res.prs or {}) do
 			table.insert(items, {
 				id = "pr:" .. tostring(pr.number),
-				label = "#" .. tostring(pr.number) .. " " .. tostring(pr.title),
+				label = pr_label(pr),
 				detail = pr.branch,
 				group = "Pull requests",
 				icon = "merge",
 			})
 		end
 		for _, name in ipairs(res.branches or {}) do
-			local path = worktreeOfBranch[name]
 			table.insert(items, {
 				id = "b:" .. name,
 				label = name,
-				detail = if path then "worktree" else nil,
+				detail = if hasWorktree[name] then "worktree" else nil,
 				group = "Branches",
 				icon = "branch",
 			})
@@ -747,10 +846,10 @@ local function branch_picker(cx: WindowCx, root: string)
 			allowNew = true,
 			newLabel = "Create branch “%s” from " .. tostring(res.default),
 		}, function(answer, cx3)
-			if answer.action == "new" and type(answer.text) == "string" and answer.text ~= "" then
+			if answer.action == "new" and answer.text ~= "" then
 				create(cx3, root, { "--branch", answer.text, "--new" })
-			elseif answer.action == "select" and type(answer.id) == "string" then
-				local id: string = answer.id
+			elseif answer.action == "select" then
+				local id = answer.id
 				local branch = string.match(id, "^b:(.*)$")
 				local pr = string.match(id, "^pr:(.*)$")
 				if id == "other" then
@@ -767,14 +866,10 @@ end
 
 local function github_picker(cx: WindowCx)
 	cx:toast("info", "Loading GitHub repos…")
-	cli({ "repos" }, function(res, err, cx2)
-		if err ~= nil then
-			toast_error(cx2, err)
-			return
-		end
+	cli_or_toast({ "repos" }, function(res: ReposResult, reposCx)
 		local items: { any } = {}
 		for _, r in ipairs(res.repos or {}) do
-			local nameWithOwner: string = r.nameWithOwner
+			local nameWithOwner = r.nameWithOwner
 			table.insert(items, {
 				id = "gh:" .. nameWithOwner,
 				label = nameWithOwner,
@@ -783,83 +878,80 @@ local function github_picker(cx: WindowCx)
 				icon = "globe",
 			})
 		end
-		pick(cx2, {
+		pick(reposCx, {
 			title = "Choose GitHub repository",
 			placeholder = "Search GitHub repositories",
 			verb = "clone",
 			items = items,
-		}, function(answer, cx3)
-			local nameWithOwner = if answer.action == "select" and type(answer.id) == "string"
-				then string.match(answer.id, "^gh:(.*)$")
-				else nil
+		}, function(answer)
+			local nameWithOwner = if answer.action == "select" then string.match(answer.id, "^gh:(.*)$") else nil
 			if nameWithOwner == nil then
 				return
 			end
-			cli({ "clone", nameWithOwner }, function(clone, cloneErr, cx4)
-				if cloneErr ~= nil then
-					toast_error(cx4, cloneErr)
-					return
-				end
-				branch_picker(cx4, clone.root)
+			cli_or_toast({ "clone", nameWithOwner }, function(clone: RootResult, cloneCx)
+				branch_picker(cloneCx, clone.root)
 			end)
 		end)
 	end)
 end
 
-local function new_repo(cx: WindowCx)
-	cli({ "repos" }, function(res, err, cx2)
-		if err ~= nil then
-			toast_error(cx2, err)
-			return
+local function make_repo(owner: string, name: string, visibility: string)
+	cli_or_toast(
+		{ "new-repo", owner .. "/" .. name, "--visibility", visibility },
+		function(newRepo: RootResult, createdCx)
+			branch_picker(createdCx, newRepo.root)
 		end
-		local owners: { any } = {}
-		for _, o in ipairs(res.owners or {}) do
-			table.insert(owners, { id = o, label = o, icon = "user" })
+	)
+end
+
+local function ask_visibility(cx: WindowCx, owner: string, name: string)
+	pick(cx, {
+		title = "Visibility of " .. owner .. "/" .. name,
+		placeholder = "Choose visibility of " .. owner .. "/" .. name,
+		verb = "create",
+		items = {
+			{ id = "private", label = "private", icon = "lock" },
+			{ id = "public", label = "public", icon = "globe" },
+		},
+	}, function(answer)
+		if answer.action == "select" then
+			make_repo(owner, name, answer.id)
 		end
-		pick(
-			cx2,
-			{ title = "Repository owner", placeholder = "Search owners", verb = "choose", items = owners },
-			function(ownerAnswer, cx3)
-				if ownerAnswer.action ~= "select" or type(ownerAnswer.id) ~= "string" then
-					return
-				end
-				local owner: string = ownerAnswer.id
-				ask(cx3, {
-					mode = "prompt",
-					title = "Repository name",
-					placeholder = "Name of the new repository under " .. owner,
-					verb = "continue",
-				}, function(nameAnswer, cx4)
-					if nameAnswer.action ~= "text" or type(nameAnswer.text) ~= "string" or nameAnswer.text == "" then
-						return
-					end
-					local name: string = nameAnswer.text
-					pick(cx4, {
-						title = "Visibility of " .. owner .. "/" .. name,
-						placeholder = "Choose visibility of " .. owner .. "/" .. name,
-						verb = "create",
-						items = {
-							{ id = "private", label = "private", icon = "lock" },
-							{ id = "public", label = "public", icon = "globe" },
-						},
-					}, function(visibilityAnswer, cx5)
-						if visibilityAnswer.action ~= "select" or type(visibilityAnswer.id) ~= "string" then
-							return
-						end
-						cli(
-							{ "new-repo", owner .. "/" .. name, "--visibility", visibilityAnswer.id },
-							function(newRepo, newRepoErr, cx6)
-								if newRepoErr ~= nil then
-									toast_error(cx6, newRepoErr)
-									return
-								end
-								branch_picker(cx6, newRepo.root)
-							end
-						)
-					end)
-				end)
+	end)
+end
+
+local function ask_name(cx: WindowCx, owner: string)
+	ask(cx, {
+		mode = "prompt",
+		title = "Repository name",
+		placeholder = "Name of the new repository under " .. owner,
+		verb = "continue",
+	}, function(answer, nameCx)
+		if answer.action == "text" and answer.text ~= "" then
+			ask_visibility(nameCx, owner, answer.text)
+		end
+	end)
+end
+
+local function ask_owner(cx: WindowCx, ownerNames: { string })
+	local owners: { any } = {}
+	for _, o in ipairs(ownerNames) do
+		table.insert(owners, { id = o, label = o, icon = "user" })
+	end
+	pick(
+		cx,
+		{ title = "Repository owner", placeholder = "Search owners", verb = "choose", items = owners },
+		function(answer, ownerCx)
+			if answer.action == "select" then
+				ask_name(ownerCx, answer.id)
 			end
-		)
+		end
+	)
+end
+
+local function new_repo(cx: WindowCx)
+	cli_or_toast({ "repos" }, function(res: ReposResult, reposCx)
+		ask_owner(reposCx, res.owners or {})
 	end)
 end
 
@@ -877,10 +969,10 @@ repo_picker = function(cx: WindowCx)
 	table.insert(items, { id = "github", label = "Browse GitHub repos…", icon = "globe" })
 	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…", icon = "folder-plus" })
 	pick(cx, { title = "Choose repository", placeholder = "Search repositories", items = items }, function(answer, cx2)
-		if answer.action ~= "select" or type(answer.id) ~= "string" then
+		local id = if answer.action == "select" then answer.id else nil
+		if id == nil then
 			return
 		end
-		local id: string = answer.id
 		local root = string.match(id, "^local:(.*)$")
 		if root ~= nil then
 			branch_picker(cx2, root)
@@ -895,7 +987,7 @@ end
 local function start(cx: WindowCx)
 	flush(cx)
 	resolve_sessions(cx, function(cx2)
-		local cur = current_session(cx2)
+		local cur = session_index(cx2).current
 		local root = if cur ~= nil then rootOfSession[cur.id] else nil
 		if root ~= nil then
 			branch_picker(cx2, root)
@@ -916,13 +1008,19 @@ local function run_remove(
 	if force then
 		table.insert(args, "--force")
 	end
-	cli(args, function(res, err, cx2)
+	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
 			local message, listing = failure_message(err, path)
-			confirm(cx2, "Teardown failed", short_path(path), message, listing, {
-				{ id = "retry", label = "Retry", kind = "primary" },
-				{ id = "force", label = "Force delete", kind = "danger" },
-				{ id = "cancel", label = "Cancel" },
+			confirm(cx2, {
+				title = "Teardown failed",
+				path = short_path(path),
+				message = message,
+				listing = listing,
+				buttons = {
+					{ id = "retry", label = "Retry", kind = "primary" },
+					{ id = "force", label = "Force delete", kind = "danger" },
+					{ id = "cancel", label = "Cancel" },
+				},
 			}, function(answer, cx3)
 				if answer.action == "button" and answer.id == "retry" then
 					run_remove(cx3, path, false, done, stop)
@@ -935,7 +1033,7 @@ local function run_remove(
 			return
 		end
 		cx2:toast("success", "Removed " .. tostring(res.branch or path), join_or_nil(res.warnings, "; "))
-		refresh_all_roots(cx2)
+		after_change(cx2)
 		done(cx2)
 	end)
 end
@@ -962,32 +1060,29 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	local buttons: { any } = if tab ~= nil
 		then { teardown, keep, { id = "cancel", label = "Cancel" } }
 		else { keep, teardown }
-	return confirm(
-		cx,
-		"Tear down worktree?",
-		short_path(path),
-		POLICY[policy] or ("Policy: " .. policy),
-		nil,
-		buttons,
-		function(answer, cx2)
-			if answer.action == "button" and answer.id == "teardown" then
-				run_remove(cx2, path, false, function(cx3)
-					if tab ~= nil then
-						handled[path] = true
-					end
-					advance(cx3)
-				end, stop)
-			elseif answer.action == "button" and answer.id == "keep" then
+	return confirm(cx, {
+		title = "Tear down worktree?",
+		path = short_path(path),
+		message = POLICY[policy] or ("Policy: " .. policy),
+		buttons = buttons,
+		reveal = tab ~= nil,
+	}, function(answer, cx2)
+		if answer.action == "button" and answer.id == "teardown" then
+			run_remove(cx2, path, false, function(cx3)
 				if tab ~= nil then
 					handled[path] = true
 				end
-				advance(cx2)
-			else
-				stop(cx2)
+				advance(cx3)
+			end, stop)
+		elseif answer.action == "button" and answer.id == "keep" then
+			if tab ~= nil then
+				handled[path] = true
 			end
-		end,
-		tab ~= nil
-	)
+			advance(cx2)
+		else
+			stop(cx2)
+		end
+	end)
 end
 
 local function intercept(cx: WindowCx, tab: number?): boolean
@@ -1046,7 +1141,7 @@ tern.on("window_start", function(cx: WindowCx)
 			refresh(cx2, repo.root)
 		end
 	end)
-	cli({ "list" }, function(res, err, cx2)
+	cli({ "list" }, function(res: RootResult, err, cx2)
 		if err == nil and type(res.root) == "string" and res.root ~= ROOT then
 			ROOT = res.root
 			table.clear(managed)
@@ -1098,7 +1193,7 @@ tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 		return
 	end
 	local ok, decoded = pcall(tern.json.decode, string.sub(ev.title, #prefix + 1))
-	local answer: Answer = if ok and type(decoded) == "table" then decoded else { action = "cancel" }
+	local answer = parse_answer(if ok then decoded else nil)
 	end_wait(ev.pane)
 	cx.layout:close(ev.pane)
 	entry.cb(answer, cx)
@@ -1147,7 +1242,7 @@ local function err_text(err: any): string
 	return tostring(err.code) .. ": " .. tostring(err.message)
 end
 
-local function reply_to(call: any): CliCb
+local function reply_to(call: any): CliCb<any>
 	return function(res, err, _cx)
 		if err ~= nil then
 			call:fail(err_text(err))
@@ -1170,11 +1265,9 @@ tern.carly.export("create", {
 	if isNew == true then
 		table.insert(argv, "--new")
 	end
-	cli(argv, function(res, err, cx2)
-		if err ~= nil then
-			call:fail(err_text(err))
-			return
-		end
+	cli_or_else(argv, function(_cx, err)
+		call:fail(err_text(err))
+	end, function(res: CreateResult, cx2)
 		resolve_sessions(cx2, function(cx3)
 			local ok, openErr = pcall(function()
 				open_tab(cx3, res)
@@ -1184,7 +1277,7 @@ tern.carly.export("create", {
 				table.insert(res.warnings, "tab not opened: " .. tostring(openErr))
 			end
 			if type(res.repo) == "string" then
-				refresh(cx3, res.repo)
+				after_change(cx3, res.repo)
 			end
 			call:reply(res)
 		end)
@@ -1214,9 +1307,9 @@ tern.carly.export("remove", {
 	if force == true then
 		table.insert(argv, "--force")
 	end
-	cli(argv, function(res, err, cx2)
+	cli(argv, function(res: any, err, cx2)
 		if err == nil then
-			refresh_all_roots(cx2)
+			after_change(cx2)
 		end
 		reply_to(call)(res, err, cx2)
 	end)
