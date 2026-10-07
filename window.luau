@@ -282,8 +282,50 @@ local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
 	ask(cx, req, cb)
 end
 
+local MAX_LISTED_FILES = 10
+
+local function staging_line(err: any): string?
+	if err ~= nil and type(err.staging) == "string" then
+		return "Saved files: " .. err.staging
+	end
+	return nil
+end
+
 local function toast_error(cx: WindowCx, err: any)
-	cx:toast("error", tostring(err and err.message or "tern-wt failed"))
+	cx:toast("error", tostring(err and err.message or "tern-wt failed"), staging_line(err))
+end
+
+local function failure_message(err: any): string
+	local lines: { string } = { tostring(err.message) }
+	local files = err.files
+	if err.code == "dirty_worktree" and type(files) == "table" and #files > 0 then
+		local changes: { string } = {}
+		local ignored: { string } = {}
+		for i = 1, math.min(#files, MAX_LISTED_FILES) do
+			local entry = tostring(files[i])
+			if string.sub(entry, 1, 3) == "!! " then
+				table.insert(ignored, string.sub(entry, 4))
+			else
+				table.insert(changes, entry)
+			end
+		end
+		if #changes > 0 then
+			table.insert(lines, "Changes:")
+			table.move(changes, 1, #changes, #lines + 1, lines)
+		end
+		if #ignored > 0 then
+			table.insert(lines, "Ignored files that are hard to rebuild:")
+			table.move(ignored, 1, #ignored, #lines + 1, lines)
+		end
+		if #files > MAX_LISTED_FILES then
+			table.insert(lines, "… and " .. (#files - MAX_LISTED_FILES) .. " more")
+		end
+	end
+	local saved = staging_line(err)
+	if saved ~= nil then
+		table.insert(lines, saved)
+	end
+	return table.concat(lines, "\n")
 end
 
 local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
@@ -417,12 +459,15 @@ local function create(cx: WindowCx, root: string, extra: { string })
 			return
 		end
 		open_tab(cx2, res)
+		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
-		cx2:toast(
-			"success",
-			tostring(res.status) .. " " .. tostring(res.branch),
-			res.path .. (if warnings then " · " .. warnings else "")
-		)
+		if warnings then
+			table.insert(parts, warnings)
+		end
+		if type(res.carried) == "table" and #res.carried > 0 then
+			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
+		end
+		cx2:toast("success", tostring(res.status) .. " " .. tostring(res.branch), table.concat(parts, " · "))
 	end)
 end
 
@@ -609,7 +654,7 @@ local function run_remove(
 	end
 	cli(args, function(res, err, cx2)
 		if err ~= nil then
-			confirm(cx2, "Teardown failed", tostring(err.message), {
+			confirm(cx2, "Teardown failed", failure_message(err), {
 				{ id = "retry", label = "Retry", kind = "primary" },
 				{ id = "force", label = "Force delete", kind = "danger" },
 				{ id = "cancel", label = "Cancel" },
