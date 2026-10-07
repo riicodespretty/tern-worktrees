@@ -64,9 +64,9 @@ const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<Pul
   return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
 };
 
-/** `branches --repo <dir>`: the branches, open pull requests and worktrees of the repository that holds `dir`. */
+/** `branches --repo <dir> [--offline]`: the branches, open pull requests and worktrees of the repository that holds `dir`. `--offline` reads only local refs: no fetch and no pull requests. */
 export const run = async (args: string[]): Promise<BranchesResult> => {
-  const { values } = parseArgs({ args, options: { repo: { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { offline: { type: 'boolean' }, repo: { type: 'string' } } });
   if (values.repo === undefined) {
     throw new CliError('bad_args', 'branches needs --repo <dir>');
   }
@@ -74,21 +74,22 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
   if (root === null) {
     throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
   }
+  const offline = values.offline === true;
   const warnings: string[] = [];
   const originUrl = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
   const hasOrigin = originUrl.status === 0;
-  if (hasOrigin) {
+  if (hasOrigin && !offline) {
     const fetchResult = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
     if (fetchResult.status !== 0) {
       warnings.push(`fetch failed: ${fetchResult.stderr.trim()}`);
     }
   }
-  const slug = await originSlug(root);
+  const slug = offline ? null : await originSlug(root);
   const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
     listBranches(root, hasOrigin),
     slug === null ? [] : listPullRequests(slug, warnings),
     worktrees(root),
-    defaultBranch(root),
+    defaultBranch(root, { offline }),
   ]);
   const worktreeRootDir = worktreeRoot();
   return {

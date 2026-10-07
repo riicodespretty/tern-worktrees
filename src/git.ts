@@ -39,13 +39,13 @@ export const originSlug = async (root: string): Promise<RepoSlug | null> => {
   return { name: groups.name, owner: groups.owner };
 };
 
-/** The default branch: `origin/HEAD`, else what GitHub reports, else the current branch when the repository has no GitHub origin. */
-export const defaultBranch = async (root: string): Promise<string> => {
+/** The default branch: `origin/HEAD`, else what GitHub reports, else the current branch when the repository has no GitHub origin. `offline` skips GitHub. */
+export const defaultBranch = async (root: string, opts: { offline?: boolean } = {}): Promise<string> => {
   const head = await run(['git', '-C', root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (head.status === 0) {
     return head.stdout.trim().slice('origin/'.length);
   }
-  const slug = await originSlug(root);
+  const slug = opts.offline === true ? null : await originSlug(root);
   if (slug !== null) {
     const name = await must(['gh', 'repo', 'view', `${slug.owner}/${slug.name}`, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], 'gh_failed');
     return name.trim();

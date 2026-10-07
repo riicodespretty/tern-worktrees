@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { defaultBranch, dirtyFiles, hardToRebuild, originSlug, repoRoot, worktreeLosses, worktrees } from '../src/git.ts';
@@ -88,6 +88,22 @@ describe('git helpers', () => {
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
       await expect(defaultBranch(repo.dir)).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
+    });
+
+    it('skips GitHub offline and gives the current branch when origin/HEAD is unset', async () => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
+      await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
+      writeFileSync(path.join(sandbox.ghDir, 'repo_view_owner_name_--json_defaultBranchRef_--jq_.defaultBranchRef.name.json'), 'develop\n');
+      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
+      await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('work');
+      expect(existsSync(sandbox.ghLog)).toBeFalsy();
+    });
+
+    it('reads origin/HEAD offline', async () => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
+      await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('main');
     });
 
     it('falls back to the current branch without a GitHub origin', async () => {

@@ -129,7 +129,7 @@ A Tern key preset can block the chord. When `ctrl+b w` opens no picker, add the 
 - `create`: makes or reuses the managed worktree of a branch or a pull request, and opens its tab.
 - `remove`: tears down a managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the managed worktrees.
-- `branches`: lists the branches, the open pull requests and the worktrees of a repository.
+- `branches`: lists the branches, the open pull requests and the worktrees of a repository. `--offline` reads only local refs, with no fetch and no pull requests.
 - `resolve`: gives the repository root, name and owner of each directory.
 - `repos`: lists the GitHub repositories of your user and organizations.
 - `clone`: clones a GitHub repository to the clone root.

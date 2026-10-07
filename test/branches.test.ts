@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
@@ -90,6 +90,55 @@ describe('branches command', () => {
       expect(result.branches.toSorted()).toStrictEqual(['fresh', 'main']);
       expect(result.prs).toStrictEqual([]);
       expect(result.warnings).toStrictEqual([]);
+      expect(existsSync(sandbox.ghLog)).toBeFalsy();
+    });
+
+    it('reads only local refs offline and leaves FETCH_HEAD untouched', async () => {
+      const repo = await tmpRepo('aoyama');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      const fetchHead = path.join(repo.dir, '.git', 'FETCH_HEAD');
+      utimesSync(fetchHead, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
+      const before = { content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs };
+      await git(repo.origin, 'branch', 'pushed', 'main');
+      await git(repo.dir, 'branch', 'local-only');
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect({ ...offline, branches: offline.branches.toSorted() }).toStrictEqual({
+        branches: ['local-only', 'main'],
+        default: 'main',
+        name: 'aoyama',
+        prs: [],
+        repo: repo.dir,
+        warnings: [],
+        worktrees: [{ branch: 'main', managed: false, path: repo.dir }],
+      });
+      expect({ content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs }).toStrictEqual(before);
+      const online = await run(['--repo', repo.dir]);
+      expect(online.branches.toSorted()).toStrictEqual(['local-only', 'main', 'pushed']);
+    });
+
+    it('gives no PRs and asks gh nothing offline', async () => {
+      const repo = await tmpRepo('aoyama');
+      await useGithubOrigin(repo);
+      writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect({ prs: offline.prs, warnings: offline.warnings }).toStrictEqual({ prs: [], warnings: [] });
+      expect(existsSync(sandbox.ghLog)).toBeFalsy();
+      const online = await run(['--repo', repo.dir]);
+      expect(online.prs).toStrictEqual([
+        { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
+        { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
+      ]);
+      expect(readFileSync(sandbox.ghLog, 'utf-8')).toContain('pr list');
+    });
+
+    it('gives the current branch as default offline when origin/HEAD is unset', async () => {
+      const repo = await tmpRepo('aoyama');
+      await useGithubOrigin(repo);
+      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
+      writeFileSync(path.join(sandbox.ghDir, 'repo_view_me_aoyama_--json_defaultBranchRef_--jq_.defaultBranchRef.name.json'), 'develop\n');
+      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect(offline.default).toBe('work');
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
     });
 
