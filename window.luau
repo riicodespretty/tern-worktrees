@@ -36,6 +36,16 @@ local rootOfSession: { [number]: string } = {}
 local localRepos: { Repo } = {}
 local queuedErrors: { string } = {}
 local configWarned = false
+local rootOfDir: { [string]: string } = {}
+local cwdOfPane: { [number]: string } = {}
+local resolving: { [string]: boolean } = {}
+local live: { [string]: string } = {}
+local rowsOfRoot: { [string]: { string } } = {}
+local prsOfRoot: { [string]: { any } } = {}
+local networkAt: { [string]: number } = {}
+local refreshing: { [string]: boolean } = {}
+local refreshAgain: { [string]: boolean } = {}
+local refresh: (cx: WindowCx, root: string) -> ()
 
 local function flush(cx: WindowCx)
 	for _, text in ipairs(queuedErrors) do
@@ -328,6 +338,23 @@ local function failure_message(err: any): string
 	return table.concat(lines, "\n")
 end
 
+local function fnv1a(text: string): string
+	local h = 2166136261
+	for i = 1, #text do
+		h = bit32.bxor(h, string.byte(text, i))
+		h = (h * 403 + bit32.lshift(h, 24)) % 4294967296
+	end
+	return string.format("%08x", h)
+end
+
+local function learn(res: any)
+	for _, r in ipairs(res.repos or {}) do
+		if type(r.dir) == "string" then
+			rootOfDir[r.dir] = if type(r.root) == "string" then r.root else ""
+		end
+	end
+end
+
 local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	local cwds: { string } = {}
 	local seen: { [string]: boolean } = {}
@@ -351,23 +378,20 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 			cb(cx2)
 			return
 		end
-		local rootOfDir: { [string]: string } = {}
+		learn(res)
 		table.clear(localRepos)
 		local listedRoots: { [string]: boolean } = {}
 		for _, r in ipairs(res.repos or {}) do
-			if type(r.root) == "string" then
-				rootOfDir[r.dir] = r.root
-				if not listedRoots[r.root] then
-					listedRoots[r.root] = true
-					table.insert(localRepos, { root = r.root, name = r.name or basename(r.root) })
-				end
+			if type(r.root) == "string" and not listedRoots[r.root] then
+				listedRoots[r.root] = true
+				table.insert(localRepos, { root = r.root, name = r.name or basename(r.root) })
 			end
 		end
 		table.clear(rootOfSession)
 		for _, pane in ipairs(cx2.session:panes()) do
 			local sid = session_of_tab(cx2, pane.tab)
 			local root = pane.cwd and rootOfDir[pane.cwd]
-			if sid ~= nil and root ~= nil and rootOfSession[sid] == nil then
+			if sid ~= nil and root ~= nil and root ~= "" and rootOfSession[sid] == nil then
 				rootOfSession[sid] = root
 			end
 		end
@@ -459,6 +483,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 			return
 		end
 		open_tab(cx2, res)
+		refresh(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
 		if warnings then
@@ -468,6 +493,151 @@ local function create(cx: WindowCx, root: string, extra: { string })
 			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
 		end
 		cx2:toast("success", tostring(res.status) .. " " .. tostring(res.branch), table.concat(parts, " · "))
+	end)
+end
+
+local function add_row(root: string, id: string, title: string, extra: { string }, ids: { string })
+	live[id] = root
+	table.insert(ids, id)
+	tern.command({
+		id = id,
+		title = title,
+		icon = "branch",
+		group = "Worktrees",
+		available = function(cx: WindowCx): boolean
+			if live[id] ~= root then
+				return false
+			end
+			local focused = cx.session:focused()
+			local cwd = if focused ~= nil then cwdOfPane[focused] else nil
+			return cwd ~= nil and rootOfDir[cwd] == root
+		end,
+		run = function(cx: WindowCx)
+			create(cx, root, extra)
+		end,
+	})
+end
+
+local function register_rows(root: string, res: any, prs: { any })
+	local name: string = if type(res.name) == "string" then res.name else basename(root)
+	local prefix = "wt-" .. fnv1a(root) .. "-"
+	local hasWorktree: { [string]: boolean } = {}
+	for _, w in ipairs(res.worktrees or {}) do
+		if type(w.branch) == "string" then
+			hasWorktree[w.branch] = true
+		end
+	end
+	local ids: { string } = {}
+	for _, pr in ipairs(prs) do
+		local n = tostring(pr.number)
+		add_row(root, prefix .. fnv1a("pr:" .. n), name .. ": #" .. n .. " " .. tostring(pr.title), { "--pr", n }, ids)
+	end
+	for _, branch in ipairs(res.branches or {}) do
+		if type(branch) == "string" then
+			local title = name .. ": " .. branch .. (if hasWorktree[branch] then " · worktree" else "")
+			add_row(root, prefix .. fnv1a(branch), title, { "--branch", branch }, ids)
+		end
+	end
+	local current: { [string]: boolean } = {}
+	for _, id in ipairs(ids) do
+		current[id] = true
+	end
+	for _, id in ipairs(rowsOfRoot[root] or {}) do
+		if not current[id] then
+			live[id] = nil
+		end
+	end
+	rowsOfRoot[root] = ids
+end
+
+local function fetch_interval_ms(cx: WindowCx): number
+	local ok, minutes = pcall(function()
+		return cx.settings:get("git.auto_fetch_minutes")
+	end)
+	if ok and type(minutes) == "number" and minutes >= 0 then
+		return minutes * 60000
+	end
+	return 5 * 60000
+end
+
+local function pr_list_failed(res: any): boolean
+	for _, w in ipairs(res.warnings or {}) do
+		if type(w) == "string" and string.sub(w, 1, 15) == "pr list failed:" then
+			return true
+		end
+	end
+	return false
+end
+
+refresh = function(cx: WindowCx, root: string)
+	if refreshing[root] then
+		refreshAgain[root] = true
+		return
+	end
+	refreshing[root] = true
+	local interval = fetch_interval_ms(cx)
+	local at = networkAt[root]
+	local network = interval > 0 and (at == nil or tern.now() - at >= interval)
+	local args = { "branches", "--repo", root }
+	if network then
+		networkAt[root] = tern.now()
+	else
+		table.insert(args, "--offline")
+	end
+	cli(args, function(res, err, cx2)
+		refreshing[root] = nil
+		if err == nil then
+			if network and not pr_list_failed(res) then
+				prsOfRoot[root] = if type(res.prs) == "table" then res.prs else {}
+			end
+			register_rows(root, res, prsOfRoot[root] or {})
+		end
+		if refreshAgain[root] then
+			refreshAgain[root] = nil
+			refresh(cx2, root)
+		end
+	end)
+end
+
+local function refresh_rows(cx: WindowCx)
+	for root in pairs(rowsOfRoot) do
+		refresh(cx, root)
+	end
+end
+
+local function remember(pane: number, cwd: string?)
+	if cwd == nil or cwd == "" then
+		cwdOfPane[pane] = nil
+	else
+		cwdOfPane[pane] = cwd
+	end
+end
+
+local function refresh_dir(cx: WindowCx, cwd: string?)
+	if cwd == nil or cwd == "" then
+		return
+	end
+	local root = rootOfDir[cwd]
+	if root ~= nil then
+		if root ~= "" then
+			refresh(cx, root)
+		end
+		return
+	end
+	if resolving[cwd] then
+		return
+	end
+	resolving[cwd] = true
+	cli({ "resolve", cwd }, function(res, err, cx2)
+		resolving[cwd] = nil
+		if err ~= nil then
+			return
+		end
+		learn(res)
+		local found = rootOfDir[cwd]
+		if found ~= nil and found ~= "" then
+			refresh(cx2, found)
+		end
 	end)
 end
 
@@ -670,6 +840,7 @@ local function run_remove(
 			return
 		end
 		cx2:toast("success", "Removed " .. tostring(res.branch or path), join_or_nil(res.warnings, "; "))
+		refresh_rows(cx2)
 		done(cx2)
 	end)
 end
@@ -770,6 +941,14 @@ end)
 
 tern.on("window_start", function(cx: WindowCx)
 	rebuild_managed(cx)
+	for _, pane in ipairs(cx.session:panes()) do
+		remember(pane.pane, pane.cwd)
+	end
+	resolve_sessions(cx, function(cx2)
+		for _, repo in ipairs(localRepos) do
+			refresh(cx2, repo.root)
+		end
+	end)
 	cli({ "list" }, function(res, err, cx2)
 		if err == nil and type(res.root) == "string" and res.root ~= ROOT then
 			ROOT = res.root
@@ -779,11 +958,38 @@ tern.on("window_start", function(cx: WindowCx)
 	end)
 end)
 
-for _, name in ipairs({ "tab_created", "pane_created", "cwd" }) do
+for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
 		rebuild_managed(cx)
 	end)
 end
+
+tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
+	rebuild_managed(cx)
+	remember(ev.pane, ev.path)
+	if ev.pane == cx.session:focused() then
+		refresh_dir(cx, ev.path)
+	end
+end)
+
+tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
+	local pane = cx.session:pane(ev.pane)
+	if pane ~= nil then
+		remember(ev.pane, pane.cwd)
+		if ev.pane == cx.session:focused() then
+			refresh_dir(cx, pane.cwd)
+		end
+	end
+end)
+
+tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
+	local cwd: string? = cwdOfPane[ev.pane]
+	if cwd == nil then
+		local pane = cx.session:pane(ev.pane)
+		cwd = if pane ~= nil then pane.cwd else nil
+	end
+	refresh_dir(cx, cwd)
+end)
 
 tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 	local entry = pending[ev.pane]
@@ -802,6 +1008,7 @@ tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 end)
 
 tern.on("pane_closed", function(ev: PaneEvent, cx: WindowCx)
+	cwdOfPane[ev.pane] = nil
 	local entry = pending[ev.pane]
 	if entry == nil then
 		return
@@ -879,6 +1086,9 @@ tern.carly.export("create", {
 				res.warnings = res.warnings or {}
 				table.insert(res.warnings, "tab not opened: " .. tostring(openErr))
 			end
+			if type(res.repo) == "string" then
+				refresh(cx3, res.repo)
+			end
 			call:reply(res)
 		end)
 	end)
@@ -907,6 +1117,11 @@ tern.carly.export("remove", {
 	if force == true then
 		table.insert(argv, "--force")
 	end
-	cli(argv, reply_to(call))
+	cli(argv, function(res, err, cx2)
+		if err == nil then
+			refresh_rows(cx2)
+		end
+		reply_to(call)(res, err, cx2)
+	end)
 	return call:wait(120000)
 end)
