@@ -10,6 +10,7 @@
   }
 
   .twt-card {
+    --twt-palette-list-cap: min(460px, 58vh, calc(88vh - 151px + 24px / var(--tn-zoom, 1)));
     zoom: 1;
     font: 400 14px/1.5 var(--sans);
     letter-spacing: -0.003em;
@@ -59,7 +60,7 @@
   }
 
   .twt-card .sf-picker .pk-list {
-    max-height: min(460px, 58vh, calc(88vh - 151px + 24px / var(--tn-zoom, 1)));
+    max-height: var(--twt-palette-list-cap);
   }
 
   .twt-mono {

@@ -4,27 +4,49 @@ local ui = tern.ui
 
 local NEW_ID = "__new__"
 local UNGROUPED = "__ungrouped__"
-local PICK_ID = "layer.card.pick"
-local PROMPT_INPUT_ID = "layer.prompt.text"
+local CARD_KEY = "card"
+local PICK_KEY = "pick"
+local PROMPT_KEY = "prompt"
+local TEXT_KEY = "text"
+local PICK_ID = "layer." .. CARD_KEY .. "." .. PICK_KEY
+local PROMPT_INPUT_ID = "layer." .. PROMPT_KEY .. "." .. TEXT_KEY
+local ESCAPE_LABEL = "cancel"
 
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
-type Button = { id: string, label: string, kind: string? }
-type Request = {
-	mode: string,
+type Button = { id: string, label: string, kind: ("primary" | "danger" | "cancel")? }
+type PickRequest = {
+	mode: "pick",
 	title: string,
 	items: { Item }?,
 	allowNew: boolean?,
 	newLabel: string?,
 	selected: string?,
+	placeholder: string?,
+	verb: string?,
+}
+type ConfirmRequest = {
+	mode: "confirm",
+	title: string,
 	message: string?,
 	path: string?,
 	listing: { string }?,
 	buttons: { Button }?,
+}
+type PromptRequest = {
+	mode: "prompt",
+	title: string,
+	message: string?,
 	placeholder: string?,
 	verb: string?,
 	text: string?,
 }
-type Answer = { [string]: any }
+type Request = PickRequest | ConfirmRequest | PromptRequest
+type Answer =
+	{ action: "cancel" }
+	| { action: "new", text: string }
+	| { action: "select", id: string }
+	| { action: "button", id: string }
+	| { action: "text", text: string }
 type State = {
 	reqid: string,
 	req: Request,
@@ -35,11 +57,11 @@ type State = {
 	focused: boolean?,
 }
 
-local function new_label(req: Request, query: string): string
+local function new_label(req: PickRequest, query: string): string
 	return string.format(req.newLabel or "Create “%s”", query)
 end
 
-local function offers_new(req: Request, query: string): boolean
+local function offers_new(req: PickRequest, query: string): boolean
 	if not req.allowNew or query == "" then
 		return false
 	end
@@ -59,11 +81,12 @@ local function matches(item: Item, needle: string): boolean
 	return string.find(searchable, needle, 1, true) ~= nil
 end
 
-local function visible_entries(state: State): ({ string }, { any })
-	local req = state.req
+local function visible_entries(state: State): ({ string }, { any }, boolean)
+	local req = state.req :: PickRequest
 	local ids: { string } = {}
 	local order: { any } = {}
-	if offers_new(req, state.query) then
+	local offers = offers_new(req, state.query)
+	if offers then
 		table.insert(ids, NEW_ID)
 		table.insert(order, NEW_ID)
 	end
@@ -83,7 +106,7 @@ local function visible_entries(state: State): ({ string }, { any })
 			table.insert(order, item.id)
 		end
 	end
-	return ids, order
+	return ids, order, offers
 end
 
 local function keep_selection_visible(state: State, ids: { string })
@@ -94,18 +117,14 @@ local function keep_selection_visible(state: State, ids: { string })
 	state.selected = ids[1]
 end
 
-local function answer(state: State, value: Answer)
-	state.answer = value
-end
-
 local function answer_pick(state: State, id: string?)
 	if id == nil then
 		return
 	end
 	if id == NEW_ID then
-		answer(state, { action = "new", text = state.query })
+		state.answer = { action = "new", text = state.query }
 	else
-		answer(state, { action = "select", id = id })
+		state.answer = { action = "select", id = id }
 	end
 end
 
@@ -126,6 +145,20 @@ local function typed_text(key: Key): string?
 		return nil
 	end
 	return text
+end
+
+local function edit_text(s: string, key: Key): string?
+	if key.name == "backspace" then
+		if s == "" then
+			return nil
+		end
+		return drop_last_char(s)
+	end
+	local text = typed_text(key)
+	if text == nil then
+		return nil
+	end
+	return s .. text
 end
 
 local function kbd(key: string): Node
@@ -152,28 +185,30 @@ local function palette_card(node_key: string, aria: string, children: { Node }):
 	})
 end
 
-local function footer_hints(verb: string): Node
-	return ui.el("div", { class = "ck-foot" }, {
-		hint({ "↑", "↓" }, "navigate"),
-		hint({ "↵" }, verb),
-		hint({ "esc" }, "close", "grow"),
-	})
+local function footer_hints(verb: string, navigate: boolean): Node
+	local hints: { Node } = {}
+	if navigate then
+		table.insert(hints, hint({ "↑", "↓" }, "navigate"))
+	end
+	table.insert(hints, hint({ "↵" }, verb))
+	table.insert(hints, hint({ "esc" }, ESCAPE_LABEL, "grow"))
+	return ui.el("div", { class = "ck-foot" }, hints)
 end
 
-local function pick_view(state: State): Node
-	local req = state.req
-	local _, order = visible_entries(state)
+local function pick_view(state: State, _cx: BlockCx): Node
+	local req = state.req :: PickRequest
+	local _, order, offers = visible_entries(state)
 	local items = tern.json.array()
-	if offers_new(req, state.query) then
+	if offers then
 		table.insert(items, { id = NEW_ID, label = new_label(req, state.query), icon = "plus" })
 	end
 	for _, item in ipairs(req.items or {}) do
 		table.insert(items, { id = item.id, label = item.label, detail = item.detail, icon = item.icon })
 	end
 	local placeholder = req.placeholder or req.title
-	return palette_card("card", placeholder, {
+	return palette_card(CARD_KEY, placeholder, {
 		ui.node("picker", {
-			key = "pick",
+			key = PICK_KEY,
 			size = "screen",
 			preview = "none",
 			icon = "search",
@@ -183,7 +218,7 @@ local function pick_view(state: State): Node
 			order = tern.json.array(order),
 			selected = state.selected,
 		}),
-		footer_hints(req.verb or "open"),
+		footer_hints(req.verb or "open", true),
 	})
 end
 
@@ -196,8 +231,8 @@ local function button_shortcut(button: Button, index: number): string
 	return tostring(index)
 end
 
-local function confirm_view(state: State): Node
-	local req = state.req
+local function confirm_view(state: State, _cx: BlockCx): Node
+	local req = state.req :: ConfirmRequest
 	local buttons = req.buttons or {}
 	local titles: { Node } = { ui.el("div", { class = "mdl-t", text = req.title }) }
 	if req.path ~= nil and req.path ~= "" then
@@ -220,7 +255,7 @@ local function confirm_view(state: State): Node
 		hasCancel = hasCancel or button.id == "cancel"
 	end
 	if not hasCancel then
-		table.insert(lead, hint({ "esc" }, "cancel", "twt-hint"))
+		table.insert(lead, hint({ "esc" }, ESCAPE_LABEL, "twt-hint"))
 	end
 	local foot: { Node } = { ui.el("div", { class = "mdl-lead" }, lead) }
 	for i = #buttons, 1, -1 do
@@ -250,36 +285,26 @@ local function confirm_view(state: State): Node
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
-	local req = state.req
+	local req = state.req :: PromptRequest
 	local children: { Node } = {
 		ui.el("div", { class = "ck-top" }, {
 			ui.node("icon", { name = "pen" }),
-			ui.node("input", { key = "text", text = state.text, placeholder = req.placeholder or req.title }),
+			ui.node("input", { key = TEXT_KEY, text = state.text, placeholder = req.placeholder or req.title }),
 			kbd("esc"),
 		}),
 	}
 	if req.message ~= nil and req.message ~= "" then
 		table.insert(children, ui.el("div", { class = "twt-msg" }, { ui.text(req.message) }))
 	end
-	table.insert(
-		children,
-		ui.el("div", { class = "ck-foot" }, {
-			hint({ "↵" }, req.verb or "OK"),
-			hint({ "esc" }, "close", "grow"),
-		})
-	)
+	table.insert(children, footer_hints(req.verb or "OK", false))
 	if not state.focused then
 		state.focused = true
 		cx:frame({ { "focus", PROMPT_INPUT_ID } })
 	end
-	return palette_card("prompt", req.title, children)
+	return palette_card(PROMPT_KEY, req.title, children)
 end
 
 local function pick_key(state: State, key: Key): boolean
-	if key.name == "escape" then
-		answer(state, { action = "cancel" })
-		return true
-	end
 	if key.name == "enter" then
 		if state.selected == nil then
 			return false
@@ -302,67 +327,55 @@ local function pick_key(state: State, key: Key): boolean
 		state.selected = ids[index]
 		return true
 	end
-	if key.name == "backspace" then
-		if state.query == "" then
-			return false
-		end
-		state.query = drop_last_char(state.query)
-		keep_selection_visible(state, (visible_entries(state)))
-		return true
-	end
-	local text = typed_text(key)
-	if text == nil then
+	local query = edit_text(state.query, key)
+	if query == nil then
 		return false
 	end
-	state.query ..= text
+	state.query = query
 	keep_selection_visible(state, (visible_entries(state)))
 	return true
 end
 
 local function confirm_key(state: State, key: Key): boolean
-	local buttons = state.req.buttons or {}
-	if key.name == "escape" then
-		answer(state, { action = "cancel" })
-		return true
-	end
+	local buttons = (state.req :: ConfirmRequest).buttons or {}
 	if key.name == "enter" then
 		if buttons[1] == nil then
 			return false
 		end
-		answer(state, { action = "button", id = buttons[1].id })
+		state.answer = { action = "button", id = buttons[1].id }
 		return true
 	end
 	local digit = if key.ctrl or key.meta then nil else tonumber(key.name)
 	if digit ~= nil and buttons[digit] ~= nil then
-		answer(state, { action = "button", id = buttons[digit].id })
+		state.answer = { action = "button", id = buttons[digit].id }
 		return true
 	end
 	return false
 end
 
 local function prompt_key(state: State, key: Key): boolean
-	if key.name == "escape" then
-		answer(state, { action = "cancel" })
-		return true
-	end
 	if key.name == "enter" then
-		answer(state, { action = "text", text = state.text })
+		state.answer = { action = "text", text = state.text }
 		return true
 	end
-	if key.name == "backspace" then
-		if state.text == "" then
-			return false
-		end
-		state.text = drop_last_char(state.text)
-		return true
-	end
-	local text = typed_text(key)
+	local text = edit_text(state.text, key)
 	if text == nil then
 		return false
 	end
-	state.text ..= text
+	state.text = text
 	return true
 end
+
+type ModeHandlers = {
+	view: (state: State, cx: BlockCx) -> Node,
+	key: (state: State, key: Key) -> boolean,
+}
+
+local MODES: { [string]: ModeHandlers? } = {
+	pick = { view = pick_view, key = pick_key },
+	confirm = { view = confirm_view, key = confirm_key },
+	prompt = { view = prompt_view, key = prompt_key },
+}
 
 local def: BlockDef<State> = {
 	init = function(_cx: BlockCx, args: { string }, saved: any): State
@@ -377,7 +390,7 @@ local def: BlockDef<State> = {
 			req = req,
 			query = "",
 			selected = nil,
-			text = req.text or "",
+			text = if req.mode == "prompt" then req.text or "" else "",
 			answer = nil,
 			focused = false,
 		}
@@ -392,16 +405,10 @@ local def: BlockDef<State> = {
 	end,
 
 	view = function(state: State, cx: BlockCx): BlockView
-		local mode = state.req.mode
 		local layer: Node? = nil
-		if state.answer == nil then
-			if mode == "pick" then
-				layer = pick_view(state)
-			elseif mode == "confirm" then
-				layer = confirm_view(state)
-			elseif mode == "prompt" then
-				layer = prompt_view(state, cx)
-			end
+		local handlers = MODES[state.req.mode]
+		if state.answer == nil and handlers ~= nil then
+			layer = handlers.view(state, cx)
 		end
 		return { main = ui.col({}), layer = layer }
 	end,
@@ -417,15 +424,15 @@ local def: BlockDef<State> = {
 		if state.answer ~= nil then
 			return false
 		end
-		local mode = state.req.mode
-		if mode == "pick" then
-			return pick_key(state, key)
-		elseif mode == "confirm" then
-			return confirm_key(state, key)
-		elseif mode == "prompt" then
-			return prompt_key(state, key)
+		local handlers = MODES[state.req.mode]
+		if handlers == nil then
+			return false
 		end
-		return false
+		if key.name == "escape" then
+			state.answer = { action = "cancel" }
+			return true
+		end
+		return handlers.key(state, key)
 	end,
 
 	event = function(state: State, ev: UiEvent, cx: BlockCx)
@@ -443,12 +450,12 @@ local def: BlockDef<State> = {
 			answer_pick(state, ev.item)
 		elseif ev.ev == "action" then
 			if ev.act == "close" or ev.act == "escape" then
-				answer(state, { action = "cancel" })
+				state.answer = { action = "cancel" }
 			elseif ev.act == "clear" then
 				state.query = ""
 				keep_selection_visible(state, (visible_entries(state)))
 			elseif ev.act == "btn" and type(ev.value) == "string" then
-				answer(state, { action = "button", id = ev.value })
+				state.answer = { action = "button", id = ev.value }
 			end
 		end
 	end,
