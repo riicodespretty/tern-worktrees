@@ -72,9 +72,9 @@ describe('create command', () => {
     });
 
     it('rejects unknown options and stray values', async () => {
-      await expect(run(['--nope'])).rejects.toMatchObject({ code: 'bad_args' });
+      await expect(run(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
       await expect(run(['--nope'])).rejects.toThrow(/'--nope'/u);
-      await expect(run(['--repo', repo.dir, '--branch', 'a', 'extra'])).rejects.toMatchObject({ code: 'bad_args' });
+      await expect(run(['--repo', repo.dir, '--branch', 'a', 'extra'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL' });
     });
 
     it('rejects a dir outside a repo', async () => {
@@ -111,6 +111,14 @@ describe('create command', () => {
     it('fetches before the lookup', async () => {
       await git(repo.origin, 'branch', 'feature/late', 'main');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/late', '--no-tab'])).resolves.toMatchObject({ status: 'created', warnings: [] });
+    });
+
+    it('prunes the tracking branches that origin deleted', async () => {
+      await repo.pushBranch('gone');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      await git(repo.origin, 'branch', '--quiet', '-D', 'gone');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created', warnings: [] });
+      await expect(git(repo.dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone')).resolves.toBe('');
     });
 
     it('warns when the fetch fails and goes on', async () => {

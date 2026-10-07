@@ -77,7 +77,7 @@ describe('list command', () => {
   });
 
   it('rejects unknown options', async () => {
-    await expect(run(['--nope'])).rejects.toMatchObject({ code: 'bad_args' });
+    await expect(run(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
     await expect(run(['--nope'])).rejects.toThrow(/'--nope'/u);
   });
 });

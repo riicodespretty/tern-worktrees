@@ -1,5 +1,7 @@
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
-import { must, run } from './proc.ts';
+import { CliError, must, run } from './proc.ts';
+import type { RunResult } from './proc.ts';
 
 /** One entry of `git worktree list`. `locked` holds the text of the lock, empty when the lock has no text, or null when the worktree has no lock. */
 export interface Worktree {
@@ -12,14 +14,20 @@ export interface Worktree {
 }
 
 /** The GitHub owner and name of a repository. */
-export interface RepoSlug {
+export interface GithubRepoRef {
   owner: string;
   name: string;
 }
 
+/** The `<owner>/<name>` form of `repoRef`, the name that `gh` uses for a repository. */
+export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owner}/${repoRef.name}`;
+
+/** Runs `git -C <dir> <args>`, waits for it to exit, and returns its output. */
+export const gitRun = async (dir: string, ...args: string[]): Promise<RunResult> => await run(['git', '-C', dir, ...args]);
+
 /** The main checkout of the repository that holds `dir`, or null when `dir` is not in a repository with a checkout. */
 export const repoRoot = async (dir: string): Promise<string | null> => {
-  const result = await run(['git', '-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']);
+  const result = await gitRun(dir, 'rev-parse', '--path-format=absolute', '--git-common-dir');
   const commonDir = result.stdout.trim();
   if (!commonDir.endsWith('/.git')) {
     return null;
@@ -27,12 +35,57 @@ export const repoRoot = async (dir: string): Promise<string | null> => {
   return path.dirname(commonDir);
 };
 
+/** Like {@link repoRoot}, but throws `not_a_repo` when `dir` is not in a repository with a checkout. */
+export const requireRepoRoot = async (dir: string): Promise<string> => {
+  const root = await repoRoot(dir);
+  if (root === null) {
+    throw new CliError('not_a_repo', `${dir} is not in a git repository`);
+  }
+  return root;
+};
+
+/** The main checkout of the repository when `dir` is the top directory of one of its linked worktrees, else null. */
+export const linkedWorktreeRoot = async (dir: string): Promise<string | null> => {
+  const [root, topLevel] = await Promise.all([repoRoot(dir), gitRun(dir, 'rev-parse', '--show-toplevel')]);
+  if (root === null) {
+    return null;
+  }
+  const realDir = realpathSync(dir);
+  return topLevel.stdout.trim() === realDir && root !== realDir ? root : null;
+};
+
+/** The branch checked out at `dir`, or null when `dir` has a detached `HEAD`. A tag of the same name does not change it. */
+export const currentBranch = async (dir: string): Promise<string | null> => {
+  const result = await gitRun(dir, 'symbolic-ref', '-q', 'HEAD');
+  const ref = result.stdout.trim();
+  return ref === '' ? null : ref.slice('refs/heads/'.length);
+};
+
+/** Tells if the directory `dir`, which must be on disk, is the top of a checkout and not a dir in one. It compares real paths, because git gives them. */
+export const isCheckoutTop = async (dir: string): Promise<boolean> => (await repoRoot(dir)) === realpathSync(dir);
+
 const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)\/(?<name>[^/]+?)(?:\.git)?$/u;
 
+const originUrl = async (root: string): Promise<string> => {
+  const result = await gitRun(root, 'remote', 'get-url', 'origin');
+  return result.stdout.trim();
+};
+
+/** Tells if the repository at `root` has a remote named `origin`. */
+export const hasOrigin = async (root: string): Promise<boolean> => (await originUrl(root)) !== '';
+
+/**
+ * Fetches `origin` in the repository at `root`, and prunes its deleted branches when `prune` is true.
+ * Gives a warning that starts with `fetch failed:` when the fetch fails, else null.
+ */
+export const fetchOrigin = async (root: string, prune: boolean): Promise<string | null> => {
+  const result = await gitRun(root, 'fetch', ...(prune ? ['--prune'] : []), 'origin');
+  return result.status === 0 ? null : `fetch failed: ${result.stderr.trim()}`;
+};
+
 /** The GitHub owner and name from the `origin` URL, or null without a GitHub origin. */
-export const originSlug = async (root: string): Promise<RepoSlug | null> => {
-  const result = await run(['git', '-C', root, 'remote', 'get-url', 'origin']);
-  const groups = GITHUB_URL.exec(result.stdout.trim())?.groups;
+export const originRepo = async (root: string): Promise<GithubRepoRef | null> => {
+  const groups = GITHUB_URL.exec(await originUrl(root))?.groups;
   if (!groups) {
     return null;
   }
@@ -40,14 +93,14 @@ export const originSlug = async (root: string): Promise<RepoSlug | null> => {
 };
 
 /** The default branch: `origin/HEAD`, else what GitHub reports, else the current branch when the repository has no GitHub origin. `offline` skips GitHub. */
-export const defaultBranch = async (root: string, opts: { offline?: boolean } = {}): Promise<string> => {
-  const head = await run(['git', '-C', root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+export const defaultBranch = async (root: string, { offline = false }: { offline?: boolean } = {}): Promise<string> => {
+  const head = await gitRun(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD');
   if (head.status === 0) {
     return head.stdout.trim().slice('origin/'.length);
   }
-  const slug = opts.offline === true ? null : await originSlug(root);
-  if (slug !== null) {
-    const name = await must(['gh', 'repo', 'view', `${slug.owner}/${slug.name}`, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], 'gh_failed');
+  const repoRef = offline ? null : await originRepo(root);
+  if (repoRef !== null) {
+    const name = await must(['gh', 'repo', 'view', nameWithOwner(repoRef), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], 'gh_failed');
     return name.trim();
   }
   const current = await must(['git', '-C', root, 'branch', '--show-current'], 'git_failed');

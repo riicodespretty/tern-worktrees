@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { originSlug, repoRoot } from '../git.ts';
+import { originRepo, repoRoot } from '../git.ts';
 
 /** The repository that holds a directory, with null values when the directory is not in a repository. */
 export interface ResolvedDir {
@@ -15,8 +15,8 @@ const resolveDir = async (dir: string): Promise<ResolvedDir> => {
   if (root === null) {
     return { dir, name: null, owner: null, root: null };
   }
-  const slug = await originSlug(root);
-  return { dir, name: path.basename(root), owner: slug?.owner ?? null, root };
+  const repoRef = await originRepo(root);
+  return { dir, name: path.basename(root), owner: repoRef?.owner ?? null, root };
 };
 
 /** `resolve <dir>...`: the repository root, name and GitHub owner of each directory. Each distinct directory resolves once. */

@@ -1,11 +1,25 @@
 import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { defaultBranch, dirtyFiles, hardToRebuild, originSlug, repoRoot, worktreeLosses, worktrees } from '../src/git.ts';
+import {
+  defaultBranch,
+  dirtyFiles,
+  fetchOrigin,
+  gitRun,
+  hardToRebuild,
+  hasOrigin,
+  nameWithOwner,
+  originRepo,
+  repoRoot,
+  requireRepoRoot,
+  worktreeLosses,
+  worktrees,
+} from '../src/git.ts';
 import type { Sandbox } from './helpers.ts';
 import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
+const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
 const nestedSubmodules = async (): Promise<string> => {
   const inner = await tmpRepo('inner');
   const outer = await tmpRepo('outer');
@@ -39,7 +53,61 @@ describe('git helpers', () => {
     });
   });
 
-  describe(originSlug, () => {
+  describe(nameWithOwner, () => {
+    it('joins the owner and the name', () => {
+      expect(nameWithOwner({ name: 'name', owner: 'owner' })).toBe('owner/name');
+    });
+  });
+
+  describe(gitRun, () => {
+    it('runs git in the directory and gives its status and output', async () => {
+      const repo = await tmpRepo();
+      await expect(gitRun(repo.dir, 'branch', '--show-current')).resolves.toStrictEqual({ status: 0, stderr: '', stdout: 'main\n' });
+      await expect(gitRun(tempDir('plain'), 'rev-parse', '--git-dir')).resolves.toMatchObject({ status: 128 });
+    });
+  });
+
+  describe(requireRepoRoot, () => {
+    it('gives the main checkout', async () => {
+      const repo = await tmpRepo();
+      await expect(requireRepoRoot(repo.dir)).resolves.toBe(repo.dir);
+    });
+
+    it('throws not_a_repo outside a repo', async () => {
+      const plain = tempDir('plain');
+      await expect(requireRepoRoot(plain)).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
+    });
+  });
+
+  describe(hasOrigin, () => {
+    it('tells if the repo has an origin', async () => {
+      const repo = await tmpRepo();
+      await expect(hasOrigin(repo.dir)).resolves.toBeTruthy();
+      await git(repo.dir, 'remote', 'remove', 'origin');
+      await expect(hasOrigin(repo.dir)).resolves.toBeFalsy();
+    });
+  });
+
+  describe(fetchOrigin, () => {
+    it('fetches, and prunes the deleted branches of origin only when asked', async () => {
+      const repo = await tmpRepo();
+      await repo.pushBranch('gone');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      await git(repo.origin, 'branch', '--quiet', '-D', 'gone');
+      await expect(fetchOrigin(repo.dir, false)).resolves.toBeNull();
+      await expect(trackingRefs(repo.dir)).resolves.toBe('refs/remotes/origin/gone\n');
+      await expect(fetchOrigin(repo.dir, true)).resolves.toBeNull();
+      await expect(trackingRefs(repo.dir)).resolves.toBe('');
+    });
+
+    it.each([true, false])('gives a warning when the fetch fails with prune %j', async prune => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'remote', 'set-url', 'origin', path.join(tempDir('missing'), 'nope.git'));
+      await expect(fetchOrigin(repo.dir, prune)).resolves.toMatch(/^fetch failed: .+/u);
+    });
+  });
+
+  describe(originRepo, () => {
     it.each([
       ['git@github.com:riicodespretty/tern-worktrees.git', 'riicodespretty', 'tern-worktrees'],
       ['git@github.com:owner/name', 'owner', 'name'],
@@ -48,7 +116,7 @@ describe('git helpers', () => {
     ])('parses %s', async (url, owner, name) => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-url', 'origin', url);
-      await expect(originSlug(repo.dir)).resolves.toStrictEqual({ name, owner });
+      await expect(originRepo(repo.dir)).resolves.toStrictEqual({ name, owner });
     });
 
     it.each(['https://gitlab.com/owner/name.git', 'https://github.com/owner/name/extra', 'xgit@github.com:owner/name', 'git@github.com:owner/name.git.bak/x'])(
@@ -56,14 +124,14 @@ describe('git helpers', () => {
       async url => {
         const repo = await tmpRepo();
         await git(repo.dir, 'remote', 'set-url', 'origin', url);
-        await expect(originSlug(repo.dir)).resolves.toBeNull();
+        await expect(originRepo(repo.dir)).resolves.toBeNull();
       },
     );
 
     it('gives null without an origin', async () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'remove', 'origin');
-      await expect(originSlug(repo.dir)).resolves.toBeNull();
+      await expect(originRepo(repo.dir)).resolves.toBeNull();
     });
   });
 

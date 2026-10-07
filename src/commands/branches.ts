@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, originSlug, repoRoot, worktrees } from '../git.ts';
-import type { RepoSlug } from '../git.ts';
+import { defaultBranch, fetchOrigin, hasOrigin, nameWithOwner, originRepo, requireRepoRoot, worktrees } from '../git.ts';
+import type { GithubRepoRef } from '../git.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
 import { CliError, must, run as runProcess } from '../proc.ts';
 
@@ -41,8 +41,8 @@ interface GhPullRequest {
 const REMOTE_PREFIX = 'refs/remotes/origin/';
 const LOCAL_PREFIX = 'refs/heads/';
 
-const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]> => {
-  const patterns = hasOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
+const listBranches = async (root: string, withOrigin: boolean): Promise<string[]> => {
+  const patterns = withOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
   const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns], 'git_failed');
   const names = output
     .split('\n')
@@ -52,8 +52,8 @@ const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]>
   return [...new Set(names)];
 };
 
-const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<PullRequest[]> => {
-  const argv = ['gh', 'pr', 'list', '--repo', `${slug.owner}/${slug.name}`, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
+const listPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<PullRequest[]> => {
+  const argv = ['gh', 'pr', 'list', '--repo', nameWithOwner(repoRef), '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
   const result = await runProcess(argv);
   if (result.status !== 0) {
     warnings.push(`pr list failed: ${result.stderr.trim()}`);
@@ -70,24 +70,20 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
   if (values.repo === undefined) {
     throw new CliError('bad_args', 'branches needs --repo <dir>');
   }
-  const root = await repoRoot(values.repo);
-  if (root === null) {
-    throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
-  }
+  const root = await requireRepoRoot(values.repo);
   const { offline } = values;
   const warnings: string[] = [];
-  const originUrl = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
-  const hasOrigin = originUrl.status === 0;
-  if (hasOrigin && !offline) {
-    const fetchResult = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
-    if (fetchResult.status !== 0) {
-      warnings.push(`fetch failed: ${fetchResult.stderr.trim()}`);
+  const withOrigin = await hasOrigin(root);
+  if (withOrigin && !offline) {
+    const fetchWarning = await fetchOrigin(root, true);
+    if (fetchWarning !== null) {
+      warnings.push(fetchWarning);
     }
   }
-  const slug = offline ? null : await originSlug(root);
+  const repoRef = offline ? null : await originRepo(root);
   const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
-    listBranches(root, hasOrigin),
-    slug === null ? [] : listPullRequests(slug, warnings),
+    listBranches(root, withOrigin),
+    repoRef === null ? [] : listPullRequests(repoRef, warnings),
     worktrees(root),
     defaultBranch(root, { offline }),
   ]);

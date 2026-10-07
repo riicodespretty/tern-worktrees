@@ -3,11 +3,10 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { defaultBranch, hardToRebuild, originSlug, repoRoot, worktreeLosses } from '../git.ts';
+import { currentBranch, defaultBranch, fetchOrigin, hardToRebuild, linkedWorktreeRoot, nameWithOwner, originRepo, requireRepoRoot, worktreeLosses } from '../git.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
 import { CliError, must, run as runProcess } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
-import { currentBranch, linkedWorktreeRoot } from './list.ts';
 
 /** The output of `remove`. */
 export interface RemoveResult {
@@ -31,17 +30,11 @@ interface Context {
 }
 
 const parse = (args: string[]): Options => {
-  let parsed;
-  try {
-    parsed = parseArgs({
-      allowPositionals: true,
-      args,
-      options: { 'force': { default: false, type: 'boolean' }, 'keep-tab': { default: false, type: 'boolean' } },
-    });
-  } catch (error) {
-    // SAFETY: `parseArgs` throws a TypeError for the first bad argument.
-    throw new CliError('bad_args', (error as TypeError).message);
-  }
+  const parsed = parseArgs({
+    allowPositionals: true,
+    args,
+    options: { 'force': { default: false, type: 'boolean' }, 'keep-tab': { default: false, type: 'boolean' } },
+  });
   const [target, ...rest] = parsed.positionals;
   if (target === undefined || rest.length > 0) {
     throw new CliError('bad_args', 'remove needs one <path>');
@@ -111,11 +104,11 @@ const isAncestor = async (ctx: Context, commit: string, of: string): Promise<boo
 };
 
 const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boolean> => {
-  const slug = await originSlug(ctx.root);
-  if (slug === null) {
+  const repoRef = await originRepo(ctx.root);
+  if (repoRef === null) {
     return false;
   }
-  const result = await runProcess(['gh', 'pr', 'list', '--repo', `${slug.owner}/${slug.name}`, `--head=${branch}`, '--state', 'merged', '--json', 'headRefOid']);
+  const result = await runProcess(['gh', 'pr', 'list', '--repo', nameWithOwner(repoRef), `--head=${branch}`, '--state', 'merged', '--json', 'headRefOid']);
   if (result.status !== 0) {
     ctx.warnings.push(`merged PR check failed: ${result.stderr.trim()}`);
     return false;
@@ -127,9 +120,9 @@ const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boole
 };
 
 const isMerged = async (ctx: Context, branch: string): Promise<boolean> => {
-  const fetched = await runProcess(['git', '-C', ctx.root, 'fetch', 'origin']);
-  if (fetched.status !== 0) {
-    ctx.warnings.push(`fetch failed: ${fetched.stderr.trim()}`);
+  const fetchWarning = await fetchOrigin(ctx.root, false);
+  if (fetchWarning !== null) {
+    ctx.warnings.push(fetchWarning);
   }
   const base = await defaultBranch(ctx.root);
   return (await isAncestor(ctx, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
@@ -163,12 +156,9 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
   if (!isUnder(target, worktreeRoot())) {
     throw new CliError('not_managed', `${target} is not under ${worktreeRoot()}`);
   }
-  const mainCheckout = await repoRoot(target);
-  if (mainCheckout === null) {
-    throw new CliError('not_a_repo', `${target} is not in a git repository`);
-  }
   const root = await linkedWorktreeRoot(target);
   if (root === null) {
+    const mainCheckout = await requireRepoRoot(target);
     throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${mainCheckout}`);
   }
   const branch = await currentBranch(target);

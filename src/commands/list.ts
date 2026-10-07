@@ -1,9 +1,8 @@
-import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { dirtyFiles, repoRoot } from '../git.ts';
+import { currentBranch, dirtyFiles, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
 import { worktreeRoot } from '../paths.ts';
-import { CliError, run as runProcess } from '../proc.ts';
 
 /** A managed worktree: its path, its repository, its branch, and `dirty`, true when it has uncommitted changes. */
 export interface ListedWorktree {
@@ -18,20 +17,6 @@ export interface ListResult {
   root: string;
   worktrees: ListedWorktree[];
 }
-
-/** The main checkout of the repository when `dir` is the top directory of one of its linked worktrees, else null. */
-export const linkedWorktreeRoot = async (dir: string): Promise<string | null> => {
-  const [root, topLevel] = await Promise.all([repoRoot(dir), runProcess(['git', '-C', dir, 'rev-parse', '--show-toplevel'])]);
-  const realDir = realpathSync(dir);
-  return topLevel.stdout.trim() === realDir && root !== realDir ? root : null;
-};
-
-/** The branch checked out at `dir`, or null when `dir` has a detached `HEAD`. A tag of the same name does not change it. */
-export const currentBranch = async (dir: string): Promise<string | null> => {
-  const result = await runProcess(['git', '-C', dir, 'symbolic-ref', '-q', 'HEAD']);
-  const ref = result.stdout.trim();
-  return ref === '' ? null : ref.slice('refs/heads/'.length);
-};
 
 const subdirs = (dir: string): string[] => {
   const entries = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : [];
@@ -52,21 +37,9 @@ const readWorktree = async (dir: string): Promise<ListedWorktree | null> => {
 
 /** `list [--repo <dir>]`: the managed worktrees of all repositories, or only of the repository that holds `dir`. */
 export const run = async (args: string[]): Promise<ListResult> => {
-  let repo: string | undefined;
-  try {
-    ({ repo } = parseArgs({ args, options: { repo: { type: 'string' } } }).values);
-  } catch (error) {
-    // SAFETY: `parseArgs` throws a TypeError for the first bad argument.
-    throw new CliError('bad_args', (error as TypeError).message);
-  }
+  const { repo } = parseArgs({ args, options: { repo: { type: 'string' } } }).values;
   const root = worktreeRoot();
-  let mainCheckout: string | null = null;
-  if (repo !== undefined) {
-    mainCheckout = await repoRoot(repo);
-    if (mainCheckout === null) {
-      throw new CliError('not_a_repo', `${repo} is not in a git repository`);
-    }
-  }
+  const mainCheckout = repo === undefined ? null : await requireRepoRoot(repo);
   const repos = mainCheckout === null ? subdirs(root) : [path.join(root, path.basename(mainCheckout))];
   const found = await Promise.all(repos.flatMap(subdirs).map(readWorktree));
   return { root, worktrees: found.filter((entry): entry is ListedWorktree => entry !== null && (mainCheckout === null || entry.repo === mainCheckout)) };

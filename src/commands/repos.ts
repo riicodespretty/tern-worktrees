@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
+import { isCheckoutTop } from '../git.ts';
 import { must, run as runProcess } from '../proc.ts';
-import { isCheckoutTop } from './clone.ts';
 
 /** A GitHub repository. `local` is its clone in the clone root, or null when no clone is there. */
 export interface GithubRepo {

@@ -86,7 +86,7 @@ describe('remove command', () => {
     });
 
     it('rejects unknown options', async () => {
-      await expect(run(['--nope', 'x'])).rejects.toMatchObject({ code: 'bad_args' });
+      await expect(run(['--nope', 'x'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
       await expect(run(['--nope', 'x'])).rejects.toThrow(/'--nope'/u);
     });
 
@@ -99,6 +99,11 @@ describe('remove command', () => {
       const plain = managedPath('plain');
       mkdirSync(plain, { recursive: true });
       await expect(run([plain])).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
+    });
+
+    it('rejects a path under the root that does not exist', async () => {
+      const missing = managedPath('missing');
+      await expect(run([missing])).rejects.toMatchObject({ code: 'not_a_repo', message: `${missing} is not in a git repository` });
     });
 
     it('rejects a dir inside a worktree', async () => {
@@ -151,6 +156,15 @@ describe('remove command', () => {
       expect(result.branchDeleted).toBeTruthy();
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatch(/^fetch failed: fatal: .*missing\.git.*\S$/su);
+    });
+
+    it('fetches without pruning the tracking branches that origin deleted', async () => {
+      const dir = await addFeature();
+      await repo.pushBranch('gone');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      await git(repo.origin, 'branch', '--quiet', '-D', 'gone');
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
+      await expect(git(repo.dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone')).resolves.toBe('refs/remotes/origin/gone\n');
     });
 
     it('deletes a squash-merged branch whose tip a merged pull request holds', async () => {

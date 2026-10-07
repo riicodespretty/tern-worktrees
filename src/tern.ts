@@ -37,7 +37,7 @@ export interface PlacedBlock {
   block: TernBlock;
 }
 
-interface Created {
+interface CreatedBlock {
   block: number;
 }
 
@@ -56,7 +56,7 @@ export const ls = async (): Promise<TernListing> =>
 
 const newBlock = async (args: string[]): Promise<number> => {
   // SAFETY: `tern new --json` prints the id of the new block in the `block` field.
-  const created = JSON.parse(await tern(['new', ...args])) as Created;
+  const created = JSON.parse(await tern(['new', ...args])) as CreatedBlock;
   return created.block;
 };
 

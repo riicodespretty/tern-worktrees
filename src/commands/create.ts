@@ -2,10 +2,10 @@ import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, hardToRebuild, originSlug, repoRoot, worktreeLosses, worktrees } from '../git.ts';
+import { defaultBranch, fetchOrigin, gitRun, hardToRebuild, hasOrigin, nameWithOwner, originRepo, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { isUnder, worktreePath } from '../paths.ts';
-import { CliError, must, run as runProcess } from '../proc.ts';
+import { CliError, must } from '../proc.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo } from '../tern.ts';
 
 /** How `create` got the worktree. */
@@ -57,78 +57,88 @@ interface Target {
   path: string;
 }
 
-interface PullRequest {
+interface GhPullRequest {
   headRefName: string;
   isCrossRepository: boolean;
 }
 
+interface Placement {
+  isNew: boolean;
+  relocate: boolean;
+}
+
+type Source = { branch: string; isNew: boolean } | { pr: string };
+
+interface CheckedOptions {
+  repo: string;
+  source: Source;
+}
+
 const badArgs = (message: string): CliError => new CliError('bad_args', message);
 
-const parse = (args: string[]): Options => {
-  try {
-    return parseArgs({
-      args,
-      options: {
-        'branch': { type: 'string' },
-        'new': { default: false, type: 'boolean' },
-        'no-tab': { default: false, type: 'boolean' },
-        'pr': { type: 'string' },
-        'relocate': { default: false, type: 'boolean' },
-        'repo': { type: 'string' },
-      },
-    }).values;
-  } catch (error) {
-    // SAFETY: `parseArgs` throws a TypeError for the first bad argument.
-    throw badArgs((error as TypeError).message);
-  }
-};
+const parse = (args: string[]): Options =>
+  parseArgs({
+    args,
+    options: {
+      'branch': { type: 'string' },
+      'new': { default: false, type: 'boolean' },
+      'no-tab': { default: false, type: 'boolean' },
+      'pr': { type: 'string' },
+      'relocate': { default: false, type: 'boolean' },
+      'repo': { type: 'string' },
+    },
+  }).values;
 
-const checkOptions = (options: Options): string => {
-  if (options.repo === undefined) {
+const checkOptions = (options: Options): CheckedOptions => {
+  const { branch, pr, repo } = options;
+  if (repo === undefined) {
     throw badArgs('--repo is required');
   }
-  if ((options.branch === undefined) === (options.pr === undefined)) {
+  if (pr === undefined) {
+    if (branch === undefined) {
+      throw badArgs('pass one of --branch or --pr');
+    }
+    return { repo, source: { branch, isNew: options.new } };
+  }
+  if (branch !== undefined) {
     throw badArgs('pass one of --branch or --pr');
   }
-  if (options.pr !== undefined && options.new) {
+  if (options.new) {
     throw badArgs('--new does not apply to --pr');
   }
-  if (options.pr !== undefined && !/^[1-9]\d*$/u.test(options.pr)) {
-    throw badArgs(`bad pull request number ${options.pr}`);
+  if (!/^[1-9]\d*$/u.test(pr)) {
+    throw badArgs(`bad pull request number ${pr}`);
   }
-  return options.repo;
+  return { repo, source: { pr } };
 };
 
 const git = async (root: string, ...args: string[]): Promise<string> => await must(['git', '-C', root, ...args], 'git_failed');
 
 const gitSucceeds = async (root: string, ...args: string[]): Promise<boolean> => {
-  const result = await runProcess(['git', '-C', root, ...args]);
+  const result = await gitRun(root, ...args);
   return result.status === 0;
 };
 
-const fetchOrigin = async (ctx: Context): Promise<void> => {
-  if (!ctx.hasOrigin) {
-    return;
-  }
-  const result = await runProcess(['git', '-C', ctx.root, 'fetch', '--prune', 'origin']);
-  if (result.status !== 0) {
-    ctx.warnings.push(`fetch failed: ${result.stderr.trim()}`);
-  }
-};
-
 const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
-  const slug = await originSlug(ctx.root);
-  if (slug === null) {
+  const repoRef = await originRepo(ctx.root);
+  if (repoRef === null) {
     throw badArgs('--pr needs a GitHub origin');
   }
-  const view = await must(['gh', 'pr', 'view', pr, '--repo', `${slug.owner}/${slug.name}`, '--json', 'number,headRefName,isCrossRepository'], 'gh_failed');
+  const view = await must(['gh', 'pr', 'view', pr, '--repo', nameWithOwner(repoRef), '--json', 'number,headRefName,isCrossRepository'], 'gh_failed');
   // SAFETY: `gh pr view --json` prints the fields that its `--json` flag names.
-  const { headRefName, isCrossRepository } = JSON.parse(view) as PullRequest;
+  const { headRefName, isCrossRepository } = JSON.parse(view) as GhPullRequest;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
     return { branch, forkPr: pr, path: worktreePath(ctx.repoName, branch) };
   }
   return { branch: headRefName, forkPr: null, path: worktreePath(ctx.repoName, headRefName) };
+};
+
+const sourceTarget = async (ctx: Context, source: Source): Promise<{ isNew: boolean; target: Target }> => {
+  if ('branch' in source) {
+    return { isNew: source.isNew, target: { branch: source.branch, forkPr: null, path: worktreePath(ctx.repoName, source.branch) } };
+  }
+  return { isNew: false, target: await pullRequestTarget(ctx, source.pr) };
 };
 
 const startPoint = async (ctx: Context): Promise<string> => {
@@ -221,7 +231,7 @@ const withStaging = (error: Error, staging: string): CliError => {
 };
 
 const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Promise<string | null> => {
-  const moved = await runProcess(['git', '-C', ctx.root, 'worktree', 'move', existing.path, target.path]);
+  const moved = await gitRun(ctx.root, 'worktree', 'move', existing.path, target.path);
   if (moved.status === 0) {
     return null;
   }
@@ -257,15 +267,15 @@ const relocate = async (ctx: Context, target: Target, existing: Worktree): Promi
   }
 };
 
-const placeWorktree = async (ctx: Context, target: Target, options: Options): Promise<CreateStatus> => {
-  await checkBranch(ctx, target, options.new);
+const placeWorktree = async (ctx: Context, target: Target, placement: Placement): Promise<CreateStatus> => {
+  await checkBranch(ctx, target, placement.isNew);
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
   if (existing?.prunable === true) {
     await git(ctx.root, 'worktree', 'remove', existing.path);
   }
   if (!existing || existing.prunable) {
-    await addWorktree(ctx, target, options.new);
+    await addWorktree(ctx, target, placement.isNew);
     return 'created';
   }
   const samePath = isUnder(existing.path, target.path) && isUnder(target.path, existing.path);
@@ -275,7 +285,7 @@ const placeWorktree = async (ctx: Context, target: Target, options: Options): Pr
   if (existing.main) {
     throw new CliError('branch_in_main_checkout', `${target.branch} is checked out in the main checkout at ${existing.path}`, { existing: existing.path });
   }
-  if (!options.relocate) {
+  if (!placement.relocate) {
     throw new CliError('worktree_exists_elsewhere', `${target.branch} has a worktree at ${existing.path}; pass --relocate to move it to ${target.path}`, {
       existing: existing.path,
       target: target.path,
@@ -286,7 +296,7 @@ const placeWorktree = async (ctx: Context, target: Target, options: Options): Pr
 };
 
 const updateSubmodules = async (ctx: Context, dir: string): Promise<void> => {
-  const result = await runProcess(['git', '-C', dir, 'submodule', 'update', '--init', '--recursive']);
+  const result = await gitRun(dir, 'submodule', 'update', '--init', '--recursive');
   if (result.status !== 0) {
     ctx.warnings.push(`submodule update failed: ${result.stderr.trim()}`);
   }
@@ -323,19 +333,20 @@ const tryOpenTab = async (ctx: Context, target: Target): Promise<CreatedTab | nu
  */
 export const run = async (args: string[]): Promise<CreateResult> => {
   const options = parse(args);
-  const repo = checkOptions(options);
-  const root = await repoRoot(repo);
-  if (root === null) {
-    throw new CliError('not_a_repo', `${repo} is not in a git repository`);
+  const { repo, source } = checkOptions(options);
+  const root = await requireRepoRoot(repo);
+  const ctx: Context = { carry: null, hasOrigin: await hasOrigin(root), repoName: path.basename(root), root, warnings: [] };
+  if (ctx.hasOrigin) {
+    const fetchWarning = await fetchOrigin(root, true);
+    if (fetchWarning !== null) {
+      ctx.warnings.push(fetchWarning);
+    }
   }
-  const ctx: Context = { carry: null, hasOrigin: await gitSucceeds(root, 'remote', 'get-url', 'origin'), repoName: path.basename(root), root, warnings: [] };
-  await fetchOrigin(ctx);
-  const target =
-    options.branch === undefined ? await pullRequestTarget(ctx, String(options.pr)) : { branch: options.branch, forkPr: null, path: worktreePath(ctx.repoName, options.branch) };
+  const { isNew, target } = await sourceTarget(ctx, source);
   let status: CreateStatus;
   let carried: string[] = [];
   try {
-    status = await placeWorktree(ctx, target, options);
+    status = await placeWorktree(ctx, target, { isNew, relocate: options.relocate });
     if (status !== 'reused') {
       await updateSubmodules(ctx, target.path);
     }
