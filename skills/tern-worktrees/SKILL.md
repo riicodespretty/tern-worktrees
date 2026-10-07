@@ -59,7 +59,7 @@ Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. `--repo`
 
 `tern-wt branches --repo <dir>`
 
-Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` lists the newest commit first.
+Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` lists the local branches and the branches on `origin`, each once, newest commit first.
 
 ### `resolve`
 

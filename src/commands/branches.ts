@@ -38,10 +38,18 @@ interface GhPullRequest {
   isCrossRepository: boolean;
 }
 
+const REMOTE_PREFIX = 'refs/remotes/origin/';
+const LOCAL_PREFIX = 'refs/heads/';
+
 const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]> => {
-  const refs = hasOrigin ? ['--format=%(refname:lstrip=3)', 'refs/remotes/origin'] : ['--format=%(refname:lstrip=2)', 'refs/heads'];
-  const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', ...refs], 'git_failed');
-  return output.split('\n').filter(name => name !== '' && name !== 'HEAD');
+  const patterns = hasOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
+  const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns], 'git_failed');
+  const names = output
+    .split('\n')
+    .filter(ref => ref !== '')
+    .map(ref => (ref.startsWith(REMOTE_PREFIX) ? ref.slice(REMOTE_PREFIX.length) : ref.slice(LOCAL_PREFIX.length)))
+    .filter(name => name !== 'HEAD');
+  return [...new Set(names)];
 };
 
 const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<PullRequest[]> => {

@@ -66,6 +66,20 @@ describe('branches command', () => {
       });
     });
 
+    it('lists local and origin branches once each, newest first', async () => {
+      const repo = await tmpRepo('aoyama');
+      await commitBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
+      vi.stubEnv('GIT_COMMITTER_DATE', '2031-01-01T00:00:00Z');
+      await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'local');
+      await git(repo.dir, 'branch', 'feature/local');
+      await git(repo.dir, 'reset', '--quiet', '--hard', 'origin/main');
+      vi.stubEnv('GIT_COMMITTER_DATE', undefined);
+      await git(repo.dir, 'branch', 'feature/x', 'origin/feature/x');
+      await git(repo.dir, 'tag', 'v1');
+      const result = await run(['--repo', repo.dir]);
+      expect(result.branches).toStrictEqual(['feature/local', 'feature/x', 'main']);
+    });
+
     it('fetches with prune before it lists', async () => {
       const repo = await tmpRepo('aoyama');
       await repo.pushBranch('gone');
@@ -107,6 +121,7 @@ describe('branches command', () => {
       await git(repo.dir, 'reset', '--quiet', '--hard', 'HEAD~1');
       vi.stubEnv('GIT_COMMITTER_DATE', undefined);
       await git(repo.dir, 'branch', 'aaa');
+      await git(repo.dir, 'tag', 'v1');
       const result = await run(['--repo', repo.dir]);
       expect(result.branches[0]).toBe('newer');
       expect({ branches: result.branches.toSorted(), default: result.default, prs: result.prs, warnings: result.warnings }).toStrictEqual({
