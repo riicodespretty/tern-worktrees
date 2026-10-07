@@ -46,7 +46,7 @@ Output: `{"path", "branch", "repo", "status", "carried", "tab", "warnings"}`.
 
 `tern-wt remove <path> [--force] [--keep-tab]`
 
-Removes the managed worktree at `<path>`, applies the teardown policy to its branch, then closes its tabs. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, a submodule commit that no remote holds, or an ignored file that is hard to rebuild gives `dirty_worktree` and stays. An ignored file is build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. That output goes with the worktree. Each other ignored file, for example `.env`, is hard to rebuild. `--force` deletes all of them.
+Removes the managed worktree at `<path>`, closes its tabs, then applies the teardown policy to its branch. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, a submodule commit that no remote holds, or an ignored file that is hard to rebuild gives `dirty_worktree` and stays. An ignored file is build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. That output goes with the worktree. Each other ignored file, for example `.env`, is hard to rebuild. `--force` deletes all of them.
 
 Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `branch` is null for a detached `HEAD`. A branch that the policy keeps adds the warning `kept branch <branch>: not merged`.
 
@@ -60,9 +60,9 @@ Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. With `--
 
 `tern-wt branches --repo <dir> [--offline]`
 
-Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once.
-
 - `--offline`: read only local refs. It does not run `git fetch --prune origin`, does not list the open pull requests, and does not ask GitHub for the default branch. `prs` is `[]`, and `branches` has the branches on `origin` as of the last fetch. When `origin/HEAD` is unset, `default` is the current branch.
+
+Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once. When `gh pr list` fails, `prs` is `[]` and `warnings` has an entry that starts with `pr list failed:`. The Tern window relies on that prefix.
 
 ### `resolve`
 
@@ -78,7 +78,7 @@ Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "loc
 
 ### `clone`
 
-`tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. Each other slug gives `bad_args`.
+`tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. Each other name with owner gives `bad_args`.
 
 Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. Output: `{"root", "cloned"}`.
 
@@ -86,7 +86,7 @@ Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clon
 
 `tern-wt new-repo <owner/name> --visibility private|public`
 
-Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The slug rule of `clone` applies. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
+Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The rule of `clone` for a name with owner applies. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
 
 ### `setup`
 

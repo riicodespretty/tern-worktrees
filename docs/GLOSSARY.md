@@ -19,7 +19,7 @@ A Tern tab with its panes in a managed worktree.
 _Avoid_: Branch tab
 
 **Worktree row**:
-A row in the Tern command palette that opens the worktree tab of one branch or pull request. When the branch has no worktree, the row makes the managed worktree first.
+A row in the Tern command palette that opens the worktree tab of one branch or pull request.
 _Avoid_: Palette entry, worktree command
 
 **Relocate**:
@@ -49,6 +49,10 @@ _Avoid_: Force remove, hard delete
 **Clone root**:
 The directory that holds the clones of GitHub repositories, one folder for each owner.
 _Avoid_: Projects dir, code root
+
+**Name with owner**:
+The form `<owner>/<name>` that names a GitHub repository, for example in `clone` and `new-repo`.
+_Avoid_: Full name, repo path
 
 **Options file**:
 The file of user settings for the plugin: the teardown policy, the clone root and the hotkeys.
