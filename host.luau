@@ -3,6 +3,7 @@
 local ui = tern.ui
 
 local NEW_ID = "__new__"
+local UNGROUPED = "__ungrouped__"
 local PICK_ID = "layer.pick"
 local PROMPT_INPUT_ID = "layer.prompt.text"
 
@@ -67,8 +68,12 @@ local function visible_entries(state: State): ({ string }, { any })
 	local group: string? = nil
 	for _, item in ipairs(req.items or {}) do
 		if matches(item, needle) then
-			if item.group ~= nil and item.group ~= group then
-				table.insert(order, { group = item.group, label = item.group })
+			if item.group ~= group then
+				if item.group ~= nil then
+					table.insert(order, { group = item.group, label = item.group })
+				else
+					table.insert(order, { group = UNGROUPED, label = "Other" })
+				end
 			end
 			group = item.group
 			table.insert(ids, item.id)

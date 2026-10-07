@@ -2,7 +2,18 @@
 
 local CLI = tern.plugin.dir .. "/bin/tern-wt"
 local DIALOG = "tern-worktrees.dialog"
-local ROOT = (tern.getenv("TERN_WT_HOME") or ((tern.getenv("HOME") or "") .. "/.tern-wt")) .. "/worktrees"
+
+local function env(name: string): string?
+	local value = tern.getenv(name)
+	return if value == "" then nil else value
+end
+
+local function initial_root(): string
+	local home = env("TERN_WT_HOME") or ((env("HOME") or "") .. "/.tern-wt")
+	return (string.gsub(home, "/+$", "")) .. "/worktrees"
+end
+
+local ROOT = initial_root()
 local DEFAULT_KEYS = { "ctrl+b>w" }
 local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
@@ -19,7 +30,7 @@ type Repo = { root: string, name: string }
 
 local pending: { [number]: { reqid: string, cb: AnswerCb } } = {}
 local counter = 0
-local managed: { [number]: string } = {}
+local managed: { [number]: { string } } = {}
 local handled: { [string]: boolean } = {}
 local rootOfSession: { [number]: string } = {}
 local localRepos: { Repo } = {}
@@ -68,6 +79,13 @@ local function basename(path: string): string
 	return string.match(path, "([^/]+)/*$") or path
 end
 
+local function warn_config()
+	if not configWarned then
+		configWarned = true
+		table.insert(queuedErrors, "tern-worktrees: invalid config.json, using defaults")
+	end
+end
+
 local function config(): Config
 	local defaults: Config = { hotkeys = { new = DEFAULT_KEYS }, teardown = DEFAULT_TEARDOWN }
 	local path = tern.plugin.data .. "/config.json"
@@ -78,15 +96,41 @@ local function config(): Config
 		return tern.json.decode(tern.fs.read(path))
 	end)
 	if not ok or type(decoded) ~= "table" then
-		if not configWarned then
-			configWarned = true
-			table.insert(queuedErrors, "tern-worktrees: invalid config.json, using defaults")
-		end
+		warn_config()
 		return defaults
 	end
-	local keys = if type(decoded.hotkeys) == "table" then decoded.hotkeys.new else nil
+	local hotkeys = decoded.hotkeys
+	if hotkeys ~= nil and type(hotkeys) ~= "table" then
+		warn_config()
+	end
+	local keys: any = if type(hotkeys) == "table" then hotkeys.new else nil
+	local newKeys = DEFAULT_KEYS
+	if keys ~= nil then
+		local valid: { string } = {}
+		local dropped = type(keys) ~= "table"
+		if not dropped then
+			local entries = 0
+			for _ in pairs(keys) do
+				entries += 1
+			end
+			for _, key in ipairs(keys) do
+				if type(key) == "string" then
+					table.insert(valid, key)
+				else
+					dropped = true
+				end
+			end
+			dropped = dropped or entries ~= #keys
+		end
+		if dropped then
+			warn_config()
+		end
+		if not dropped or #valid > 0 then
+			newKeys = valid
+		end
+	end
 	return {
-		hotkeys = { new = if type(keys) == "table" then keys else DEFAULT_KEYS },
+		hotkeys = { new = newKeys },
 		teardown = if type(decoded.teardown) == "string" then decoded.teardown else DEFAULT_TEARDOWN,
 	}
 end
@@ -128,32 +172,42 @@ local function session_exists(cx: WindowCx, id: number): boolean
 	return false
 end
 
-local function tab_path(cx: WindowCx, tab: number): string?
+local function tab_paths(cx: WindowCx, tab: number): { string }
+	local paths: { string } = {}
 	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab == tab then
+		if pane.tab == tab and not pending[pane.pane] then
 			local path = managed_path(pane.cwd)
-			if path ~= nil then
-				return path
+			if path ~= nil and table.find(paths, path) == nil then
+				table.insert(paths, path)
 			end
 		end
 	end
-	return nil
+	return paths
 end
 
-local function panes_of_tab(cx: WindowCx, tab: number): { number }
-	local ids: { number } = {}
+local function close_tab(cx: WindowCx, tab: number)
+	local target: number? = nil
 	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab == tab then
-			table.insert(ids, pane.pane)
+		if pane.tab == tab and not pending[pane.pane] then
+			target = pane.pane
+			break
 		end
 	end
-	return ids
-end
-
-local function close_tab_panes(cx: WindowCx, tab: number)
-	for _, id in ipairs(panes_of_tab(cx, tab)) do
-		cx.layout:close(id)
+	if target == nil then
+		return
 	end
+	local sid = session_of_tab(cx, tab)
+	local cur = current_session(cx)
+	if sid ~= nil and cur ~= nil and sid ~= cur.id then
+		cx.sessions:switch(sid)
+	end
+	cx.layout:focus(target)
+	local focused = cx.session:focused()
+	if focused == nil or cx.session:tab_of(focused) ~= tab then
+		cx:toast("error", "Could not focus the worktree tab", "Close it by hand")
+		return
+	end
+	cx:command("close_tab")
 end
 
 local function pane_under(cx: WindowCx, path: string, exceptTab: number?): boolean
@@ -167,40 +221,59 @@ end
 
 local function rebuild_managed(cx: WindowCx)
 	flush(cx)
-	local seen: { [number]: boolean } = {}
-	local found: { [number]: string } = {}
+	local found: { [number]: { string } } = {}
 	for _, pane in ipairs(cx.session:panes()) do
 		local tab = pane.tab
 		if tab ~= nil then
-			seen[tab] = true
-			if found[tab] == nil then
-				local path = managed_path(pane.cwd)
-				if path ~= nil then
-					found[tab] = path
-				end
+			local paths = found[tab] or {}
+			found[tab] = paths
+			local path = managed_path(pane.cwd)
+			if path ~= nil and table.find(paths, path) == nil then
+				table.insert(paths, path)
 			end
 		end
 	end
-	for tab in pairs(seen) do
-		managed[tab] = found[tab]
+	for tab, paths in pairs(found) do
+		if #paths > 0 then
+			managed[tab] = paths
+		else
+			managed[tab] = nil
+		end
 	end
 end
 
-local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
+local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: boolean?): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
 	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(req) }, "beside", { focus = false })
 	if pane == nil then
 		cx:toast("error", "Worktree dialog unavailable")
-		return
+		return false
 	end
-	cx.layout:float(pane)
-	cx.layout:focus(pane)
+	if reveal == false then
+		cx.layout:float(pane, nil, nil, { focus = false })
+	else
+		cx.layout:float(pane)
+		cx.layout:focus(pane)
+	end
 	pending[pane] = { reqid = reqid, cb = cb }
+	return true
 end
 
-local function confirm(cx: WindowCx, title: string, message: string, buttons: { any }, cb: AnswerCb)
-	ask(cx, { mode = "confirm", title = title, message = message, buttons = tern.json.array(buttons) }, cb)
+local function confirm(
+	cx: WindowCx,
+	title: string,
+	message: string,
+	buttons: { any },
+	cb: AnswerCb,
+	reveal: boolean?
+): boolean
+	return ask(
+		cx,
+		{ mode = "confirm", title = title, message = message, buttons = tern.json.array(buttons) },
+		cb,
+		reveal
+	)
 end
 
 local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
@@ -304,7 +377,11 @@ local function open_tab(cx: WindowCx, res: any)
 		end
 	end
 	if tab ~= nil then
-		managed[tab] = path
+		local paths = managed[tab] or {}
+		managed[tab] = paths
+		if table.find(paths, path) == nil then
+			table.insert(paths, path)
+		end
 	end
 end
 
@@ -519,7 +596,13 @@ local function start(cx: WindowCx)
 	end)
 end
 
-local function run_remove(cx: WindowCx, tab: number?, path: string, force: boolean)
+local function run_remove(
+	cx: WindowCx,
+	path: string,
+	force: boolean,
+	done: (cx: WindowCx) -> (),
+	stop: (cx: WindowCx) -> ()
+)
 	local args = { "remove", path, "--keep-tab" }
 	if force then
 		table.insert(args, "--force")
@@ -532,46 +615,65 @@ local function run_remove(cx: WindowCx, tab: number?, path: string, force: boole
 				{ id = "cancel", label = "Cancel" },
 			}, function(answer, cx3)
 				if answer.action == "button" and answer.id == "retry" then
-					run_remove(cx3, tab, path, false)
+					run_remove(cx3, path, false, done, stop)
 				elseif answer.action == "button" and answer.id == "force" then
-					run_remove(cx3, tab, path, true)
+					run_remove(cx3, path, true, done, stop)
+				else
+					stop(cx3)
 				end
 			end)
 			return
 		end
-		if tab ~= nil and #panes_of_tab(cx2, tab) > 0 then
-			handled[path] = true
-			close_tab_panes(cx2, tab)
-		end
 		cx2:toast("success", "Removed " .. tostring(res.branch or path), join_or_nil(res.warnings, "; "))
+		done(cx2)
 	end)
 end
 
-local function confirm_teardown(cx: WindowCx, tab: number?, path: string, tabOpen: boolean)
-	local policy = config().teardown
-	local buttons: { any } = {
-		{ id = "teardown", label = "Tear down", kind = "danger" },
-		{ id = "keep", label = "Keep worktree" },
-	}
-	if tabOpen then
-		table.insert(buttons, { id = "cancel", label = "Cancel" })
+local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, index: number): boolean
+	local path = paths[index]
+	if path == nil then
+		if tab ~= nil then
+			close_tab(cx, tab)
+		end
+		return true
 	end
-	confirm(
+	local function advance(cx2: WindowCx)
+		confirm_teardown(cx2, tab, paths, index + 1)
+	end
+	local function stop(cx2: WindowCx)
+		if tab == nil then
+			advance(cx2)
+		end
+	end
+	local policy = config().teardown
+	local teardown = { id = "teardown", label = "Tear down", kind = "danger" }
+	local keep = { id = "keep", label = "Keep worktree" }
+	local buttons: { any } = if tab ~= nil
+		then { teardown, keep, { id = "cancel", label = "Cancel" } }
+		else { keep, teardown }
+	return confirm(
 		cx,
 		"Tear down worktree?",
 		path .. "\nPolicy: " .. (POLICY[policy] or policy),
 		buttons,
 		function(answer, cx2)
-			if answer.action ~= "button" then
-				return
+			if answer.action == "button" and answer.id == "teardown" then
+				run_remove(cx2, path, false, function(cx3)
+					if tab ~= nil then
+						handled[path] = true
+					end
+					advance(cx3)
+				end, stop)
+			elseif answer.action == "button" and answer.id == "keep" then
+				if tab ~= nil then
+					handled[path] = true
+				end
+				advance(cx2)
+			else
+				stop(cx2)
 			end
-			if answer.id == "teardown" then
-				run_remove(cx2, tab, path, false)
-			elseif answer.id == "keep" and tab ~= nil then
-				handled[path] = true
-				close_tab_panes(cx2, tab)
-			end
-		end
+		end,
+		tab ~= nil
 	)
 end
 
@@ -579,12 +681,16 @@ local function intercept(cx: WindowCx, tab: number?): boolean
 	if tab == nil then
 		return false
 	end
-	local path = tab_path(cx, tab)
-	if path == nil or pane_under(cx, path, tab) then
+	local paths: { string } = {}
+	for _, path in ipairs(tab_paths(cx, tab)) do
+		if not pane_under(cx, path, tab) then
+			table.insert(paths, path)
+		end
+	end
+	if #paths == 0 then
 		return false
 	end
-	confirm_teardown(cx, tab, path, true)
-	return true
+	return confirm_teardown(cx, tab, paths, 1)
 end
 
 tern.command({
@@ -597,7 +703,10 @@ tern.command({
 
 tern.override("close_tab", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()
-	return intercept(cx, if focused ~= nil then cx.session:tab_of(focused) else nil)
+	if focused == nil or pending[focused] then
+		return false
+	end
+	return intercept(cx, cx.session:tab_of(focused))
 end)
 
 tern.override("close_pane", function(cx: WindowCx): boolean?
@@ -614,7 +723,16 @@ tern.override("close_pane", function(cx: WindowCx): boolean?
 	return false
 end)
 
-tern.on("window_start", rebuild_managed)
+tern.on("window_start", function(cx: WindowCx)
+	rebuild_managed(cx)
+	cli({ "list" }, function(res, err, cx2)
+		if err == nil and type(res.root) == "string" and res.root ~= ROOT then
+			ROOT = res.root
+			table.clear(managed)
+			rebuild_managed(cx2)
+		end
+	end)
+end)
 
 for _, name in ipairs({ "tab_created", "pane_created", "cwd" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
@@ -649,15 +767,21 @@ end)
 
 tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)
 	flush(cx)
-	local path = managed[ev.tab]
+	local paths = managed[ev.tab]
 	managed[ev.tab] = nil
-	if path == nil then
+	if paths == nil then
 		return
 	end
-	if not handled[path] and tern.fs.exists(path) and not pane_under(cx, path, nil) then
-		confirm_teardown(cx, nil, path, false)
+	local open: { string } = {}
+	for _, path in ipairs(paths) do
+		if not handled[path] and tern.fs.exists(path) and not pane_under(cx, path, nil) then
+			table.insert(open, path)
+		end
+		handled[path] = nil
 	end
-	handled[path] = nil
+	if #open > 0 then
+		confirm_teardown(cx, nil, open, 1)
+	end
 end)
 
 local function export_args(...: any): ({ any }, WindowCx, any)
