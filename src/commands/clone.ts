@@ -6,7 +6,7 @@ import { originSlug, repoRoot } from '../git.ts';
 import type { RepoSlug } from '../git.ts';
 import { CliError, must } from '../proc.ts';
 
-/** Where a clone of a GitHub repository lives, and if this run cloned it. */
+/** The path of the clone of a GitHub repository, and if this command cloned it. */
 export interface CloneResult {
   root: string;
   cloned: boolean;
@@ -31,8 +31,8 @@ export const cloneRepo = async (slug: RepoSlug): Promise<CloneResult> => {
   const nameWithOwner = `${slug.owner}/${slug.name}`;
   const root = path.join(loadConfig().cloneRoot, slug.owner, slug.name);
   if (existsSync(root)) {
-    const origin = (await isCheckoutTop(root)) ? await originSlug(root) : null;
-    if (origin?.owner === slug.owner && origin.name === slug.name) {
+    const originRepo = (await isCheckoutTop(root)) ? await originSlug(root) : null;
+    if (originRepo?.owner === slug.owner && originRepo.name === slug.name) {
       return { cloned: false, root };
     }
     throw new CliError('path_conflict', `${root} exists and is not a clone of ${nameWithOwner}`, { path: root });

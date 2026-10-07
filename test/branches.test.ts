@@ -16,7 +16,7 @@ const PRS = [
 
 let sandbox: Sandbox;
 
-const commitBranch = async (repo: TmpRepo, branch: string, date: string): Promise<void> => {
+const pushDatedBranch = async (repo: TmpRepo, branch: string, date: string): Promise<void> => {
   vi.stubEnv('GIT_COMMITTER_DATE', date);
   await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', branch);
   await git(repo.dir, 'push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`);
@@ -24,7 +24,7 @@ const commitBranch = async (repo: TmpRepo, branch: string, date: string): Promis
   vi.stubEnv('GIT_COMMITTER_DATE', undefined);
 };
 
-const githubOrigin = async (repo: TmpRepo): Promise<void> => {
+const useGithubOrigin = async (repo: TmpRepo): Promise<void> => {
   const ssh = path.join(tempDir('ssh'), 'ssh');
   writeFileSync(ssh, `#!/bin/sh\nexec git upload-pack '${repo.origin}'\n`, { mode: 0o755 });
   vi.stubEnv('GIT_SSH_COMMAND', ssh);
@@ -39,10 +39,10 @@ describe('branches command', () => {
   describe(run, () => {
     it('lists remote branches newest first, open PRs and worktrees', async () => {
       const repo = await tmpRepo('aoyama');
-      await commitBranch(repo, 'aaa', '2000-01-01T00:00:00Z');
-      await commitBranch(repo, 'zzz', '2031-01-01T00:00:00Z');
-      await commitBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
-      await githubOrigin(repo);
+      await pushDatedBranch(repo, 'aaa', '2000-01-01T00:00:00Z');
+      await pushDatedBranch(repo, 'zzz', '2031-01-01T00:00:00Z');
+      await pushDatedBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
+      await useGithubOrigin(repo);
       writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
       const managed = worktreePath('aoyama', 'feature/x');
       await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'feature/x');
@@ -68,7 +68,7 @@ describe('branches command', () => {
 
     it('lists local and origin branches once each, newest first', async () => {
       const repo = await tmpRepo('aoyama');
-      await commitBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
+      await pushDatedBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
       vi.stubEnv('GIT_COMMITTER_DATE', '2031-01-01T00:00:00Z');
       await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'local');
       await git(repo.dir, 'branch', 'feature/local');
@@ -106,7 +106,7 @@ describe('branches command', () => {
 
     it('warns and gives no PRs when gh fails', async () => {
       const repo = await tmpRepo('aoyama');
-      await githubOrigin(repo);
+      await useGithubOrigin(repo);
       const result = await run(['--repo', repo.dir]);
       expect(result.prs).toStrictEqual([]);
       expect(result.warnings).toStrictEqual(['pr list failed: fake gh: no fixture']);

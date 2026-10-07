@@ -9,9 +9,9 @@ import type { Sandbox, TmpRepo } from './helpers.ts';
 let sandbox: Sandbox;
 let repo: TmpRepo;
 
-const managed = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
+const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
-const lines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
+const readLines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
 
 const hasBranch = async (branch: string): Promise<boolean> => {
   const result = await runProcess(['git', '-C', repo.dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
@@ -19,7 +19,7 @@ const hasBranch = async (branch: string): Promise<boolean> => {
 };
 
 const addManaged = async (flags: string[]): Promise<string> => {
-  const dir = managed('feature-x');
+  const dir = managedPath('feature-x');
   mkdirSync(path.dirname(dir), { recursive: true });
   await git(repo.dir, 'worktree', 'add', '--quiet', ...flags, dir, 'origin/feature/x');
   return dir;
@@ -50,7 +50,7 @@ const useGithubOrigin = async (): Promise<void> => {
   vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
 };
 
-const logGit = async (): Promise<string> => {
+const logGitCalls = async (): Promise<string> => {
   const shimDir = tempDir('git-log');
   const log = path.join(shimDir, 'git.log');
   const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
@@ -67,7 +67,7 @@ const shimForcedRemove = async (action: string): Promise<void> => {
   vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
 };
 
-const mergedPrs = (count: string): void => {
+const fakeMergedPrCount = (count: string): void => {
   const args = ['pr', 'list', '--repo', 'virtusize/aoyama', '--head', 'feature/x', '--state', 'merged', '--json', 'number', '--jq', 'length'];
   writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), `${count}\n`);
 };
@@ -96,7 +96,7 @@ describe('remove command', () => {
     });
 
     it('rejects a dir under the root that is not in a repo', async () => {
-      const plain = managed('plain');
+      const plain = managedPath('plain');
       mkdirSync(plain, { recursive: true });
       await expect(run([plain])).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
     });
@@ -113,7 +113,7 @@ describe('remove command', () => {
     });
 
     it('rejects a main checkout under the root', async () => {
-      const clone = managed('clone');
+      const clone = managedPath('clone');
       await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
       await expect(run([clone, '--force'])).rejects.toMatchObject({ code: 'not_managed' });
       expect(existsSync(clone)).toBeTruthy();
@@ -134,7 +134,7 @@ describe('remove command', () => {
       await expect(run([dir])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, closedBlocks: [2, 3], removed: dir, warnings: [] });
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
-      expect(lines(sandbox.ternLog).toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
+      expect(readLines(sandbox.ternLog).toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
     });
 
     it('keeps an unmerged branch', async () => {
@@ -155,7 +155,7 @@ describe('remove command', () => {
 
     it('deletes a squash-merged branch with a merged pull request', async () => {
       await useGithubOrigin();
-      mergedPrs('1');
+      fakeMergedPrCount('1');
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
@@ -163,7 +163,7 @@ describe('remove command', () => {
 
     it('keeps a branch without a merged pull request', async () => {
       await useGithubOrigin();
-      mergedPrs('0');
+      fakeMergedPrCount('0');
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
     });
@@ -229,7 +229,7 @@ describe('remove command', () => {
       await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed' });
       await expect(run([dir])).rejects.toThrow(/contains modified or untracked files.*\S$/su);
       expect(existsSync(path.join(dir, 'junk.txt'))).toBeTruthy();
-      expect(lines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
+      expect(readLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json']);
     });
 
     it('removes a dirty worktree and closes its tabs with --force, and leaves other stale records alone', async () => {
@@ -247,17 +247,17 @@ describe('remove command', () => {
     it('does not force a locked worktree without --force', async () => {
       const dir = await addFeature();
       await git(repo.dir, 'worktree', 'lock', dir);
-      const log = await logGit();
+      const log = await logGitCalls();
       const failure = run([dir]);
       await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
       await expect(failure).rejects.toThrow(/locked/u);
       expect(existsSync(dir)).toBeTruthy();
-      expect(lines(log).join('\n')).not.toMatch(/remove --force|status --porcelain/u);
+      expect(readLines(log).join('\n')).not.toMatch(/remove --force|status --porcelain/u);
     });
 
     it('deletes a moved worktree with --force and prunes its record', async () => {
       const old = await addFeature();
-      const moved = managed('moved');
+      const moved = managedPath('moved');
       renameSync(old, moved);
       await expect(run([moved])).rejects.toThrow(/is not a working tree/u);
       await expect(run([moved, '--force'])).resolves.toMatchObject({ branch: 'feature/x', branchDeleted: true, removed: moved });
@@ -291,7 +291,7 @@ describe('remove command', () => {
       await git(repo.dir, 'push', '--quiet', 'origin', 'feature/s');
       await git(repo.dir, 'switch', '--quiet', 'main');
       await git(repo.dir, 'branch', '--quiet', '-D', 'feature/s');
-      const dir = managed('feature-s');
+      const dir = managedPath('feature-s');
       await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/s', dir, 'origin/feature/s');
       await git(dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'update', '--init');
       return dir;
@@ -329,7 +329,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       writeLs([dir]);
       await expect(run([dir, '--keep-tab'])).resolves.toMatchObject({ closedBlocks: [], warnings: [] });
-      expect(lines(sandbox.ternLog)).toStrictEqual([]);
+      expect(readLines(sandbox.ternLog)).toStrictEqual([]);
     });
 
     it('removes the worktree when Tern cannot list the blocks', async () => {

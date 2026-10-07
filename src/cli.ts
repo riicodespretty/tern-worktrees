@@ -18,7 +18,7 @@ export type CommandLoader = (name: string) => Promise<CommandModule>;
 
 const COMMAND_NAME = /^[a-z-]+$/u;
 
-/** Returns `name` when it can name a command module, a lowercase word with dashes, else throws `bad_args`. */
+/** Returns `name` when it is lowercase letters and dashes only, the form of a command module name. Else it throws `bad_args`. */
 export const checkCommandName = (name: string): string => {
   if (!COMMAND_NAME.test(name)) {
     throw new CliError('bad_args', `unknown command ${name}`);
@@ -30,9 +30,9 @@ export const checkCommandName = (name: string): string => {
 export const commandLoader =
   (importCommand: CommandLoader): CommandLoader =>
   async name => {
-    const command = checkCommandName(name);
+    checkCommandName(name);
     try {
-      return await importCommand(command);
+      return await importCommand(name);
     } catch {
       throw new CliError('bad_args', `unknown command ${name}`);
     }
@@ -51,7 +51,7 @@ const toCliError = (cause: unknown): CliError => {
   if (!(cause instanceof Error)) {
     return new CliError('git_failed', String(cause));
   }
-  // SAFETY: a Node error carries an optional string `code`, and other errors have no `code`.
+  // SAFETY: a Node error has an optional string `code`, and other errors have no `code`.
   const { code } = cause as NodeJS.ErrnoException;
   return new CliError(code?.startsWith('ERR_PARSE_ARGS_') === true ? 'bad_args' : 'git_failed', cause.message);
 };

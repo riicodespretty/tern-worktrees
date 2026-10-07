@@ -7,7 +7,7 @@ Git worktrees shown as Tern tabs, for the user and for agents, without Orca.
 ### Worktrees
 
 **Worktree root**:
-The directory that holds the worktrees of Tern, one folder for each repository.
+The directory where the plugin makes worktrees, one folder for each repository.
 _Avoid_: Workspace, worktree dir
 
 **Managed worktree**:
@@ -19,7 +19,7 @@ A Tern tab with its panes in a managed worktree.
 _Avoid_: Branch tab
 
 **Relocate**:
-To move the worktree of a branch into the worktree root from a directory that is not in it, so that it becomes a managed worktree.
+To move the worktree of a branch into the worktree root from a directory that is not in the root. The worktree then is a managed worktree.
 _Avoid_: Adopt, migrate, import
 
 ### Teardown

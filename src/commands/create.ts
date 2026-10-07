@@ -38,14 +38,14 @@ interface Options {
 
 interface Context {
   hasOrigin: boolean;
-  name: string;
+  repoName: string;
   root: string;
   warnings: string[];
 }
 
 interface Target {
   branch: string;
-  fork: string | null;
+  forkPr: string | null;
   path: string;
 }
 
@@ -70,7 +70,7 @@ const parse = (args: string[]): Options => {
       },
     }).values;
   } catch (error) {
-    // SAFETY: `parseArgs` throws a TypeError for each bad argument.
+    // SAFETY: `parseArgs` throws a TypeError for the first bad argument.
     throw badArgs((error as TypeError).message);
   }
 };
@@ -93,7 +93,7 @@ const checkOptions = (options: Options): string => {
 
 const git = async (root: string, ...args: string[]): Promise<string> => await must(['git', '-C', root, ...args], 'git_failed');
 
-const gitOk = async (root: string, ...args: string[]): Promise<boolean> => {
+const gitSucceeds = async (root: string, ...args: string[]): Promise<boolean> => {
   const result = await runProcess(['git', '-C', root, ...args]);
   return result.status === 0;
 };
@@ -114,13 +114,13 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
     throw badArgs('--pr needs a GitHub origin');
   }
   const view = await must(['gh', 'pr', 'view', pr, '--repo', `${slug.owner}/${slug.name}`, '--json', 'number,headRefName,isCrossRepository'], 'gh_failed');
-  // SAFETY: `gh pr view --json` prints the fields it was asked for.
+  // SAFETY: `gh pr view --json` prints the fields that its `--json` flag names.
   const { headRefName, isCrossRepository } = JSON.parse(view) as PullRequest;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
-    return { branch, fork: pr, path: worktreePath(ctx.name, branch) };
+    return { branch, forkPr: pr, path: worktreePath(ctx.repoName, branch) };
   }
-  return { branch: headRefName, fork: null, path: worktreePath(ctx.name, headRefName) };
+  return { branch: headRefName, forkPr: null, path: worktreePath(ctx.repoName, headRefName) };
 };
 
 const startPoint = async (ctx: Context): Promise<string> => {
@@ -128,42 +128,42 @@ const startPoint = async (ctx: Context): Promise<string> => {
   return ctx.hasOrigin ? `origin/${name}` : name;
 };
 
-const addArgs = async (ctx: Context, target: Target, isNew: boolean): Promise<string[]> => {
-  const local = await gitOk(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${target.branch}`);
-  const remote = await gitOk(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${target.branch}`);
+const worktreeAddArgs = async (ctx: Context, target: Target, isNew: boolean): Promise<string[]> => {
+  const hasLocal = await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${target.branch}`);
+  const hasRemote = await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${target.branch}`);
   if (isNew) {
-    if (local || remote) {
+    if (hasLocal || hasRemote) {
       throw badArgs(`branch ${target.branch} already exists`);
     }
     return ['-b', target.branch, target.path, await startPoint(ctx)];
   }
-  if (local) {
+  if (hasLocal) {
     return [target.path, target.branch];
   }
-  if (remote) {
+  if (hasRemote) {
     return ['--track', '-b', target.branch, target.path, `origin/${target.branch}`];
   }
   throw badArgs(`no branch ${target.branch}; pass --new to create it`);
 };
 
-const checkFree = (target: Target): void => {
+const assertPathFree = (target: Target): void => {
   if (existsSync(target.path)) {
     throw new CliError('path_conflict', `${target.path} exists and is not the worktree of ${target.branch}`, { path: target.path });
   }
 };
 
 const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promise<void> => {
-  checkFree(target);
-  if (target.fork === null) {
-    await git(ctx.root, 'worktree', 'add', ...(await addArgs(ctx, target, isNew)));
+  assertPathFree(target);
+  if (target.forkPr === null) {
+    await git(ctx.root, 'worktree', 'add', ...(await worktreeAddArgs(ctx, target, isNew)));
     return;
   }
   await git(ctx.root, 'worktree', 'add', '--detach', target.path, await startPoint(ctx));
-  await must(['gh', 'pr', 'checkout', target.fork, '--branch', target.branch], 'gh_failed', { cwd: target.path });
+  await must(['gh', 'pr', 'checkout', target.forkPr, '--branch', target.branch], 'gh_failed', { cwd: target.path });
 };
 
 const relocate = async (ctx: Context, target: Target, existing: Worktree): Promise<void> => {
-  checkFree(target);
+  assertPathFree(target);
   if (existing.locked) {
     await git(ctx.root, 'worktree', 'unlock', existing.path);
   }
@@ -182,14 +182,15 @@ const relocate = async (ctx: Context, target: Target, existing: Worktree): Promi
   ctx.warnings.push(`recreated: git worktree move refused (${reason})`);
 };
 
-const place = async (ctx: Context, target: Target, options: Options): Promise<CreateStatus> => {
+const placeWorktree = async (ctx: Context, target: Target, options: Options): Promise<CreateStatus> => {
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
   if (!existing) {
     await addWorktree(ctx, target, options.new);
     return 'created';
   }
-  if (isUnder(existing.path, target.path) && isUnder(target.path, existing.path)) {
+  const samePath = isUnder(existing.path, target.path) && isUnder(target.path, existing.path);
+  if (samePath) {
     return 'reused';
   }
   if (existing.main) {
@@ -214,15 +215,15 @@ const updateSubmodules = async (ctx: Context, dir: string): Promise<void> => {
 
 const openTab = async (ctx: Context, target: Target): Promise<CreatedTab> => {
   const blocks = await blocksUnder(target.path);
-  const shown = blocks.at(0);
-  if (shown) {
-    await focus(shown.block.id);
-    return { block: shown.block.id, opened: false, session: shown.session.name };
+  const existingBlock = blocks.at(0);
+  if (existingBlock) {
+    await focus(existingBlock.block.id);
+    return { block: existingBlock.block.id, opened: false, session: existingBlock.session.name };
   }
   const session = await sessionForRepo(ctx.root);
-  const block = session === null ? await newSession(ctx.name, target.path) : await newTab(session.name, target.path);
+  const block = session === null ? await newSession(ctx.repoName, target.path) : await newTab(session.name, target.path);
   await rename(block, target.branch);
-  return { block, opened: true, session: session?.name ?? ctx.name };
+  return { block, opened: true, session: session?.name ?? ctx.repoName };
 };
 
 const tryOpenTab = async (ctx: Context, target: Target): Promise<CreatedTab | null> => {
@@ -248,11 +249,11 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   if (root === null) {
     throw new CliError('not_a_repo', `${repo} is not in a git repository`);
   }
-  const ctx: Context = { hasOrigin: await gitOk(root, 'remote', 'get-url', 'origin'), name: path.basename(root), root, warnings: [] };
+  const ctx: Context = { hasOrigin: await gitSucceeds(root, 'remote', 'get-url', 'origin'), repoName: path.basename(root), root, warnings: [] };
   await fetchOrigin(ctx);
   const target =
-    options.branch === undefined ? await pullRequestTarget(ctx, String(options.pr)) : { branch: options.branch, fork: null, path: worktreePath(ctx.name, options.branch) };
-  const status = await place(ctx, target, options);
+    options.branch === undefined ? await pullRequestTarget(ctx, String(options.pr)) : { branch: options.branch, forkPr: null, path: worktreePath(ctx.repoName, options.branch) };
+  const status = await placeWorktree(ctx, target, options);
   if (status !== 'reused') {
     await updateSubmodules(ctx, target.path);
   }

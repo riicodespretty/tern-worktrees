@@ -20,15 +20,15 @@ interface Listed {
 }
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
-const name = `twt-smoke-${Math.floor(Date.now() / 1000)}`;
-const base = mkdtempSync(path.join(realpathSync(tmpdir()), 'twt-smoke-'));
+const smokeName = `twt-smoke-${Math.floor(Date.now() / 1000)}`;
+const tempRoot = mkdtempSync(path.join(realpathSync(tmpdir()), 'twt-smoke-'));
 const env = {
   GIT_AUTHOR_EMAIL: 'smoke@example.com',
   GIT_AUTHOR_NAME: 'Smoke',
   GIT_COMMITTER_EMAIL: 'smoke@example.com',
   GIT_COMMITTER_NAME: 'Smoke',
-  TERN_PLUGIN_DATA: path.join(base, 'plugin-data'),
-  TERN_WT_HOME: path.join(base, 'home'),
+  TERN_PLUGIN_DATA: path.join(tempRoot, 'plugin-data'),
+  TERN_WT_HOME: path.join(tempRoot, 'home'),
 };
 
 const check = (ok: boolean, message: string): void => {
@@ -47,10 +47,10 @@ const cli = async <T>(...args: string[]): Promise<T> => {
 };
 
 const makeClone = async (): Promise<string> => {
-  const origin = path.join(base, 'origin.git');
-  const clone = path.join(base, name);
-  await git(base, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
-  await git(base, 'clone', '--quiet', origin, clone);
+  const origin = path.join(tempRoot, 'origin.git');
+  const clone = path.join(tempRoot, smokeName);
+  await git(tempRoot, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
+  await git(tempRoot, 'clone', '--quiet', origin, clone);
   await git(clone, 'symbolic-ref', 'HEAD', 'refs/heads/main');
   writeFileSync(path.join(clone, 'README.md'), 'smoke\n');
   await git(clone, 'add', 'README.md');
@@ -83,16 +83,16 @@ const smoke = async (): Promise<void> => {
   check(listed.worktrees.length === 1, `list: ${listed.worktrees.length} worktrees, not 1`);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);
-  const left = await blocksUnder(created.path);
-  check(left.length === 0, `remove: ${left.length} blocks left under ${created.path}`);
+  const blocksLeft = await blocksUnder(created.path);
+  check(blocksLeft.length === 0, `remove: ${blocksLeft.length} blocks left under ${created.path}`);
 };
 
 const cleanUp = async (): Promise<void> => {
   const listing = await ls();
-  if (listing.sessions.some(session => session.name === name)) {
-    await must([ternBin(), 'kill', 'session', name, '--json'], 'tern_failed');
+  if (listing.sessions.some(session => session.name === smokeName)) {
+    await must([ternBin(), 'kill', 'session', smokeName, '--json'], 'tern_failed');
   }
-  rmSync(base, { force: true, recursive: true });
+  rmSync(tempRoot, { force: true, recursive: true });
 };
 
 mkdirSync(env.TERN_PLUGIN_DATA, { recursive: true });

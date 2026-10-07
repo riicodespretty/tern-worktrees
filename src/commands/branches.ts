@@ -13,7 +13,7 @@ export interface PullRequest {
   fork: boolean;
 }
 
-/** A worktree of the repository, and if it is in the worktree root. */
+/** A worktree of the repository. `managed` tells if the worktree is in the worktree root. */
 export interface BranchWorktree {
   branch: string | null;
   path: string;
@@ -75,22 +75,22 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
   }
   const warnings: string[] = [];
-  const remote = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
-  const hasOrigin = remote.status === 0;
+  const originUrl = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
+  const hasOrigin = originUrl.status === 0;
   if (hasOrigin) {
-    const fetch = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
-    if (fetch.status !== 0) {
-      warnings.push(`fetch failed: ${fetch.stderr.trim()}`);
+    const fetchResult = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
+    if (fetchResult.status !== 0) {
+      warnings.push(`fetch failed: ${fetchResult.stderr.trim()}`);
     }
   }
   const slug = await originSlug(root);
-  const [branches, prs, all, defaultName] = await Promise.all([
+  const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
     listBranches(root, hasOrigin),
     slug === null ? [] : listPullRequests(slug, warnings),
     worktrees(root),
     defaultBranch(root),
   ]);
-  const managedRoot = worktreeRoot();
+  const worktreeRootDir = worktreeRoot();
   return {
     branches,
     default: defaultName,
@@ -98,6 +98,6 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     prs,
     repo: root,
     warnings,
-    worktrees: all.map(worktree => ({ branch: worktree.branch, managed: isUnder(worktree.path, managedRoot), path: worktree.path })),
+    worktrees: repoWorktrees.map(worktree => ({ branch: worktree.branch, managed: isUnder(worktree.path, worktreeRootDir), path: worktree.path })),
   };
 };

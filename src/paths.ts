@@ -2,7 +2,8 @@ import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-const PLUGIN_ID = 'tern-worktrees';
+/** The id of the plugin in Tern. */
+export const PLUGIN_ID = 'tern-worktrees';
 
 /** The value of the env var `name`, with an empty value read as unset. */
 export const envVar = (name: string): string | undefined => {
@@ -51,18 +52,19 @@ export const expandHome = (target: string): string => {
   return target.startsWith('~/') ? path.join(userHome(), target.slice(2)) : target;
 };
 
-const realish = (target: string): string => {
+/** The real path of `target`, also when `target` is not on disk: it resolves the nearest parent on disk, then adds back the missing segments. */
+const realpathOfExistingPart = (target: string): string => {
   try {
     return realpathSync.native(target);
   } catch {
-    return path.join(realish(path.dirname(target)), path.basename(target));
+    return path.join(realpathOfExistingPart(path.dirname(target)), path.basename(target));
   }
 };
 
 /** Tells if `child` is `parent` or in it. It resolves symbolic links first, and it compares full path segments only. */
 export const isUnder = (child: string, parent: string): boolean => {
-  const realChild = realish(path.resolve(child));
-  const realParent = realish(path.resolve(parent));
+  const realChild = realpathOfExistingPart(path.resolve(child));
+  const realParent = realpathOfExistingPart(path.resolve(parent));
   const prefix = realParent.endsWith(path.sep) ? realParent : realParent + path.sep;
   return realChild === realParent || realChild.startsWith(prefix);
 };

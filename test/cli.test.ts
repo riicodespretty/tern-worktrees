@@ -42,6 +42,18 @@ describe('cli', () => {
     });
   });
 
+  describe(commandLoader, () => {
+    it.each(['Resolve', '../cli', 'resolve.ts'])('never imports the name %j', async name => {
+      const imported: string[] = [];
+      const load = commandLoader(async moduleName => {
+        imported.push(moduleName);
+        return await fixtures('throw-error');
+      });
+      await expect(load(name)).rejects.toThrow(new CliError('bad_args', `unknown command ${name}`));
+      expect(imported).toStrictEqual([]);
+    });
+  });
+
   describe(main, () => {
     it('prints the result of a command as one JSON line', async () => {
       const repo = await tmpRepo('demo');

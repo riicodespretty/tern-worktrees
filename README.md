@@ -42,7 +42,7 @@ With this install, also link two paths to a checkout: `~/.local/bin/tern-wt` to 
 2. Type to filter the open pull requests and the branches. A branch with a worktree shows `· worktree`.
 3. Press Enter on a branch or a pull request. To make a new branch from `origin/<default>`, type its name and press Enter on `Create branch “<name>” from <default>`.
 
-The tab opens with the name of the branch, in the session of that repository. When no session shows that repository, a new session opens. When the worktree has a tab, that tab gets the focus.
+The tab opens with the name of the branch, in the session of that repository. When no session shows that repository, a new session opens. When the worktree has a tab, the plugin focuses that tab.
 
 ### Use a different repository
 
@@ -150,7 +150,7 @@ The full contract, with each output field, is in the agent skill.
 
 ## The agent skill
 
-[`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) teaches omp agents to use `tern-wt`, not `git worktree` or `orca worktree`. It also gives the rules for teardown: an agent removes only a worktree that it made or that the user names, and uses `--force` only after the user agrees.
+[`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) teaches omp agents to use `tern-wt`, not `git worktree` or `orca worktree`. It also gives the teardown rules. An agent removes only a worktree that it made or that the user names. It uses `--force` only after the user agrees.
 
 The plugin also gives Carly the exports `create`, `list` and `remove`, which run the same CLI commands.
 
