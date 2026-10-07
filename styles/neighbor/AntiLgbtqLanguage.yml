@@ -1,0 +1,30 @@
+# neighbor/AntiLgbtqLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js ANTI_LGBTQ_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags outdated, pathologizing, or offensive terms regarding sexual orientation and gender identity.
+
+extends: substitution
+message: "'%s' is outdated or offensive regarding LGBTQ+ identity. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bhomosexual[s]?\b: 'gay / lesbian / bisexual'
+  \bsexual preference[s]?\b: 'sexual orientation'
+  \btransgendered\b: 'transgender'
+  \ba transgender\b: 'a transgender person'
+  \btransgenderism\b: 'transgender people / trans rights'
+  \b(trans ideology|gender ideology)\b: 'transgender rights'
+  \btrans-identified\b: 'transgender'
+  \b(trans male|trans female)\b: 'trans man / trans woman'
+  \btransvestite[s]?\b: 'transgender (or use specific terms as preferred)'
+  \bcross[- ]dresser[s]?\b: 'transgender (or use specific terms as preferred)'
+  \bfaggot[s]?\b: '(highly offensive slur, avoid entirely)'
+  \bfag[s]?\b: '(highly offensive slur, avoid entirely. Note: slang for cigarette in UK but slur in US)'
+  \bqueer\b: '(use only if referring to self-identification, otherwise avoid as it can be a slur)'
+  \bhermaphrodite[s]?\b: 'intersex / person with intersex traits'
+  \bgender identity disorder\b: 'gender dysphoria / gender incongruence'
+  \bsex change[s]?\b: 'gender transition / gender-affirming surgery'
+  \blifestyle choice[s]?\b: 'sexual orientation / gender identity'

@@ -1,0 +1,79 @@
+# neighbor/AbleistLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js ABLEIST_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags ableist terms, condescending euphemisms, and suffering-framing
+# when writing about disability.
+#
+# Why all warnings, not errors:
+#   Language is context-dependent. A term flagged here may be appropriate
+#   in a direct quotation, a clinical context, or when used by a person
+#   describing their own experience. Nicolas Steenhout (incl.ca) and
+#   Leonie Watson remind us: "There is no right or wrong answer because
+#   it is a matter of personal choice, and the choice depends on context."
+#   These rules are suggestions to think, not verdicts.
+#
+# Sources:
+#   NCDJ Disability Language Style Guide
+#     cronkite.asu.edu/ncdj/disability-language-style-guide
+#   AP Stylebook - Disability
+#     amdisrights.org/ap-stylebook-primer-on-disability
+#   ADA National Network
+#     adata.org/factsheet/ADANN-writing
+#   APA Style - Bias-Free Language
+#     apastyle.apa.org/style-grammar-guidelines/bias-free-language/disability
+#   SIGACCESS Accessible Writing Guide
+#     sigaccess.org/welcome-to-sigaccess/resources/accessible-writing-guide/
+#   Nicolas Steenhout
+#     incl.ca/disability-language-is-a-nuanced-thing/
+#
+# Each term listed here appears in at least two independent sources above.
+
+
+extends: substitution
+message: "'%s' may be ableist language. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bcrip+le[sd]?\b: 'person who uses a wheelchair / person with a mobility disability'
+  \bretard(ed|s)?\b: 'person with an intellectual disability'
+  \bimbecile[s]?\b: 'person with an intellectual disability'
+  \bmoron[s]?\b: 'person with an intellectual disability'
+  \bdumb\b: 'mute / nonverbal / does not use speech'
+  \blame\b: 'weak / unconvincing (for the non-disability sense)'
+  \bvegetable[s]?\b: 'person in a persistent vegetative state'
+  \bfreak[s]?\b: '(rewrite)'
+  \bspastic[s]?\b: 'clumsy / energetic (highly offensive ableist slur in UK)'
+  \bspaz(zes|zed)?\b: 'clumsy / energetic (highly offensive ableist slur in UK)'
+  \bspecial needs\b: 'disability / person with a disability'
+  \bdifferently[- ]abled\b: 'person with a disability'
+  \bhandi[- ]?capable\b: 'person with a disability'
+  \bphysically challenged\b: 'person with a physical disability'
+  \bmentally challenged\b: 'person with an intellectual or cognitive disability'
+  \bspecial\b(?=\s+(ed|education|class|school)): 'special education (acceptable in formal context) / disability services'
+  \bconfined to (a |their )?wheelchair\b: 'wheelchair user / person who uses a wheelchair'
+  \bwheelchair[- ]bound\b: 'wheelchair user / person who uses a wheelchair'
+  \bsuffers? from\b: 'has / lives with / is diagnosed with'
+  \bafflicted (with|by)\b: 'has / lives with'
+  \bvictim of\b: 'person who has / person with'
+  \bbound to (a |the )?(bed|chair|wheelchair)\b: 'uses a bed / uses a wheelchair'
+  \bstricken (with|by)\b: 'has / lives with'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: NCDJ, A11y Collective)
+  \bcrippling\b: 'devastating / severe / debilitating'
+  \bcommitted suicide\b: 'died by suicide'
+  \bcra+zy\b: 'wild / unexpected / intense (for non-clinical uses)'
+  \bpsycho\b: 'reckless / erratic / (rewrite)'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: NCDJ, APA)
+  \bschizophrenic\b: 'contradictory / inconsistent (for non-clinical uses)'
+  \b(a\s+)?manic[- ]depressive\b: 'person with bipolar disorder'
+  \bjunkie[s]?\b: 'person with a substance use disorder'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: ADA NN, APA)
+  \baddict[s]?\b: 'person with a substance use disorder / person in recovery'
+  \bnormal (people|person|individuals?|users?)\b: 'people without disabilities / non-disabled people'
+  \bnormal (hearing|vision|sight)\b: 'typical hearing / full hearing / unimpaired vision'
+  \bhearing[- ]impaired\b: 'deaf / hard of hearing'
+  \bthe (disabled|blind|deaf|mentally ill)\b: 'people with disabilities / blind people / deaf people / people with mental illness'
+  \bhandicapped\b: 'person with a disability / accessible (for facilities)'
+  \bmongol(oid)?s?\b: "person with Down's syndrome"

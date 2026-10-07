@@ -1,0 +1,8 @@
+# STE rule 6.6
+extends: occurrence
+message: "ASD-STE100 6.6: This paragraph has %d sentences. Write paragraphs of no more than 6 sentences."
+link: https://asd-ste100.org/
+level: suggestion
+scope: paragraph
+max: 6
+token: '(?<!\b(?:Fig|fig|e\.g|i\.e|etc|No|no|ref|Ref|approx|min|sec|hr|dia|vol|temp|max|para|dept|vs|[A-Z]))[.!?]+[''\"”’)]*(?:\s+|$)'

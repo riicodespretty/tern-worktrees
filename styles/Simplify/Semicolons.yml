@@ -1,0 +1,8 @@
+# STE rule 8.1
+extends: existence
+message: "ASD-STE100 8.1: Do not use a semicolon. Write two sentences, or use a comma or a list."
+link: https://asd-ste100.org/
+level: error
+nonword: true
+raw:
+  - '(?<!&#?[A-Za-z0-9]{1,10});'

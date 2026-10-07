@@ -1,0 +1,142 @@
+# STE rules 1.1, GR-7
+extends: substitution
+message: "ASD-STE100 1.1, GR-7: Use %[1]s, not '%[2]s'. Write words that apply to all persons."
+link: https://asd-ste100.org/
+level: error
+scope: paragraph
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  'he or she(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  'she or he(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  'he/she(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  's/he(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  'his/her(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': their
+  'his or her(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': their
+  'him/her(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': them
+  'him or her(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': them
+  'he(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  'she(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': they
+  'him(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': them
+  'her(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'them|their'
+  'his(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': their
+  '(?-i:\bman\b)(?!\s+pages?\b|-in-the-middle\b)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': person
+  '(?-i:\bwoman\b)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': person
+  '(?-i:\bmen\b)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'persons|personnel'
+  '(?-i:\bwomen\b)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'persons|personnel'
+  'mankind(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': persons
+  'manpower(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': personnel
+  'manned(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': crewed
+  'unmanned(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'uncrewed|autonomous'
+  'manning(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'staffing|crewing'
+  'spokesman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': spokesperson
+  'spokesmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': spokespersons
+  'spokeswoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': spokesperson
+  'spokeswomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': spokespersons
+  'chairman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'chair|chairperson'
+  'chairmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'chairs|chairpersons'
+  'chairwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'chair|chairperson'
+  'chairwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'chairs|chairpersons'
+  'workman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': worker
+  'workmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': workers
+  'layman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'non-specialist'
+  'laymen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'non-specialists'
+  'craftsman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'artisan|specialist|technician'
+  'craftsmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'artisans|specialists|technicians'
+  'repairman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': technician
+  'repairmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': technicians
+  'serviceman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': technician
+  'servicemen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': technicians
+  'foreman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': supervisor
+  'foremen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': supervisors
+  'salesman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': salesperson
+  'salesmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': salespeople
+  'saleswoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': salesperson
+  'saleswomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': salespeople
+  'fireman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': firefighter
+  'firemen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': firefighters
+  'firewoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': firefighter
+  'firewomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': firefighters
+  'policeman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': police officer
+  'policemen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': police officers
+  'policewoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': police officer
+  'policewomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': police officers
+  'postman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carrier|postal worker'
+  'postmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carriers|postal workers'
+  'postwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carrier|postal worker'
+  'postwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carriers|postal workers'
+  'mailman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carrier|postal worker'
+  'mailmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carriers|postal workers'
+  'mailwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carrier|postal worker'
+  'mailwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'mail carriers|postal workers'
+  'watchman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': guard
+  'watchmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': guards
+  'fisherman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': fisher
+  'fishermen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': fishers
+  'seaman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'sailor|crew member'
+  'seamen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'sailors|crew members'
+  'councilman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': council member
+  'councilmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': council members
+  'councilwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': council member
+  'councilwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': council members
+  'tradesman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'trades worker|craftsperson|technician'
+  'tradesmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'trades workers|craftspeople|technicians'
+  'ombudsman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'ombudsperson|ombud'
+  'ombudsmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'ombudspersons|ombuds'
+  'handyman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'handyworker|maintenance worker|technician'
+  'handymen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'handyworkers|maintenance workers|technicians'
+  'statesman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'statesperson|diplomat|official'
+  'statesmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'statespersons|diplomats|officials'
+  'cameraman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': camera operator
+  'cameramen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': camera operators
+  'camerawoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': camera operator
+  'camerawomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': camera operators
+  'anchorman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'news anchor|anchor'
+  'anchormen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'news anchors|anchors'
+  'anchorwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'news anchor|anchor'
+  'anchorwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'news anchors|anchors'
+  'weatherman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': meteorologist
+  'weathermen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': meteorologists
+  'weatherwoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': meteorologist
+  'weatherwomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': meteorologists
+  'gentleman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': person
+  'gentlemen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'persons|persons'
+  'sportsman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': athlete
+  'sportsmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': athletes
+  'sportsmanship(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': fair play
+  'freshman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'first-year student'
+  'freshmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'first-year students'
+  'stewardess(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': flight attendant
+  'stewardesses(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': flight attendants
+  'steward(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': flight attendant
+  'stewards(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': flight attendants
+  'waitress(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': server
+  'waitresses(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': servers
+  'waiter(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': server
+  'waiters(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': servers
+  'man-made(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': synthetic
+  'manmade(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': synthetic
+  'man-hour(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'person-hour'
+  'man-hours(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'person-hours'
+  'manhour(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'person-hour'
+  'manhours(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'person-hours'
+  'airman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'aviator|pilot'
+  'airmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'aviators|pilots'
+  'lineman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': line worker
+  'linemen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': line workers
+  'crewman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': crew member
+  'crewmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': crew members
+  'assemblyman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': assembler
+  'assemblymen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': assemblers
+  'draftsman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': drafter
+  'draftsmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': drafters
+  'draughtsman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': drafter
+  'draughtsmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': drafters
+  'businessman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': businessperson
+  'businessmen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': businesspeople
+  'businesswoman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': businessperson
+  'businesswomen(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': businesspeople
+  'clergyman(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': member of the clergy

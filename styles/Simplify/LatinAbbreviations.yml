@@ -1,0 +1,16 @@
+# STE rules 1.1, GR-6
+extends: substitution
+message: "ASD-STE100 1.1, GR-6: Do not use Latin abbreviations. Use '%[1]s', not '%[2]s'. After 'and other', write the noun."
+link: https://asd-ste100.org/
+level: error
+scope: paragraph
+ignorecase: true
+nonword: true
+swap:
+  '\be\.g\.(?=[\s,:?!)\]]|$)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': for example
+  '\bi\.e\.(?=[\s,:?!)\]]|$)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': that is
+  '(?<![/\w])etc(?:\.(?=[\s,:?!)\]]|$)|(?![\w/.]))(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': and other
+  '\bet\s+al(?:\.(?=[\s,:?!)\]]|$)|\b(?!\.))(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': and others
+  '\bviz\.(?=[\s,:?!)\]]|$)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': that is
+  '\bcf\.(?=[\s,:?!)\]]|$)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': refer to
+  '(?<![.\w-])(?-i:vs)\.?(?=\s+\w)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'or|and'

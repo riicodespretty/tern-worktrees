@@ -1,0 +1,33 @@
+# STE rule 5.2
+extends: existence
+message: "ASD-STE100 5.2: '%[1]s' gives more than one instruction. Write each instruction in its own sentence, unless you do the steps at the same time."
+link: https://asd-ste100.org/
+level: suggestion
+scope: sentence
+vocab: false
+ignorecase: true
+raw:
+  - '(?i)^(?:\s*(?:(?:\d+[.)]|[a-zA-Z][.)]|\*|-)\s+)?(?:(?:If|When|Before|After|While)\b[^,]+?,\s*)?)(?:adjust|align|apply|assemble|attach|calculate|catch|change|check|clean|close|connect|cut|deactivate|decrease|discard|disconnect|disassemble|drain|enter|ensure|examine|fill|flush|increase|insert|install|lift|lock|loosen|lower|lubricate|make(?!\s+(?:sure|certain)\b)|measure|move|obey|open|operate|park|perform|point|position|press|pull|read|record|release|remove|replace|rotate|seal|set|show|shut|start|stay|stop|tighten|turn|unlock|use|verify|write|add|build|commit|copy|create|delete|deploy|edit|merge|run|update)\b(?!\s+(?:and|or)\s+\w+\s+(?:the|a|an|your|it|them|all)\b)[^.?!;]+?(?:,\s*(?:and\s+then|then|and)\s+(?:also\s+)?|,\s*|\s+(?:and\s+then|then|and)\s+(?:also\s+)?)(?:adjust|align|apply|assemble|attach|calculate|catch|change|check|clean|close|connect|cut|deactivate|decrease|discard|disconnect|disassemble|drain|enter|ensure|examine|fill|flush|hold|increase|insert|install|keep|lift|lock|loosen|lower|lubricate|make(?!\s+(?:sure|certain)\b)|measure|move|obey|open|operate|park|perform|point|position|press|pull|push|read|record|release|remove|replace|rotate|seal|set|show|shut|start|stay|stop|tighten|turn|unlock|use|verify|write|add|build|commit|copy|create|delete|deploy|edit|merge|run|update)\b'
+exceptions:
+  - 'hold and turn'
+  - 'push and turn'
+  - 'press and hold'
+  - 'lift and pull'
+  - 'push and hold'
+  - 'turn and hold'
+  - 'pull and hold'
+  - 'lift and turn'
+  - 'turn and push'
+  - 'turn and pull'
+  - 'press and turn'
+  - 'Hold and turn'
+  - 'Push and turn'
+  - 'Press and hold'
+  - 'Lift and pull'
+  - 'Push and hold'
+  - 'Turn and hold'
+  - 'Pull and hold'
+  - 'Lift and turn'
+  - 'Turn and push'
+  - 'Turn and pull'
+  - 'Press and turn'

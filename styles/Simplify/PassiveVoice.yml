@@ -1,0 +1,11 @@
+# STE rule 3.6
+extends: existence
+message: "ASD-STE100 3.6: '%[1]s' is passive. Use the active voice. In a description, use the passive only when you do not know who does it."
+link: https://asd-ste100.org/
+level: suggestion
+vocab: false
+ignorecase: true
+tokens:
+  - '(?:am|is|are|was|were|be|been|being)\s+(?:(?:not|well|also|already|always|never|only|still|then|often|easily|correctly|fully|partially|manually|automatically|\w+ly)\s+)*(?!(?:red|bed|shed|feed|bleed|seed|speed|need|weed|reed|open|green|even|damaged|closed|fixed|cracked|bent|worn|split|permitted|locked|unlocked|aligned|connected|disconnected|isolated)\b)(?:\w+ed|become|begun|blown|bound|broken|brought|built|bought|caught|chosen|cut|dealt|done|drawn|driven|drunk|eaten|fallen|felt|fled|flown|forgotten|found|frozen|given|gone|ground|grown|heard|held|hidden|hit|hung|kept|known|laid|leant|leapt|learnt|left|lit|lost|made|meant|met|overcome|paid|put|read|ridden|risen|run|said|seen|sent|set(?!\s+to\b)|shaken|shone|shot|shown|shut|slid|slept|sold|spent|spilt|spoken|spread|spun|stolen|stood|struck|strung|swept|swung|taken|taught|thought|thrown|told|torn|understood|upset|won|wound|written)'
+  - '(?:get|gets|got|getting|gotten)\s+(?:(?:not|well|also|already|always|never|only|still|then|often|easily|correctly|fully|partially|manually|automatically|\w+ly)\s+)*(?!(?:red|bed|shed|feed|bleed|seed|speed|need|weed|reed|open|green|even)\b)(?:\w+ed|become|begun|bent|blown|bound|broken|brought|built|bought|caught|chosen|cut|dealt|done|drawn|driven|drunk|eaten|fallen|felt|fled|flown|forgotten|found|frozen|given|gone|ground|grown|heard|held|hidden|hit|hung|kept|known|laid|leant|leapt|learnt|left|lit|lost|made|meant|met|overcome|paid|put|read|ridden|risen|run|said|seen|sent|set|shaken|shone|shot|shown|shut|slid|slept|sold|spent|spilt|spoken|spread|spun|stolen|stood|struck|strung|swept|swung|taken|taught|thought|thrown|told|torn|understood|upset|won|wound|written)'
+  - '(?:am|is|are|was|were|be|been|being)\s+(?:(?:not|well|also|already|always|never|only|still|then|often|easily|correctly|fully|partially|manually|automatically|\w+ly)\s+)*(?:damaged|closed|fixed|cracked|bent|worn|split|permitted|locked|unlocked|aligned|connected|disconnected|isolated)\s+by'

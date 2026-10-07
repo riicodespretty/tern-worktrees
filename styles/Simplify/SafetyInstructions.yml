@@ -1,0 +1,10 @@
+# STE rules 7.1, 7.2, 7.3
+extends: existence
+message: "ASD-STE100 7.1: '%[1]s' tells of a danger. Start the paragraph with a signal word, for example WARNING or CAUTION. Then give the risk."
+link: https://asd-ste100.org/
+level: suggestion
+vocab: false
+scope: paragraph
+ignorecase: true
+raw:
+  - '(?i)^(?!\s*(?:>\s*)?(?:\[!(?:WARNING|CAUTION)\]|(?:WARNING|CAUTION|DANGER|ATTENTION|NOTICE)\b))[\s\S]*?\b(electric\s+shock|can\s+kill\b|(?:can|will|could|may|might)\s+(?:cause|result\s+in)\s+(?:(?:serious|fatal|permanent|severe)\s+)?(?:death|injur(?:y|ies)|burns?|blindness|explosion|suffocation|poisoning)|(?:poisonous|toxic)\s+(?:gas|fumes?|vapors?|liquid|chemicals?|substances?|materials?)|(?:risk|danger)\s+of\s+(?:electric\s+shock|explosion|injur(?:y|ies)|death|burns?|fire|blindness|suffocation|poisoning)|(?:fatal|lethal|severe|serious)\s+injur(?:y|ies)|(?:fumes?|vapors?)\s+(?:are|can\s+be)\s+poisonous)\b'

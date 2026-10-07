@@ -1,0 +1,10 @@
+name: Setup toolchain
+description: Install Vite+ with the bun lockfile cache.
+
+runs:
+  using: composite
+  steps:
+    - uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
+      with:
+        node-version: 22
+        cache: true

@@ -1,0 +1,28 @@
+# STE rule 9.2
+extends: substitution
+message: "ASD-STE100 9.2: Use %[1]s, not '%[2]s'. Keep '%[2]s' if it is a technical noun or verb of your field and %[1]s changes the meaning. Then add '%[2]s' to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: error
+scope: paragraph
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  'a number of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'some|many'
+  '(?i)\babove\b(?=\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|zero))(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': more than
+  'as well as(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': and
+  'at this point in time(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': at this time
+  '(?i)\bbelow\b(?=\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|zero))(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': less than
+  '(?i)(?<=\b(?:table|figure|diagram|section|chart|graph|step|note|paragraph|page|list|text)\s+)below\b(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': that follows
+  'due to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': because of
+  'goes down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': decreases
+  'goes up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': increases
+  'has the capability to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': can
+  'in order to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': to
+  'in the event that(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': if
+  'in the vicinity of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': near
+  'is able to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': can
+  'prior to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': before
+  'subsequent to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': after

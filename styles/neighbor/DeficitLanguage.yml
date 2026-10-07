@@ -1,0 +1,22 @@
+# neighbor/DeficitLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js DEFICIT_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags language that reduces people to their circumstances, behaviors, or conditions.
+
+extends: substitution
+message: "'%s' is deficit-based language. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bthe homeless\b: 'people experiencing homelessness'
+  \b(inmate|felon|convict|ex-con)[s]?\b: 'person with legal system involvement / formerly incarcerated person'
+  \boffender[s]?\b: 'person with legal system involvement'
+  \baddict[s]?\b: 'person with a substance use disorder'
+  \b(drug|substance) abuse\b: 'substance use disorder'
+  \bminority\b: 'historically marginalized group / people of color'
+  \bat-risk youth\b: 'opportunity youth'
+  \b(vulnerable|high-risk) (group|population)[s]?\b: 'groups experiencing vulnerability / historically marginalized communities'
+  \bnon-English speaking\b: 'multilingual learner'

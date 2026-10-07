@@ -1,0 +1,8 @@
+# STE rules 6.3, 8.4-8.7
+extends: occurrence
+message: "ASD-STE100 6.3: This sentence has %d words. Write descriptive sentences of no more than 25 words. Text in parentheses, text in quotation marks, an identifier, and a number with its unit each count as one word. Keep all conditions and numbers when you divide a sentence."
+link: https://asd-ste100.org/
+level: suggestion
+scope: sentence
+max: 25
+token: '(?!(?<=^\s*)\(?[A-Za-z0-9]{1,2}[.)]\s)(?<!^\s*\()(?:"[^"]+"|“[^”]+”|\([^)]+\)|\b\d+(?:[.,]\d+)?(?:\s*(?:degrees?\s+(?:Celsius|Fahrenheit|Kelvin|C|F)|[°º][CF]|millimeters?|millimetres?|centimeters?|centimetres?|meters?|metres?|kilometers?|kilometres?|inches?|feet|foot|yards?|miles?|nautical\s+miles?|milligrams?|grams?|kilograms?|tonnes?|tons?|pounds?(?:\s+per\s+square\s+inch)?|ounces?|newton(?:\s+met(?:er|re)s?)?|newtons?|kilo(?:pascals?|watts?|grams?|meters?|metres?|volts?|hertz|ohms?)|mega(?:pascals?|watts?|hertz|ohms?|volts?)|giga(?:hertz|watts?)|milli(?:meters?|metres?|lit(?:er|re)s?|grams?|volts?|amperes?|amps?|watts?)|pascals?|bars?|volts?|amperes?|amps?|watts?|ohms?|hertz|lit(?:er|re)s?|gallons?|quarts?|pints?|seconds?|minutes?|hours?|days?|revolutions?\s+per\s+minute|rpm|knots?|decibels?|percent|degrees?|radians?|[°º]|mm|cm|m|km|in|ft|yd|psi|Nm|kg|g|mg|V|kV|A|mA|W|kW|Hz|kHz|MHz|GHz|dB|bar|Pa|kPa|MPa|lb|oz|gal|qt|pt|l|ml|s|sec|min|hr))\b|\b[A-Za-z0-9]+(?:[._/:-][A-Za-z0-9]+)+\b|(?<=\S\s+)[A-Z][\w’'']*(?:\s+(?:(?:of|for)(?:\s+the)?\s+)?[A-Z][\w’'']*)+|\b\w+(?:[''’]\w+)*\b)'

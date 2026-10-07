@@ -1,0 +1,25 @@
+# neighbor/AmpersandInProse.yml
+#
+# Flags & used as a substitute for "and" in prose content.
+#
+# Screen readers may announce & as "ampersand" or skip it entirely.
+# Behaviour is inconsistent across AT vendors and verbosity settings,
+# making & an unreliable character in content intended for broad audiences.
+#
+# This rule does not flag & in code spans, URLs, HTML entities, or
+# headings where it is used as a brand/product convention. Use Vale's
+# scope or your .vale.ini to exclude code blocks if needed.
+#
+# Sources:
+#   Google Developer Style Guide
+#     developers.google.com/style/accessibility
+#   US Plain Language Guide
+#     plainlanguage.gov
+
+extends: existence
+message: "'&' may be announced as 'ampersand' or skipped by screen readers. Use 'and' in prose."
+level: warning
+link: https://github.com/a11yfred/neighbor-vale
+ignorecase: true
+raw:
+  - \s&\s

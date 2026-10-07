@@ -1,0 +1,14 @@
+{
+  "name": "Simplify",
+  "version": "2.0.1",
+  "description": "Simplified Technical English, ASD-STE100, is a Copyright and a Trademark of ASD, Brussels, Belgium. This project is neither maintained nor endorsed by ASD. This repository contains a compatible implementation of the ASD-STE100 Simplified Technical English (Issue 9).",
+  "lang": "en",
+  "license": "MIT",
+  "vale_version": ">=3.17.1",
+  "sources": [
+    "https://asd-ste100.org/"
+  ],
+  "feed": "https://github.com/riicodespretty/vale-simplify/releases.atom",
+  "url": "https://github.com/riicodespretty/vale-simplify/releases/latest/download/Simplify.zip",
+  "issues": "https://github.com/riicodespretty/vale-simplify/issues/new"
+}

@@ -1,0 +1,45 @@
+# neighbor/CrossDialectConfusion.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js CROSS_DIALECT_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags terms that cause cross-dialect confusion or inappropriate double entendre.
+
+extends: substitution
+message: "'%s' may cause cross-dialect confusion or inappropriate double entendre. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bcum\b: 'combined with / and / serving as both (avoid "cum" due to slang/sexual connotation in US/UK/AU)'
+  \bpants\b: 'trousers / underwear (in UK, pants means underwear and slang for bad; in US, pants means trousers)'
+  \bprepon(e|ed|es|ing)\b: 'bring forward / schedule earlier / advance'
+  \bdo(ing)? the needful\b: 'do what is necessary / take the necessary action (can sound archaic or passive-aggressive to US/UK speakers)'
+  \bpassed out\b: 'graduated (outside South Asia, passed out means fainted/unconscious)'
+  \bout of station\b: 'out of town / away (perceived as station reference outside South Asia)'
+  \bbackside\b: 'rear / behind / back (outside South Asia, backside means buttocks)'
+  \bfanny\b: 'waist bag / buttocks (avoid in UK/AU as it is vulgar slang for female genitalia)'
+  \bpissed\b: 'angry / drunk (means angry in US, drunk in UK/AU)'
+  \brubbers?\b: 'eraser / condom (means condom in US, eraser in UK/India)'
+  \bschemes?\b: 'program / plan / project (implies a deceptive plot in US)'
+  \bknock(ing|ed)? up\b: 'visit / wake up / get pregnant (means get pregnant in US, visit/wake up in UK)'
+  \bhomely\b: 'cozy / comfortable / homelike (means plain/unattractive in US, cozy/warm in UK/India)'
+  \bmoot\b: 'arguable / irrelevant (means academic/irrelevant in US, open to debate in UK)'
+  \bnonplussed\b: 'confused / unimpressed (avoid due to conflicting standard and informal meanings)'
+  \btrolleys?\b: 'shopping cart / streetcar (means shopping cart in UK/AU, streetcar/cable car in US)'
+  \bvests?\b: 'waistcoat / undershirt (means waistcoat in US, undershirt in UK)'
+  \bsuspenders\b: 'braces / garter belt (means trouser straps in US, garter belt in UK)'
+  \b(to table|table the (discussion|agenda|proposal|motion|bill|topic|meeting|issue))\b: 'postpone / shelve (in US) or bring forward / propose (in UK/Commonwealth) (avoid "table" as it has opposite meanings)'
+  \b(enter|use|with|add|end with) (a |the )?period\b: 'full stop / dot / punctuation mark (to avoid cross-dialect confusion with menstruation or timeframes)'
+  \bshag(ged|s|ging)?\b: 'exhausted / tired / (avoid due to vulgar slang connotation in UK/AU/NZ)'
+  \bnapp(ies|y)\b: 'diaper / (avoid in US due to racially offensive connotation)'
+  \bpecker[s]?\b: 'courage / spirits / (avoid to prevent vulgar double entendre in US)'
+  \broot(ed|ing)\b: 'cheering for / supporting / (avoid in AU/NZ to prevent vulgar slang/broken connotation)'
+  \brevert(ed|ing|s)?\b: 'reply / get back to / respond (if meaning reply; otherwise return to previous state)'
+  \bintimat(e|ed|ing|es)\b: 'inform / notify / advise (if meaning to inform)'
+  \bco-brother[s]?\b: "brother-in-law / wife's sister's husband"
+  \bstepney[s]?\b: 'spare tire / spare wheel'
+  \bfirst floor\b: 'ground floor / second floor / (clarify physical floor level)'
+  \bcaskets?\b: 'coffin / jewelry box / (clarify to avoid confusion)'
+  \bchuffed\b: 'pleased / proud / happy'
+  \bfortnight[s]?\b: 'two weeks / 14 days'

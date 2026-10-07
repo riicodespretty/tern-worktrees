@@ -1,0 +1,93 @@
+# STE rules 3.1, 3.2, 3.3, 3.4
+extends: existence
+message: "ASD-STE100 3.2: '%[1]s' is not an approved verb tense. Use an approved tense, for example 'removes', 'removed', or 'will remove'."
+link: https://asd-ste100.org/
+level: error
+scope: paragraph
+vocab: false
+ignorecase: true
+tokens:
+  - '(?:am|is|are|was|were|be|been|being)\s+(?:(?:not|never|also|always|only|still|already|\w+ly)\s+)*(?!(?:nothing|anything|something|everything|thing|string|spring|ring|bring|king|ceiling|morning|evening|lightning|warning|during|pending|caching|logging|rendering|according|anti-icing|bearing|binding|bonding|brazing|buffing|burnishing|bushing|casing|ceiling|chafing|clamping|cleaning|coating|conditioning|covering|defueling|degreasing|deicing|drilling|dressing|during|engineering|etching|fitting|following|fraying|fueling|galling|grinding|grounding|handling|housing|landing|lapping|lighting|lightning|lining|locking|lubricating|marking|mating|milling|missing|mounting|opening|packaging|packing|painting|plating|polishing|reading|reaming|remaining|rigging|routing|sanding|sealing|servicing|setting|shielding|shipping|soldering|something|spring|string|testing|threading|troubleshooting|tubing|warning|welding|wiring)\b)\w+ing(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:have|has|had)\s+(?:(?:not|never|already|just|also|still|\w+ly)\s+)*(?:been)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:have|has|had)\s+(?:(?:not|never|already|just|previously|recently|also|still|\w+ly)\s+)+(?!(?:to|a|an|the)\b)(?!(?:speed|need|feed|seed|embed|bed|shed|red|hundred|breed|bleed)\b)\w+ed(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:have|has|had)\s+(?!(?:speed|need|feed|seed|embed|bed|shed|red|hundred|breed|bleed)\b)\w+ed(?=\s+(?:the|a|an|this|that|these|those|all|any|some|each|every|my|your|its|our|their|no|both|more|most|to|by|with|for|from|in|on|at|as|into|through|off|out|up|down|it|them|us|me|him|her)\b)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:have|has|had)\s+(?!(?:speed|need|feed|seed|embed|bed|shed|red|hundred|breed|bleed)\b)\w+ed(?=[,.:;!?]|$)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:have|has|had)\s+(?:(?:not|never|already|just|also|still|\w+ly)\s+)*(?:become|begun|bent|blown|bound|broken|brought|built|bought|caught|chosen|come|dealt|done|drawn|driven|drunk|eaten|fallen|felt|fled|flown|forgotten|found|frozen|given|gone|ground|grown|heard|held|hidden|hit|hung|kept|known|laid|leant|leapt|learnt|left|lit|lost|made|meant|met|overcome|paid|put|read(?!\s+(?:access|permissions?|only|rights?|scope))|ridden|risen|run|said|seen|sent|set|shaken|shone|shot|shown|shut|slid|slept|sold|spent|spilt|spoken|spread|spun|stolen|stood|struck|strung|swept|swung|taken|taught|thought|thrown|told|torn|understood|upset|won|worn|wound|written)\b(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:might|ought\s+to)(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - '(?:will|can|must|may)\s+have\s+(?:(?:not|never|already|just|also|still|\w+ly)\s+)*(?:been\s+)?(?:(?!(?:speed|need|feed|seed|embed|bed|shed|red|hundred|breed|bleed)\b)\w+ed|become|begun|bent|blown|bound|broken|brought|built|bought|caught|chosen|come|dealt|done|drawn|driven|drunk|eaten|fallen|felt|fled|flown|forgotten|found|frozen|given|gone|ground|grown|heard|held|hidden|hit|hung|kept|known|laid|leant|leapt|learnt|left|lit|lost|made|meant|met|overcome|paid|put|read(?!\s+(?:access|permissions?|only|rights?|scope))|ridden|risen|run|said|seen|sent|set|shaken|shone|shot|shown|shut|slid|slept|sold|spent|spilt|spoken|spread|spun|stolen|stood|struck|strung|swept|swung|taken|taught|thought|thrown|told|torn|understood|upset|won|worn|wound|written)\b(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+exceptions:
+  - have to
+  - has to
+  - had to
+  - have to be
+  - has to be
+  - had to be
+  - is missing
+  - are missing
+  - was missing
+  - were missing
+  - is remaining
+  - are remaining
+  - was remaining
+  - were remaining
+  - is mating
+  - are mating
+  - is bearing
+  - is bushing
+  - is casing
+  - is ceiling
+  - is coating
+  - is covering
+  - is fitting
+  - is grounding
+  - is housing
+  - is landing
+  - is lighting
+  - is lining
+  - is marking
+  - is mounting
+  - is opening
+  - is packing
+  - is plating
+  - is reading
+  - is rigging
+  - is routing
+  - is setting
+  - is shielding
+  - is spring
+  - is string
+  - is tubing
+  - is warning
+  - is wiring
+  - is engineering
+  - is following
+  - is during
+  - is according
+  - are bearing
+  - are bushing
+  - are casing
+  - are coating
+  - are covering
+  - are fitting
+  - are grounding
+  - are housing
+  - are landing
+  - are lighting
+  - are lining
+  - are marking
+  - are mounting
+  - are opening
+  - are packing
+  - are plating
+  - are reading
+  - are rigging
+  - are routing
+  - are setting
+  - are shielding
+  - are spring
+  - are string
+  - are tubing
+  - are warning
+  - are wiring
+  - are engineering
+  - are following

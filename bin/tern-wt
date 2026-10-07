@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+SELF=$(readlink -f "$0")
+DIR=$(cd -P "$(dirname "$SELF")" && pwd)
+
+if command -v bun >/dev/null 2>&1; then
+	BUN=$(command -v bun)
+elif [ -x /opt/homebrew/bin/bun ]; then
+	BUN=/opt/homebrew/bin/bun
+elif [ -x "$HOME/.bun/bin/bun" ]; then
+	BUN="$HOME/.bun/bin/bun"
+else
+	printf '%s\n' '{"error":{"code":"bad_args","message":"bun not found"}}'
+	echo 'bun not found' >&2
+	exit 1
+fi
+
+PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"
+export PATH
+exec "$BUN" "$DIR/../src/bin.ts" "$@"

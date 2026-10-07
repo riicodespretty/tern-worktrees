@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ -n "${FAKE_GH_LOG:-}" ]; then
+	printf '%s\n' "$*" >>"$FAKE_GH_LOG"
+fi
+key=$(printf '%s_' "$@" | sed 's/_$//' | tr '/ ' '__')
+fixture="${FAKE_GH_DIR:-}/$key.json"
+if [ -n "${FAKE_GH_DIR:-}" ] && [ -f "$fixture" ]; then
+	exec cat "$fixture"
+fi
+echo 'fake gh: no fixture' >&2
+exit 1

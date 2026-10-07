@@ -1,0 +1,94 @@
+# neighbor/AllCapsProse.yml
+#
+# Flags words written in ALL CAPS in prose content.
+#
+# Some screen readers using high verbosity settings read ALL CAPS letter
+# by letter ("H-E-L-P" instead of "help"). ALL CAPS also reduces
+# readability for users with dyslexia and cognitive disabilities.
+#
+# Exceptions: known acronyms (HTML, CSS, WCAG, etc.) are excluded via
+# Vale's built-in token matching. Add project-specific acronyms to your
+# vocab file to suppress false positives.
+#
+# Sources:
+#   Google Developer Style Guide
+#     developers.google.com/style/accessibility
+#   GOV.UK - Publishing Accessible Documents
+#     gov.uk/guidance/publishing-accessible-documents
+#   Government of Canada - Accessible Documents
+#     accessible.canada.ca/guidelines-creating-accessible-documents
+
+extends: existence
+message: "'%s' is written in ALL CAPS. Some screen readers spell it out letter by letter. Use sentence case and rely on formatting for emphasis."
+level: warning
+link: https://github.com/a11yfred/neighbor-vale
+ignorecase: false
+raw:
+  - \b[A-Z]{4,}\b
+exceptions:
+  # Web and tech - always recognisable without expansion
+  - HTML
+  - CSS
+  - JSON
+  - YAML
+  - WCAG
+  - ARIA
+  - HTTP
+  - HTTPS
+  - REST
+  - CRUD
+  - CORS
+  - UUID
+  - ASCII
+  - UTF
+  - POSIX
+  - ANSI
+  - IEEE
+  # Acronyms so common they read as words
+  - NASA
+  - NATO
+  - UNICEF
+  - RADAR
+  - LASER
+  - SCUBA
+  # Document conventions
+  - NOTE
+  - TODO
+  - FIXME
+  - HACK
+  - DEPRECATED
+  - WARNING
+  - CAUTION
+  - IMPORTANT
+  # Country and region codes
+  - USA
+  - USDA
+  - FEMA
+  - OSHA
+  - HIPAA
+  - GDPR
+  - CCPA
+  - PIPEDA
+  # Other universal acronyms
+  - FAQ
+  - TLDR
+  - RSVP
+  - ASAP
+  - ETA
+  - AKA
+  - PDF
+  - API
+  - SDK
+  - CLI
+  - GUI
+  - URL
+  - URI
+  - SQL
+  - XML
+  - SVG
+  - PNG
+  - GIF
+  - JPEG
+  - ISBN
+  - ISSN
+  - DOI

@@ -1,0 +1,1797 @@
+extends: substitution
+message: "ASD-STE100 1.1: Use %[1]s, not '%[2]s'. Keep '%[2]s' if it is a technical noun or verb of your field and %[1]s changes the meaning. Then add '%[2]s' to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: error
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  a few: some
+  a little: small quantity|small
+  abaft: aft of
+  abandon: go|stop
+  abandoned: went|stopped
+  abandoning: go|stop
+  abandons: goes|stops
+  abate: decrease
+  abated: decreased
+  abates: decreases
+  abating: decrease
+  abilities: can
+  ability: can
+  abnormal: unusual|incorrect
+  abnormalities: defect
+  abnormality: defect
+  abrupt: sudden|suddenly
+  absence: none|not|no
+  absences: none|not|no
+  absent: missing|no
+  absolutely: fully
+  absorption: absorb
+  absorptions: absorb
+  abundant: large
+  abut: touch
+  abuted: touched
+  abuting: touch
+  abuts: touches
+  accelerate: increase|faster
+  accelerated: increased
+  accelerates: increases
+  accelerating: increase
+  acceptable: permitted|satisfactory|serviceable
+  acceptance: accept
+  acceptances: accept
+  accessible: access
+  accommodate: let
+  accommodated: let
+  accommodates: lets
+  accommodating: let
+  accomplish: do|complete
+  accomplished: did|completed
+  accomplishes: does|completes
+  accomplishing: do|complete
+  according to: refer
+  account for: make sure
+  accounted for: made sure
+  accounting for: make sure
+  accounts for: makes sure
+  accumulate: collect
+  accumulated: collected
+  accumulates: collects
+  accumulating: collect
+  accumulation: quantity|collect
+  accumulations: quantities|collect
+  achieve: get
+  achieved: got
+  achieves: gets
+  achieving: get
+  acquire: get
+  acquired: got
+  acquires: gets
+  acquiring: get
+  acrid: dangerous
+  actuation: operation
+  actuations: operations
+  addition: add
+  additional: more
+  additions: add
+  adequate: sufficient
+  adhere: bond|obey
+  adhered: bonded|obeyed
+  adheres: bonds|obeys
+  adhering: bond|obey
+  adhesion: bond
+  adhesions: bonds
+  adjoining: adjacent
+  advance: set|forward
+  advanced: set
+  advances: forward|sets
+  adverse: bad
+  advisable: recommend
+  advise: tell|recommend
+  advised: told|recommended
+  advises: tells|recommends
+  advising: tell|recommend
+  affect: effect
+  aggravate: increase
+  aggravated: increased
+  aggravates: increases
+  aggravating: increase
+  agitate: shake
+  agitated: shook
+  agitates: shakes
+  agitating: shake
+  agitation: shake
+  agitations: shake
+  aided: helped
+  aimed: pointed
+  air-dried: dried
+  air-dries: dries
+  air-dry: dry
+  air-drying: dry
+  alerted: told
+  alignment: align
+  alignments: align
+  allocate: give
+  allocated: gave
+  allocates: gives
+  allocating: give
+  allow: let
+  allowable: permitted|approved
+  allowed: let
+  allowing: let
+  allows: lets
+  already: in progress|no other
+  alter: change
+  alteration: change
+  alterations: change
+  altered: changed
+  altering: change
+  alternate: alternative|each second|then
+  alternatively: alternative
+  alters: changes
+  amend: change
+  amended: changed
+  amending: change
+  amendment: change
+  amendments: change|changes
+  amends: changes
+  among: in
+  amount: quantity
+  amounts: quantities
+  analyze: analysis
+  ancillary: auxiliary|secondary
+  annotation: write|record
+  annotations: write|record
+  annunciate: show
+  annunciated: showed
+  annunciates: shows
+  annunciating: show
+  another: different|again
+  anticlockwise: counterclockwise
+  any: one
+  anytime: when
+  aperture: opening
+  apertures: openings
+  apparent: see|find
+  appear: show|think|view|possible
+  appeared: showed|thought
+  appearing: show|think
+  appears: shows|thinks
+  '(?<!\b(?:made\s+an\s+|make\s+an\s+|makes\s+an\s+))application': apply
+  applications: apply
+  appoint: tell
+  appointed: told
+  appointing: tell
+  appoints: tells
+  approached: go near
+  appropriate: applicable
+  arise: occur|cause
+  arisen: caused
+  arises: occurs|causes
+  arising: occur|cause
+  arose: occurred|caused
+  arrange: put
+  arranged: put
+  arrangement: prepare
+  arrangements: prepare
+  arranges: puts
+  arranging: put
+  arrest: stop|hold
+  arrested: stopped|held
+  arresting: stop|hold
+  arrests: stops|holds
+  arrive: get
+  arrived: got
+  arrives: gets
+  arriving: get
+  as long as: while
+  as to: about
+  ascertain: make sure
+  ascertained: made sure
+  ascertaining: make sure
+  ascertains: makes sure
+  assess: calculate|estimate
+  assessed: calculated
+  assesses: calculates
+  assessing: calculate
+  assessment: estimate|calculate
+  assessments: estimates|calculate
+  assistance: aid|help
+  assistances: aids|help
+  associated: correct|related|its|their
+  assume: think
+  assumed: thought
+  assumes: thinks
+  assuming: think
+  assure: make sure
+  assured: made sure
+  assures: makes sure
+  assuring: make sure
+  asymmetric: not symmetrical
+  attachment: attach
+  attachments: attach
+  attain: show|be|get
+  attained: showed|was|got
+  attaining: show|be|get
+  attains: shows|is|gets
+  attempt: try
+  attempted: tried
+  attempts: try|tries
+  audible: hear|listen
+  augment: increase
+  augmented: increased
+  augmenting: increase
+  augments: increases
+  aurally: listen|hear
+  authentic: accurate
+  authorized: approved
+  avert: prevent
+  averted: prevented
+  averting: prevent
+  averts: prevents
+  avoid: prevent|do not
+  avoided: prevented|do not
+  avoiding: prevent|do not
+  avoids: prevents|do not
+  back and forth: direction
+  back off: loosen
+  backed off: loosened
+  backing off: loosen
+  'backs(?!(?:\s+off|\s+up)\b)': rears
+  backs off: loosens
+  backward: rearward
+  badly: incorrectly|unsatisfactorily|decrease
+  bared: bare
+  began: started
+  begin: start
+  begining: start
+  beginning: start|source
+  beginnings: start|starts|sources
+  begins: starts
+  begun: started
+  beneath: below
+  beside: adjacent to
+  beware: careful
+  big: large
+  blanked: sealed
+  blended: mixed
+  blot: dry
+  blots: dries
+  blotted: dried
+  blotting: dry
+  blunted: blunt
+  both: the two
+  bottomed: touched
+  braced: held
+  branched: divided
+  brilliance: intensity|bright
+  brilliances: intensities|bright
+  briskly: quickly
+  broadcasted: transmitted
+  brush on: brush
+  build: structure|assemble
+  builds: structures|assembles
+  built: assembled
+  bumped: hit
+  butt: touch
+  butted: touched
+  butting: touch
+  butts: touches
+  by chance: risk|accidentally
+  by means of: with
+  calculation: calculate
+  calculations: calculate
+  'called(?!(?:\s+off)\b)': told
+  capabilities: functions|can
+  '(?<!\b(?:has\s+the\s+))capability': function|can
+  capped: sealed
+  '(?<!\b(?:take\s+|taken\s+|takes\s+|taking\s+|took\s+))care': precaution|careful|carefully
+  cares: precautions|careful|carefully
+  carries out: does|measures
+  carry out: do|measure
+  carrying out: do|measure
+  categorize: category
+  cautiously: carefully
+  cavities: holes|spaces
+  cavity: hole|space
+  cease: stop
+  ceased: stopped
+  ceases: stops
+  ceasing: stop
+  centralize: center
+  '(?<!\b(?:made\s+|make\s+|makes\s+|making\s+))certain': sure|some|specified
+  certified: wrote
+  certifies: writes
+  certify: write|approval
+  certifying: write
+  chafe: rub
+  chafed: worn|rubbed
+  chafes: rubs
+  chafing: rub
+  characteristic: property|quality
+  characteristics: properties|qualities
+  'checked(?!(?:\s+in|\s+out)\b)': made sure|measured|examined
+  chip: particle|damaged
+  chips: particles
+  choice: selection|alternative
+  choices: selections|alternative
+  choose: select|alternative
+  chooses: selects
+  choosing: select
+  chose: selected
+  chosen: selected
+  circulate: supply
+  circulated: supplied
+  circulates: supplies
+  circulating: supply
+  classification: class|category
+  classifications: class|category
+  cleanliness: clean
+  cleanlinesses: clean
+  clipped: cut
+  close to: near
+  coat: layer
+  coating: layer
+  coatings: layers
+  coats: layers
+  cock: set
+  cocked: set
+  cocking: set
+  cocks: sets
+  coded: identified
+  coiled: wound
+  coincide: align
+  coincided: aligned
+  coincident: synchronized|align
+  coincides: aligns
+  coinciding: align
+  color code: identify|code
+  'colored(?!(?:\s+code)\b)': color
+  colored code: identified
+  coloring code: identify
+  colors code: identifies
+  combine: mix|put together
+  combined: mixed|put together
+  combines: mixes|put together
+  combining: mix|put together
+  combustible: flammable
+  commence: start
+  commenced: started
+  commencement: start
+  commencements: start
+  commences: starts
+  commencing: start
+  compile: record|collect|make a list
+  compiled: make a list|recorded|collected
+  compiles: make a list|records|collects
+  compiling: record|collect|make a list
+  completion: end|complete
+  completions: ends|complete
+  complicated: not easy
+  complied: obeyed
+  comprise: have|contain
+  comprised: had|contained
+  comprises: has|contains
+  comprising: have|contain
+  compulsory: mandatory
+  compute: calculate
+  computed: calculated
+  computes: calculates
+  computing: calculate
+  conclusion: end|result
+  conclusions: ends|results
+  concurrently: at the same time
+  conducted: did
+  confine to: only
+  confirm: make sure
+  confirmed: made sure
+  confirming: make sure
+  confirms: makes sure
+  conflict: different|agree
+  conflicts: different|agree
+  conform: agree
+  conformance: agree
+  conformances: agree
+  conformed: agreed
+  conforming: agree
+  conformities: agree
+  conformity: agree
+  conforms: agrees
+  consecutively: other|sequence
+  considerable: large|important|dangerous
+  consist of: have
+  consisted of: had
+  consistent: agree
+  consisting of: have
+  consists of: has
+  constructed: assembled
+  consult: refer
+  consulted: referred
+  consulting: refer
+  consults: refers
+  contaminant: contamination
+  contaminants: contaminations
+  contaminated: dirty|contamination
+  contiguous: adjacent
+  convey: move|tell
+  conveyed: moved|told
+  conveying: move|tell
+  conveys: moves|tells
+  cooled: decreased
+  cooling: decrease
+  cools: decreases
+  correspond: agree|same|different
+  corresponded: agreed
+  corresponding: agree|related
+  corresponds: agrees
+  corrode: corrosion
+  corrosive: corrosion
+  coupled: connected|attached
+  cracked: opened
+  create: make|cause
+  created: made|caused
+  creates: makes|causes
+  creating: make|cause
+  curvature: bend|curve|radius
+  curvatures: bends|curves|radius
+  damp: moist
+  dampen: decrease|make moist
+  dampened: decreased|make moist
+  dampening: decrease|make moist
+  dampens: decreases|make moist
+  dangerously: dangerous
+  de-ice: ice
+  deadly: kill
+  deaerate: bleed|air
+  deaerated: bled
+  deaerates: bleeds
+  deaerating: bleed
+  dearm: disarm|remove
+  dearmed: disarmed|removed
+  dearming: disarm|remove
+  dearms: disarms|removes
+  decayed: decreased
+  decelerate: decrease|slower
+  decelerated: decreased
+  decelerates: decreases
+  decelerating: decrease
+  decide: select|decision
+  decided: selected
+  decides: selects
+  deciding: select
+  decontamination: remove|contamination|clean
+  decontaminations: remove|contamination|clean
+  decrement: increment
+  decrements: increments
+  define: calculate|give|specified
+  defined: calculated|gave
+  defines: calculates|gives
+  defining: calculate|give
+  deflect: move
+  deflected: moved
+  deflecting: move
+  deflection: movement|position|travel
+  deflections: movements|positions|travels
+  deflects: moves
+  deformed: damaged|deformation
+  defueling: defuel
+  defuelings: defuel
+  degrease: grease
+  delay: interval|immediately|after
+  delays: intervals|immediately
+  delicate: easily damaged
+  denote: show
+  denoted: showed
+  denotes: shows
+  denoting: show
+  depend: if
+  deplete: decrease
+  depleted: decreased
+  depletes: decreases
+  depleting: decrease
+  deposit: particle|contamination
+  deposits: particles|contaminations
+  depress: push
+  depressed: pushed
+  depresses: pushes
+  depressing: push
+  depressurize: pressure
+  desired: necessary|correct
+  determine: find|give|select|calculate
+  determined: found|gave|selected|calculated
+  determines: finds|gives|selects|calculates
+  determining: find|give|select|calculate
+  detrimental: dangerous|damage
+  develop: start|cause
+  developed: started|caused
+  developing: start|cause
+  develops: starts|causes
+  deviate: obey
+  deviated: obeyed
+  deviates: obeys
+  deviating: obey
+  devise: make|find
+  devised: made|found
+  devises: makes|finds
+  devising: make|find
+  diametrically: opposite
+  differ: different
+  differentiate: identify
+  differentiated: identified
+  differentiates: identifies
+  differentiating: identify
+  difficult: not easy|not easily
+  difficulties: not easy|not easily
+  difficulty: not easy|not easily
+  dilute: mix|add
+  diluted: mixed|added
+  dilutes: mixes|adds
+  diluting: mix|add
+  diminish: decrease
+  diminished: decreased
+  diminishes: decreases
+  diminishing: decrease
+  dimmed: decreased
+  dimming: decrease
+  dims: decreases
+  disappear: view
+  discharged: released|went
+  discontinue: stop
+  discontinued: stopped
+  discontinues: stops
+  discontinuing: stop
+  discover: find
+  discovered: found
+  discovering: find
+  discovers: finds
+  discrepancies: differences
+  discrepancy: difference
+  disinfect: disinfectant
+  dismantle: disassemble
+  dismantled: disassembled
+  dismantles: disassembles
+  dismantling: disassemble
+  dispatched: sent
+  disperse: remove
+  dispersed: removed
+  disperses: removes
+  dispersing: remove
+  displace: move
+  displaced: moved
+  displaces: moves
+  displacing: move
+  displayed: showed
+  dispose of: discard
+  disposed of: discarded
+  disposes of: discards
+  disposing of: discard
+  disregard: ignore
+  disregarded: ignored
+  disregarding: ignore
+  disregards: ignores
+  distinctly: clearly
+  distort: twist
+  distorted: twisted
+  distorting: twist
+  distorts: twists
+  distribute: apply|supply
+  distributed: applied|supplied
+  distributes: applies|supplies
+  distributing: apply|supply
+  disturb: move|change
+  disturbed: moved|changed
+  disturbing: move|change
+  disturbs: moves|changes
+  'don(?![''’]\w)': use|put on
+  donned: put on|used
+  donning: use|put on
+  dons: uses|puts on
+  doubt: not sure|think
+  doubts: not sure|think
+  downward: down
+  draw: make|pull
+  drawing: make|pull
+  drawn: made|pulled
+  draws: makes|pulls
+  dress: use|put on
+  dressed: put on|used
+  dresses: uses|puts on
+  dressing: use|put on
+  drew: made|pulled
+  drooped: moved
+  dull: dim|matt
+  duration: during
+  durations: during
+  dusted: applied
+  earth: ground
+  earthed: grounded
+  earths: grounds
+  ease: easily|easy|carefully remove|carefully move
+  eased: carefully remove|carefully move
+  eases: easily|easy|carefully remove|carefully move
+  effected: did
+  effective: good
+  efficacious: good
+  efficient: satisfactory
+  efflux: exhaust
+  effluxes: exhausts
+  effort: force|try
+  efforts: force|try
+  either: or|other
+  ejection: eject
+  ejections: eject
+  elapse: time|after|interval
+  eliminate: remove|stop|prevent
+  eliminated: removed|stopped|prevented
+  eliminates: removes|stops|prevents
+  eliminating: remove|stop|prevent
+  emit: from
+  employ: use|have
+  employed: used|had
+  employing: use|have
+  employs: uses|has
+  encircle: around
+  enclosed: closed
+  encounter: be|find
+  encountered: was|found
+  encountering: be|find
+  encounters: is|finds
+  ended: stopped|completed
+  engagement: engage
+  engagements: engage
+  enlarge: increase|large
+  enlarged: increased
+  enlarges: increases
+  enlarging: increase
+  enough: sufficient
+  ensue: cause
+  ensued: caused
+  ensues: causes
+  ensuing: cause
+  ensure: make sure
+  ensured: made sure
+  ensures: makes sure
+  ensuring: make sure
+  entire: full|all
+  entirely: fully
+  equip: install
+  equiped: installed
+  equiping: install
+  equipped: have
+  equips: installs
+  erect: assemble|become stable
+  erected: assembled|become stable
+  erecting: assemble|become stable
+  erects: assembles|become stable
+  erratic: irregular
+  escaped: deflated|released
+  evaluation: examine|analysis
+  evaluations: examine|analysis
+  evaporate: dry
+  evaporated: dried
+  evaporates: dries
+  evaporating: dry
+  evenly: gradually|equally
+  '(?<!\b(?:in\s+the\s+))event': if
+  events: if
+  every: all|each|interval
+  evident: find
+  exact: accurate|correct
+  examination: examine|find
+  examinations: examine|find
+  exceptional: unusual
+  exceptionally: unusually
+  excess: unwanted|too much|more than|not necessary
+  excesses: too much|more than
+  excessive: too much|more than
+  excessively: too much|more than
+  exchanged: interchanged|replaced
+  exclude: not include|not use
+  excluded: not include|not use
+  excludes: not include|not use
+  excluding: without|not include|not use
+  exempt: no|not show
+  exercised: made sure
+  exert: apply|put
+  exerted: put|applied
+  exerting: apply|put
+  exerts: applies|puts
+  exhale: breathe
+  exhaled: breathed
+  exhales: breathes
+  exhaling: breathe
+  exhaustive: all|full
+  exist: be
+  existed: was
+  existing: be
+  exists: is
+  expect: possible
+  expel: remove|bleed|release
+  expeled: removed|bled|released
+  expeling: remove|bleed|release
+  expels: removes|bleeds|releases
+  explain: tell
+  explained: told
+  explaining: tell
+  explains: tells
+  extent: depth|length|width
+  extents: depths|lengths|widths
+  exterior: external
+  exteriors: external
+  extra: more
+  extracted: removed
+  exude: out of
+  faced: pointed|turned
+  facilitate: help
+  facilitated: helped
+  facilitates: helps
+  facilitating: help
+  factor: cause
+  factors: causes
+  fail: failure|unsatisfactory
+  failed: defective|unserviceable
+  faint: dim|intensity
+  falter: smoothly|constant
+  familiar: know
+  fashion: procedure
+  fashions: procedures
+  fasten: attach|connect
+  fastened: attached|connected
+  fastening: attach|connect
+  fastens: attaches|connects
+  fatal: kill
+  faulty: defective|incorrect|unserviceable|unsatisfactory
+  fear: think|make sure
+  feared: thought|made sure
+  fearing: think|make sure
+  fears: thinks|makes sure
+  feasible: possible
+  featured: had
+  fed: put|supplied
+  '(?<!\b(?:a\s+))few': small number
+  filing: particle
+  filings: particles
+  film: layer
+  films: layers
+  final: last
+  finding: result
+  findings: results
+  fine: small
+  finger-tighten: your fingers
+  finger-tightened: your fingers
+  finger-tightening: your fingers
+  finger-tightens: your fingers
+  finished: completed
+  firmly: tightly
+  fitted: installed|attached
+  flatness: flat
+  flatnesses: flat
+  flatten: flat
+  flaw: damage|defective
+  flaws: damages|defective
+  flexed: bent
+  flooded: use too much
+  fluctuate: constant
+  foremost: front
+  fortify: strong
+  foul: catch|hit|touch|clearance
+  fouled: hit|dirty|clogged|caught|touched|catch
+  fouling: catch|hit|touch
+  fouls: catches|hits|touches
+  fragile: easily damaged
+  free from: 'no'
+  freed: released
+  freeing: release
+  frees: releases
+  fresh: clean|new
+  fueled: refueled
+  fulfill: obey
+  fulfilled: obeyed
+  fulfilling: obey
+  fulfills: obeys
+  functioned: operated|moved
+  fundamental: important
+  gain: get|increase
+  gained: got
+  gains: increase|gets
+  gall: galling
+  garbled: clear|clearly
+  garner: collect
+  garnered: collected
+  garnering: collect
+  garners: collects
+  gaseous: gas
+  gash: damaged
+  gather: collect
+  gathered: collected
+  gathering: collect
+  gathers: collects
+  gauged: measured
+  generally: usually
+  generous: large|thick
+  generously: large|thick
+  gentle: carefully|lightly
+  gently: carefully|lightly
+  genuine: correct
+  get away: go away
+  get down: decrease|go down
+  get into: go into
+  get off: move off
+  get to: be|go|increase
+  gets away: go away
+  gets down: decreases|go down
+  gets into: go into
+  gets off: move off
+  gets to: is|goes|increases
+  'getting(?!(?:\s+away|\s+down|\s+into|\s+off|\s+to)\b)': become
+  getting away: go away
+  getting down: decrease|go down
+  getting into: go into
+  getting off: move off
+  getting to: be|go|increase
+  gleam: shiny
+  glitch: error|failure|unserviceable
+  glitches: errors|failure|unserviceable
+  gloss: shiny
+  glosses: shiny
+  glowed: was
+  glued: bonded|attached
+  got away: go away
+  got down: decreased|go down
+  got into: go into
+  got off: move off
+  got to: was|went|increased
+  gotten away: go away
+  gotten down: decreased|go down
+  gotten into: go into
+  gotten to: increased
+  govern: control
+  governed: controlled
+  governing: control
+  governs: controls
+  grabbed: used|held
+  gradient: slope
+  gradients: slopes
+  gradual: gradually
+  grasp: hold
+  grasped: held
+  grasping: hold
+  grasps: holds
+  grave: dangerous
+  greased: lubricated
+  great: large|more than|very
+  greatly: very much
+  grew: became
+  grip: hold
+  gripped: held
+  grips: hold|holds
+  grow: become
+  growing: become
+  grows: becomes
+  guided: put|moved
+  gush: flow
+  halted: stopped
+  halve: half
+  hamper: prevent
+  hampered: prevented
+  hampering: prevent
+  hampers: prevents
+  hand-tight: your hand
+  hand-tighten: your hand
+  hand-tightened: your hand
+  hand-tightening: your hand
+  hand-tightens: your hand
+  handled: moved|touched|used
+  happen: occur
+  happened: occurred
+  happening: occur
+  happens: occurs
+  harmful: dangerous|injury
+  harmonize: agree|align
+  harmonized: agreed|aligned
+  harmonizes: agrees|aligns
+  harmonizing: agree|align
+  haul: tow|move
+  hauled: towed|moved
+  hauling: tow|move
+  hauls: tows|moves
+  hazardous: dangerous
+  hazy: haze
+  headed: pointed
+  heighten: increase
+  heightened: increased
+  heightening: increase
+  heightens: increases
+  held back: prevented
+  held off: prevented
+  helpful: help
+  hesitation: smoothly|correctly|immediately
+  hesitations: smoothly|correctly|immediately
+  highly: very
+  hinder: prevent|decrease|blockage|clogged
+  hindered: prevented|decreased
+  hindering: prevent|decrease
+  hinders: prevents|decreases
+  hinged: turned
+  hitched: connected
+  hoisted: lifted
+  hold back: prevent
+  hold off: prevent
+  holding back: prevent
+  holding off: prevent
+  holds back: prevents
+  holds off: prevents
+  hook up: connect
+  'hooked(?!(?:\s+up)\b)': put
+  hooked up: connected
+  hooking up: connect
+  hooks up: connects
+  housed: contained
+  however: but
+  huge: large
+  hurt: injury
+  identical: same
+  ignite: ignition
+  immerse: soak|put fully into
+  immersed: soaked|put fully into
+  immerses: soaks|put fully into
+  immersing: soak|put fully into
+  immobilize: lock|prevent movement when you repair
+  immobilized: locked|prevent movement when you repair
+  immobilizes: locks|prevent movement when you repair
+  immobilizing: lock|prevent movement when you repair
+  impact: hit|effect
+  impacted: hit
+  impacts: hit|hits
+  impair: decrease|operate|incorrectly|cause damage
+  impaired: decreased|operate|incorrectly|cause damage
+  impairing: decrease|operate|incorrectly|cause damage
+  impairs: decreases|operate|incorrectly|cause damage
+  implement: do
+  implementation: do
+  implementations: do
+  implemented: did
+  implementing: do
+  implements: does
+  impossible: not possible|cannot
+  impregnate: soak
+  impregnated: soaked
+  impregnates: soaks
+  impregnating: soak
+  impression: think
+  impressions: think
+  improper: incorrect
+  improperly: incorrectly
+  improve: better
+  impurities: unwanted material  use a filter to|contaminations
+  impurity: contamination|unwanted material  use a filter to
+  in the process of: during|while
+  inactive: not active
+  inadvertent: accidental
+  inadvertently: accidentally
+  incline: slope
+  inclines: slopes
+  including: thru|with
+  incompatible: not compatible
+  incomplete: all|not full|not completed
+  incorporate: include|have
+  incorporated: included|had
+  incorporates: includes|has
+  incorporating: include|have
+  incorporation: include
+  incorporations: include
+  incur: cause
+  incured: caused
+  incuring: cause
+  incurs: causes
+  indicate: show|identify|specified
+  indicated: showed|identified
+  indicates: shows|identifies
+  indicating: show|identify
+  induce: cause
+  induced: caused
+  induces: causes
+  inducing: cause
+  ineffective: unserviceable|unsatisfactory|not operate
+  inflammable: flammable
+  ingested: swallowed
+  ingress: go into
+  ingresses: go into
+  inhale: breathe
+  inhaled: breathed
+  inhales: breathes
+  inhaling: breathe
+  inhibit: prevent
+  inhibited: prevented
+  inhibiting: prevent
+  inhibits: prevents
+  initiate: start
+  initiated: started
+  initiates: starts
+  initiating: start
+  inject: put
+  injected: put
+  injecting: put
+  injects: puts
+  injure: injury
+  inoperative: off|not operate
+  inserted: put|engaged
+  inside: inner|in|into
+  insides: inner
+  inspect: examine|inspection
+  inspected: examined
+  inspecting: examine
+  inspects: examines
+  'instead(?!(?:\s+of)\b)': alternative
+  instead of: alternative
+  insufficient: not sufficient
+  insure: make sure
+  insured: made sure
+  insures: makes sure
+  insuring: make sure
+  interconnected: connected
+  interfere: hit|catch|touch|interference
+  interfered: hit|caught|touched
+  interferes: hits|catches|touches
+  interfering: hit|catch|touch
+  interior: internally|internal
+  interiors: internally|internal
+  intermediate: middle|between
+  interrupted: stopped
+  intersect: intersection
+  investigate: investigation
+  inward: inner|in
+  irregularities: damages|defect|irregular|unusual
+  irregularity: damage|defect|irregular|unusual
+  isolation: isolate
+  isolations: isolate
+  job: work|task
+  jobs: works|tasks
+  joined: bonded|attached|connected
+  kind: type
+  kinds: types
+  knock: hit
+  knocked: hit
+  knocking: hit
+  knocks: hits
+  lack: not sufficient
+  lacks: not sufficient
+  laid: put
+  lasted: continued
+  lasting: continue
+  lasts: continues
+  later: subsequent|subsequently|then|when|after
+  lay: put|was
+  laying: put
+  lays: puts
+  leave: keep|go
+  leaves: keeps|goes
+  leaving: keep|go
+  left-hand: left
+  legible: read
+  lengthen: increase
+  lengthened: increased
+  lengthening: increase
+  lengthens: increases
+  lethal: kill
+  liberal: large|thick
+  liberally: large|thick
+  limitation: limit
+  limitations: limits
+  linked: connected|attached
+  listed: recorded|showed
+  '(?<!\b(?:a\s+))little': small|short|not sufficient
+  locate: find|engage|put
+  located: put|found|engaged
+  locates: finds|engages|puts
+  locating: find|engage|put
+  logged: recorded
+  lost: decreased|decrease|not find
+  lowermost: bottom
+  lukewarm: warm
+  made certain: made sure
+  make certain: make sure
+  makes certain: makes sure
+  making certain: make sure
+  maladjusted: incorrectly|adjusted
+  manipulate: move|adjust
+  manipulated: moved|adjusted
+  manipulates: moves|adjusts
+  manipulating: move|adjust
+  manufactured: made
+  marked: identified
+  masked: applied
+  mated: connected|engaged
+  'may(?![''’]\w)': can|possibly
+  mayed: could
+  maying: can
+  mays: can
+  mentioned: gave
+  meshed: engaged
+  meteorological: weather
+  mid: middle
+  mild: weak
+  minor: small
+  miscellaneous: other|all
+  misrigged: incorrectly|adjusted
+  moisten: moist
+  momentary: momentarily
+  motored: dry-motor|wet-motor
+  mounted: put|installed|attached
+  nearly: almost
+  neutralize: neutral
+  never: do not
+  next to: adjacent to
+  noisy: noise
+  nor: not
+  normally: usually|correctly
+  notified: told|contacted|wrote
+  notifies: tells|contacts|writes
+  notify: tell|contact|write
+  notifying: tell|contact|write
+  now: at this time
+  obstruct: catch|prevent|blockage
+  obstructed: blocked|clogged|caught|prevented
+  obstructing: catch|prevent
+  obstruction: blockage
+  obstructions: blockages
+  obstructs: catches|prevents
+  obtain: get
+  obtained: got
+  obtaining: get
+  obtains: gets
+  often: frequently
+  oil-free: oil
+  oiled: lubricated
+  old: remaining|used|expired
+  opaque: not transparent
+  operable: operate
+  option: alternative|possible|can
+  options: alternatives|possible|can
+  orient: point
+  oriented: pointed
+  orienting: point
+  orients: points
+  origin: source
+  originate: source
+  origins: sources
+  outlined: gave
+  outside: external|outer|outdoors|near
+  outsides: external|outer
+  outwards: out
+  overfilled: too much
+  overfull: too full
+  overheated: too hot
+  overtighten: tighten too much|too tight|too tightly
+  overtightened: tighten too much|too tight|too tightly
+  overtightening: tighten too much|too tight|too tightly
+  overtightens: tighten too much|too tight|too tightly
+  packed: put|filled
+  parted: disconnected
+  partially: not fully
+  partly: not fully
+  penetrate: go through|go into
+  penetrated: go through|go into
+  penetrates: go through|go into
+  penetrating: go through|go into
+  people: person|personnel
+  peoples: persons|personnels
+  per: for each|refer
+  perforated: hole
+  'perform(?!(?:\s+a\s+calibration\s+of|\s+a\s+removal\s+of|\s+a\s+replacement\s+of|\s+an\s+installation\s+of|\s+the\s+calibration\s+of|\s+the\s+installation\s+of|\s+the\s+removal\s+of|\s+the\s+replacement\s+of)\b)': do|measure
+  'performed(?!(?:\s+a\s+calibration\s+of|\s+a\s+removal\s+of|\s+a\s+replacement\s+of|\s+an\s+installation\s+of|\s+the\s+calibration\s+of|\s+the\s+installation\s+of|\s+the\s+removal\s+of|\s+the\s+replacement\s+of)\b)': did|measured
+  performing: do|measure
+  'performs(?!(?:\s+a\s+calibration\s+of|\s+a\s+removal\s+of|\s+a\s+replacement\s+of|\s+an\s+installation\s+of|\s+the\s+calibration\s+of|\s+the\s+installation\s+of|\s+the\s+removal\s+of|\s+the\s+replacement\s+of)\b)': does|measures
+  periodically: interval
+  permissible: permitted
+  permited: let
+  pertinent: applicable
+  picket: moor
+  picketed: moored
+  picketing: moor
+  pickets: moors
+  pierced: hole
+  '(?<!\b(?:put\s+in\s+|put\s+into\s+|puts\s+in\s+|puts\s+into\s+))place': position|area|put
+  placed: put
+  places: positions|areas|puts
+  'plugged(?!(?:\s+in)\b)': connected
+  poor: unsatisfactory|defective|unserviceable
+  popped: opened|protruded
+  portion: piece|part
+  portions: pieces|parts
+  positioned: put|set
+  pour: put
+  poured: put
+  pouring: put
+  pours: puts
+  precautionary: precaution
+  precede: before
+  precise: accurate
+  preferable: recommend
+  preferably: if it is possible
+  preheat: heat
+  premature: before
+  prematurely: before
+  prescribed: specified
+  presence: be
+  presences: be
+  present: give|show|be
+  presented: gave|showed
+  presenting: give|show
+  presents: gives|shows
+  preseted: set
+  prevent from: let
+  prevented from: let
+  preventing from: let
+  preventive: prevent
+  prevents from: lets
+  primarily: primary
+  primed: put|filled
+  probabilities: risks
+  probability: risk
+  probable: very possible|risk
+  proceed: continue
+  proceeded: continued
+  proceeding: continue
+  proceeds: continues
+  produce: cause|give|make|supply
+  produced: caused|gave|made|supplied
+  produces: causes|gives|makes|supplies
+  producing: cause|give|make|supply
+  '(?<!\b(?:in\s+))progress': continue|in progress
+  progressed: continued
+  progresses: continue|in progress|continues
+  progressive: gradually
+  progressively: gradually
+  prohibit: prevent
+  prohibited: prevented
+  prohibiting: prevent
+  prohibits: prevents
+  prolonged: long
+  propagation: increase
+  propagations: increase
+  proper: correct
+  properly: correctly
+  proportional: relation|proportion
+  proportionally: relation
+  'provide(?!(?:\s+an\s+explanation\s+of|\s+an\s+indication\s+of|\s+lubrication\s+to|\s+protection\s+for|\s+protection\s+to)\b)': give|supply
+  'provided(?!(?:\s+an\s+explanation\s+of|\s+an\s+indication\s+of|\s+lubrication\s+to|\s+protection\s+for|\s+protection\s+to|\s+that)\b)': gave|supplied
+  provided that: if
+  'provides(?!(?:\s+an\s+explanation\s+of|\s+an\s+indication\s+of|\s+lubrication\s+to|\s+protection\s+for|\s+protection\s+to)\b)': gives|supplies
+  'providing(?!(?:\s+that)\b)': give|supply
+  providing that: if
+  proximities: near
+  proximity: near
+  purged: removed
+  purified: cleaned
+  purifies: cleans
+  purify: clean
+  purifying: clean
+  qualified: approved
+  quarterly: interval
+  questionable: not sure
+  quit: go|stop
+  quiting: go|stop
+  quits: goes|stops
+  'ran(?!(?:\s+into|\s+out|\s+over)\b)': operated
+  rapid: fast
+  rapidly: quickly
+  reach: get|touch|be
+  reached: got|touched|was
+  reaches: gets|touches|is
+  reaching: get|touch|be
+  reactivate: activate
+  reactivated: activate
+  reactivates: activate
+  reactivating: activate
+  readjust: adjust
+  readjusted: adjusted
+  readjusting: adjust
+  readjusts: adjusts
+  rear of: behind|aft of
+  rearmost: rear
+  reason: cause|because of
+  reasons: causes|because of
+  reassemble: assemble
+  reassembled: assembled
+  reassembles: assembles
+  reassembling: assemble
+  rebuilded: assembled
+  recharged: charged|filled|pressurized
+  rechecked: measured|examined
+  reclaimed: repaired
+  reclose: close
+  reclosed: closed
+  recloses: closes
+  reclosing: close
+  recoiled: move back|wound
+  recondition: repair|overhaul
+  reconditioned: repaired
+  reconditioning: repair
+  reconditions: repairs
+  reconstruction: repair
+  reconstructions: repair|repairs
+  rectified: corrected
+  rectifies: corrects
+  rectify: correct
+  rectifying: correct
+  recur: occur
+  recured: occurred
+  recuring: occur
+  recurs: occurs
+  refilled: filled
+  refited: installed|repaired
+  reflect: reflection
+  regrease: apply|more
+  regreased: applied
+  regreases: applies
+  regreasing: apply
+  regulate: control|adjust
+  regulated: controlled|adjusted
+  regulates: controls|adjusts
+  regulating: control|adjust
+  regulation: adjustment|control
+  regulations: control|adjustments|controls
+  reinflate: inflate
+  reinflated: inflated
+  reinflates: inflates
+  reinflating: inflate
+  reinstallation: installation
+  reinstallations: installations
+  reinstalled: installed
+  relate: related
+  relayed: sent
+  relevant: related|their|its
+  relieve: release
+  relieved: released
+  relieves: releases
+  relieving: release
+  remain: stay
+  remained: stayed
+  remains: stays
+  remnant: remaining
+  remnants: remaining
+  removable: remove
+  rendered: made
+  renew: new
+  renovate: repair|new
+  renovated: repaired
+  renovates: repairs
+  renovating: repair
+  repacked: put|filled
+  repainted: painted
+  repairable: repair
+  repeat: again
+  repeated: again and again
+  repeatedly: again and again
+  replenish: fill|add|refuel
+  replenished: filled|added|refueled
+  replenishes: fills|adds|refuels
+  replenishing: fill|add|refuel
+  represent: show
+  represented: showed
+  representing: show
+  represents: shows
+  repressurize: pressurize
+  repressurized: pressurized
+  repressurizes: pressurizes
+  repressurizing: pressurize
+  request: tell|write
+  requested: told|wrote
+  requests: tell|write|tells|writes
+  require: necessary
+  reseal: seal
+  resealed: sealed
+  resealing: seal
+  reseals: seals
+  reseted: set
+  residue: remaining
+  residues: remaining
+  respective: related|correct
+  respectively: related
+  respond: result
+  rest: be|put|remaining
+  restarted: started
+  rested: put|was
+  restrain: hold|stop|prevent|limit
+  restrained: held|stopped|prevented
+  restraining: hold|stop|prevent
+  restrains: holds|stops|prevents
+  rests: remaining|is|puts
+  resulted: caused
+  retain: keep
+  retained: kept
+  retaining: keep
+  retains: keeps
+  retorque: torque
+  retorqued: torqued
+  retorques: torques
+  retorquing: torque
+  retouch: apply|paint
+  retouched: applied|painted
+  retouches: applies|paints
+  retouching: apply|paint
+  retractable: retract
+  return: go
+  returned: went
+  returns: go|goes
+  reveal: show
+  revealed: showed
+  revealing: show
+  reveals: shows
+  review: inspection|examine
+  reviews: inspections|examine
+  rewinded: wound
+  '(?<!\b(?:jerry-|jerry\s+|jury-|jury\s+))rigged': adjusted
+  right-hand: right
+  rinsed: flushed|removed|cleaned
+  ripped: damaged
+  rise: increase
+  risen: increased
+  rises: increase|increases
+  rope off: rope
+  rose: increased
+  rotary: turn
+  rotate: turn
+  rotated: turned
+  rotates: turns
+  rotating: turn
+  rotation: turn
+  rotational: turn
+  rotations: turn
+  roughen: rough
+  roughness: rough
+  roughnesses: rough
+  route: routing|put
+  routed: put
+  routes: routings|puts
+  saturate: soak
+  saturated: soaked
+  saturates: soaks
+  saturating: soak
+  scored: score
+  scraped: discarded
+  scratched: scratch
+  screwed: turned
+  seated: installed
+  securely: correctly|safely|tight
+  seepage: leakage
+  seepages: leakages
+  seized: catch|move|turn
+  separable: disassemble|disconnect
+  separate: isolated|different|disconnect|divide|not connected|not attached
+  separated: disconnected|divided
+  separates: disconnects|divides
+  separating: disconnect|divide
+  serious: important|dangerous
+  serrated: serration
+  serviceabilities: serviceable
+  serviceability: serviceable
+  sever: cut
+  several: some
+  severe: dangerous
+  severed: cut
+  severing: cut
+  severs: cuts
+  sharply: quickly|suddenly
+  sheared: cut|broke
+  shielded: prevented
+  shifted: moved
+  shorten: decrease
+  shortened: decreased
+  shortening: decrease
+  shortens: decreases
+  'should(?![''’]\w)': must|if
+  shoulded: must
+  shoulding: must
+  shoulds: must
+  shut down: stop
+  shuts down: stops
+  shutting down: stop
+  sideways: side
+  sight: view|look
+  sighted: looked
+  sights: views|looks
+  significant: important
+  silenced: stopped
+  similar: equivalent|almost the same
+  simultaneous: at the same time
+  simultaneously: at the same time
+  situated: install|be
+  situation: condition
+  situations: conditions
+  size: dimension
+  sizes: dimensions
+  slacken: tension
+  slackness: tension
+  slacknesses: tension
+  slaved: controlled
+  slid: moved
+  slight: small|light
+  slightly: small
+  slipped: moved|removed|cause to fall|move accidentally make sure that the
+  slow down: decrease
+  slowed down: decreased
+  slowing down: decrease
+  slows down: decreases
+  sluggish: slow
+  smeared: applied
+  snag: catch
+  snagged: caught
+  snagging: catch
+  snags: catches
+  snap: click|break|move quickly
+  snapped: move quickly|broke
+  snaps: clicks|move quickly|breaks
+  soapy: soap
+  soiled: dirty
+  solidify: solid
+  solve: solution
+  sought: got
+  sounded: operated
+  spacing: distance
+  spacings: distances
+  spanwise: span
+  sparingly: quantity
+  specifically: specially
+  speck: particle
+  specks: particles
+  spillage: contamination|spill
+  spillages: contaminations|spill
+  splashed: got
+  splined: spline
+  spurious: unwanted
+  stabilities: stable
+  stability: stable
+  stabilization: stable
+  stabilizations: stable
+  stabilize: stable
+  stained: dirty|stain
+  stationary: stable|stop
+  stationed: put
+  steadily: continuously
+  steady: stable
+  stiff: move
+  stimulate: increase
+  stimulated: increased
+  stimulates: increases
+  stimulating: increase
+  stir: mix
+  stirred: mixed
+  stirring: mix
+  stirs: mixes
+  'stood(?!(?:\s+by)\b)': stayed
+  straighten: straight
+  stroke: travel
+  strokes: travels
+  struck: hit
+  'stuck(?!(?:\s+out)\b)': attached|caught
+  submerge: put
+  submerged: put
+  submerges: puts
+  submerging: put
+  submit: send
+  submited: sent
+  submiting: send
+  submits: sends
+  substance: material
+  substances: materials
+  substitute: equivalent|alternative|replace
+  substituted: replaced
+  substitutes: alternatives|replaces
+  such as: for example
+  suitable: applicable|correct
+  suitably: sufficiently
+  surrounding: adjacent|around
+  surveyed: examined
+  suspect: think
+  suspected: thought
+  suspecting: think
+  suspects: thinks
+  suspend: hang|stop
+  suspended: hung|stopped
+  suspending: hang|stop
+  suspends: hangs|stops
+  swapped: interchanged
+  switch on: set|start|energize
+  'switched(?!(?:\s+off|\s+on)\b)': set
+  switches on: sets|starts|energizes
+  switching on: set|start|energize
+  swung: moved|calibrated
+  synchronize: adjust
+  synchronizes: adjusts
+  synchronizing: adjust
+  'take(?!(?:\s+a\s+measurement\s+of|\s+apart|\s+away|\s+care|\s+down|\s+in|\s+into\s+account|\s+into\s+consideration|\s+measurement\s+of|\s+measurements\s+of|\s+off|\s+out|\s+over)\b)': remove|read|get|necessary
+  take care: make sure|obey|do not|careful
+  'taken(?!(?:\s+apart|\s+away|\s+care|\s+down|\s+in|\s+off|\s+out|\s+over)\b)': read|removed
+  taken care: do not|made sure|obeyed
+  'takes(?!(?:\s+a\s+measurement\s+of|\s+apart|\s+away|\s+care|\s+down|\s+in|\s+into\s+account|\s+into\s+consideration|\s+measurement\s+of|\s+measurements\s+of|\s+off|\s+out|\s+over)\b)': removes|reads|gets
+  takes care: do not|makes sure|obeys
+  'taking(?!(?:\s+care)\b)': remove|read|get
+  taking care: make sure|obey|do not
+  taut: tension
+  technique: method
+  techniques: methods
+  therefore: thus|as a result
+  thorough: full
+  thoroughly: fully
+  threaded: thread
+  tied: attached
+  till: until
+  'took(?!(?:\s+a\s+measurement\s+of|\s+apart|\s+away|\s+care|\s+down|\s+in|\s+into\s+account|\s+into\s+consideration|\s+measurement\s+of|\s+measurements\s+of|\s+off|\s+out|\s+over)\b)': read|removed|got
+  took care: do not|made sure|obeyed
+  top off: fill|add
+  topped off: filled|added
+  topping off: fill|add
+  tops off: fills|adds
+  toward: to|direction
+  toxic: poisonous
+  trace: sign|find
+  traced: found
+  traces: signs|finds
+  trained: approved
+  transfer: movement|supply|move|install
+  transfered: moved|installed
+  transfers: movements|supplies|moves|installs
+  transition: change
+  transitions: changes
+  transported: sent
+  trapped: caught
+  traveled: went|moved
+  triggered: caused|started
+  trimmed: cut
+  tripped: opened|released|cause to fall
+  troubleshoot: troubleshooting
+  tuck: put
+  tucked: put
+  tucking: put
+  tucks: puts
+  turn off: set|stop|de-energize
+  turn on: set|start|energize
+  turn over: turn
+  turned off: set|stopped|de-energized
+  turned on: set|started|energized
+  turned over: turned
+  turning off: set|stop|de-energize
+  turning on: set|start|energize
+  turning over: turn
+  turns off: sets|stops|de-energizes
+  turns on: sets|starts|energizes
+  turns over: turns
+  unable: cannot
+  unauthorized: not approved
+  uncoil: unwind
+  uncoiled: unwound
+  uncoiling: unwind
+  uncoils: unwinds
+  uncontaminated: clean|contamination
+  uncouple: disconnect
+  uncoupled: disconnected
+  uncouples: disconnects
+  uncoupling: disconnect
+  undamaged: not damaged
+  under: below|in|less than
+  underneath: below
+  underside: bottom
+  undersides: bottoms
+  undertake: do|start
+  undertaken: done|started
+  undertakes: does|starts
+  undertaking: do|start
+  undertook: did|started
+  undoed: loosened
+  undue: unwanted
+  uneven: equal|rough
+  uniformly: equally
+  unintentional: accidental
+  unintentionally: accidentally
+  unlatch: release|open
+  unlatched: released|opened
+  unlatches: releases|opens
+  unlatching: release|open
+  unload: release|load
+  unloaded: released
+  unloading: release
+  unloads: releases
+  unnecessary: not necessary
+  unobstructed: clogged|clear
+  unpack: remove
+  unpacked: removed
+  unpacking: remove
+  unpacks: removes
+  unpainted: bare
+  unplug: disconnect|plug
+  unpluged: disconnected
+  unpluging: disconnect
+  unplugs: disconnects
+  unprotected: protection
+  unreel: unwind
+  unreeled: unwound
+  unreeling: unwind
+  unreels: unwinds
+  unrestricted: free
+  unsafe: dangerous
+  unscrew: loosen|turn|remove
+  unscrewed: loosened|turned|removed
+  unscrewing: loosen|turn|remove
+  unscrews: loosens|turns|removes
+  unstable: not stable
+  unused: new
+  up to: until|thru|maximum
+  upon: on|when
+  upper: maximum|top
+  uppermost: up
+  upward: up
+  urgently: immediately
+  utilize: use
+  utilized: used
+  utilizes: uses
+  utilizing: use
+  varied: changed
+  varies: changes
+  various: different
+  vary: change
+  varying: change
+  ventilate: airflow
+  ventilation: airflow
+  ventilations: airflows
+  via: through
+  vibrate: vibration
+  vicinities: near|adjacent
+  '(?<!\b(?:in\s+the\s+))vicinity': near|adjacent
+  viewed: saw|looked
+  vigorous: force
+  vigorously: force
+  visible: see|view
+  vital: mandatory
+  'wash(?!(?:\s+out|\s+up)\b)': clean
+  'washed(?!(?:\s+out|\s+up)\b)': cleaned
+  'washes(?!(?:\s+out|\s+up)\b)': cleans
+  washing: clean
+  watched: monitored|looked
+  watertight: seal
+  weakness: weak
+  weaknesses: weak
+  weep: leakage
+  weeps: leakages
+  whenever: when
+  whether: if
+  whilst: while
+  wholly: fully
+  windy: wind
+  'wiped(?!(?:\s+off|\s+up)\b)': cleaned
+  withdraw: remove
+  withdrawing: remove
+  withdrawn: removed
+  withdraws: removes
+  withdrew: removed
+  within: in|in less than
+  withstand: resistant
+  'would(?![''’]\w)': can
+  woulded: could
+  woulding: can
+  woulds: can
+  wrapped: put|wound
+  wrong: incorrect
+  wrongly: incorrectly
+  yet: but|at this time
+  analyse: analysis
+  authorised: approved
+  categorise: category
+  coloured: color
+  depressurise: pressure
+  fuelled: refueled
+  fulfil: obey
+  fulfils: obeys
+  neutralise: neutral
+  synchronise: adjust
+  synchronises: adjusts
+  synchronising: adjust
+  travelled: went|moved
+  utilise: use
+  utilised: used
+  utilises: uses
+  utilising: use

@@ -1,0 +1,95 @@
+# neighbor/EnglishIdiom.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js ENGLISH_IDIOMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags English idioms and sports metaphors that are opaque to ESL readers
+# and international audiences.
+#
+# Idioms fail readers whose first language is not English because their
+# meaning cannot be inferred from their constituent words. "Boil the ocean"
+# contains no clues that it means "attempt too much at once."
+#
+# This is the most novel rule in the neighbor set. No other accessibility
+# linting tool flags idioms. It is grounded in WCAG SC 3.1.5 (Reading Level):
+# content should not require reading ability beyond lower secondary education.
+# For non-native English speakers, idioms systematically raise the effective
+# reading level regardless of word complexity.
+#
+# Sources:
+#   Government of Canada - Accessible Documents
+#     accessible.canada.ca/guidelines-creating-accessible-documents
+#   SJSU Writing Center - Accessible Writing Strategies
+#     sjsu.edu/writingcenter/
+#   UX Content Co. - Accessible UX Writing
+#     uxcontent.com/accessible-ux-writing-a-guide-for-inclusive-content-design/
+#   A11y Collective - Accessible Writing
+#     a11y-collective.com/blog/accessible-writing/
+#   WCAG SC 3.1.5 - Reading Level
+#     w3.org/WAI/WCAG22/Understanding/reading-level
+#
+# Each idiom listed here appears in at least two independent sources as
+# a barrier to ESL readers.
+
+
+extends: substitution
+message: "'%s' is an idiom that may be unclear to ESL and international readers. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bboil the ocean\b: 'attempt everything at once / do too much'
+  \bmove the needle\b: 'make progress / have an impact'
+  \bblue[- ]?sky thinking\b: 'open-ended brainstorming / creative thinking'
+  \bdrink the (kool[- ]?aid|cool[- ]?aid)\b: 'follow without question / accept uncritically'
+  \bpeel back the onion\b: 'examine more closely / dig deeper'
+  \blow[- ]hanging fruit\b: 'easiest tasks / quick wins'
+  \bsynergy\b: 'collaboration / combined effect (or rewrite)'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: UX Content Co.)
+  \bpivot\b: 'change direction / shift focus'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: UX Content Co., SJSU)
+  \bbandwidth\b: 'time / capacity / availability'
+  \bcircle back\b: 'follow up / return to'
+  \btake (it )?offline\b: 'discuss separately / talk privately'
+  \bdeep[- ]?dive\b: 'thorough review / detailed look'
+  \bgranular\b: 'detailed / specific'
+  \blevel[- ]?set\b: 'align / agree on expectations'
+  \bpush the envelope\b: 'go beyond limits / innovate'
+  \bthink outside the box\b: 'think creatively / find new approaches'
+  \bwrap (my|your|our|their) head[s]? around\b: 'understand / make sense of'
+  \bone[- ]?size[- ]?fits[- ]?all\b: 'universal / the same for everyone'
+  \bback to square one\b: 'starting over / back to the beginning'
+  \bin the pipeline\b: 'planned / coming soon / in progress'
+  \bon the same page\b: 'in agreement / aligned'
+  \bcatch[- ]22\b: 'impossible situation / no-win situation'
+  \bwhistle[- ]?stop\b: 'brief / quick'
+  \braise the bar\b: 'set a higher standard / improve expectations'
+  \bhit the ground running\b: 'start immediately / begin without delay'
+  \bon the fence\b: 'undecided / uncertain'
+  \bbite the bullet\b: 'endure something difficult / proceed despite difficulty'
+  \bunder the weather\b: 'unwell / sick / not feeling well'
+  \bball ?park (figure|estimate|number)?\b: 'rough estimate / approximate'
+  \bin the ball ?park\b: 'approximately / roughly'
+  \bparadigm shift[s]?\b: 'significant change / transformation / new approach'
+  \bbleeding[- ]edge\b: 'state-of-the-art / cutting-edge / pioneering'
+  \becosystem[s]?\b: 'platform / suite / products / network (if referring to software/services)'
+  \bdrill(ing)? down\b: 'analyze further / investigate / look closer'
+  \bwheelhouse\b: 'area of expertise / specialty'
+  \bdogfood(ing)?\b|\beat(ing)? (our|your|their) own dog food\b: 'test internally / use our own products'
+  \bopen(ing)? the kimono\b: 'share information / reveal details / be transparent'
+  \bbest of breed\b: 'best / leading / top-performing'
+  \bthought leader[s]?(ship)?\b: 'expert / specialist / pioneer'
+  \bdeliverable[s]?\b: 'product / output / result'
+  \bvalue[- ]add(ed)?\b: 'benefit / extra value / advantage'
+  \bhit it out of the park\b: 'succeed greatly / do exceptionally well'
+  \bslam[- ]?dunk\b: 'certain success / easy win'
+  \bdrop the ball\b: 'make a mistake / fail to follow through'
+  \bgame[- ]?changer\b: 'major shift / significant development'
+  \blevel (the |a )?playing field\b: 'create equal conditions / remove advantages'
+  \bmove the goal[- ]?posts\b: 'change the requirements / shift the target'
+  \bpinch[- ]?hitter\b: 'substitute / stand-in / backup'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: A11y Collective)
+  \bkick[- ]?off\b: 'start / begin / launch'
+  \btouch ?base\b: 'check in / reconnect / follow up'
+  \bpar for the course\b: 'expected / typical / normal'
+  \bfield (a |the )?question\b: 'answer / respond to / address'

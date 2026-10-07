@@ -1,0 +1,46 @@
+# neighbor/ExclusiveLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js EXCLUSIVE_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags unnecessarily violent, culturally appropriated, or racially loaded tech jargon.
+
+extends: substitution
+message: "'%s' is non-inclusive or culturally appropriated. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bblack[- ]?list[s]?\b: 'denylist / blocklist'
+  \bwhite[- ]?list[s]?\b: 'allowlist / safelist'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: Google, MS, IETF, IBM)
+  \bmaster\b: 'primary / main / leader'
+  \bslave\b: 'replica / worker / follower'
+  \bdummy\b: 'placeholder / mock / sample'
+  \bsanity check\b: 'quick check / confidence check'
+  \bspirit animal\b: 'remove / favorite (avoid cultural appropriation)'
+  \bpowwow\b: 'meeting / gathering (avoid cultural appropriation)'
+  \bninja[s]?\b: 'expert / specialist'
+  \bguru[s]?\b: 'expert / leader'
+  \btribe\b: 'team / network / community'
+  \bguys\b: 'folks / everyone / team'
+  \bcolou?red people\b: 'people of color (avoid coloured which is highly offensive in the UK)'
+  \boriental[s]?\b: 'Asian / specific descent'
+  \beskimo[s]?\b: 'Alaska Native / Inuit'
+  \bnegro[s]?\b: 'Black / African American / specific descent'
+  \bafro[- ]american[s]?\b: 'Black / African American / specific descent'
+  \bpaki[s]?\b: 'specific descent (highly offensive slur in UK, avoid entirely)'
+  \bgrandfather(ed|ing)?\b: 'legacy / pre-existing / retain'
+  \bpeanut gallery\b: 'hecklers / unwelcome commentators'
+  \bsold down the river\b: 'betrayed / sold out'
+  \bgyp(ped|ping)?\b: 'cheat / swindle / rip off'
+  \bgypsy([- ]?cab)?\b: 'Romani (for people) / unlicensed taxi (for cab)'
+  \boff the reservation\b: 'unauthorized / unorthodox / deviant / off script'
+  \buppity\b: 'arrogant / snobbish / dismissive'
+  \bcakewalk\b: 'easy win / breeze / simple task'
+  \bno can do\b: 'I cannot / impossible'
+  \bchavs?\b: 'working-class youth / (avoid derogatory slang)'
+  \bforeign alien[s]?\b: 'foreign national / non-citizen'
+  \bhalf-caste[s]?\b: 'Aboriginal / Māori / Indigenous person'
+  \bnon-white[s]?\b: 'people of color / historically marginalized groups'
+  \bpikeys?\b: 'Traveller / Gypsy (highly offensive slur, avoid entirely)'

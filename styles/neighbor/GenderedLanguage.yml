@@ -1,0 +1,27 @@
+# neighbor/GenderedLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js GENDERED_PATTERNS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags generic use of gendered pronouns.
+
+extends: substitution
+message: "'%s' is a generic gendered pattern. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \b(he\/she|she\/he|he or she|she or he)\b: 'they / their / you / the user'
+  \b(his\/her|her\/his|his or her|her or his)\b: 'their / your'
+  \bmum and dad\b: 'families / parents / carers'
+  \b(born a man|born a woman)\b: 'assigned male/female at birth'
+  \b(biologically male|biologically female)\b: 'assigned male/female at birth'
+  \b(opposite sex|opposite gender)\b: 'different gender / another sex'
+  \b(husband|wife)\b: 'partner / spouse (when gender is unknown)'
+  \b(boyfriend|girlfriend)\b: 'partner (when gender is unknown)'
+  \b(male-bodied|female-bodied)\b: 'assigned male/female at birth'
+  \b(fireman|policeman|chairman|spokesman|spokeswoman|congressman)\b: 'firefighter / police officer / chairperson / spokesperson / representative'
+  \bmanpower\b: 'workforce / personnel / staff'
+  \bmankind\b: 'humanity / human race'
+  \bman[- ]made\b: 'artificial / synthetic / manufactured / human-made'
+  \blayman\b: 'layperson / non-expert'
