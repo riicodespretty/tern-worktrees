@@ -431,7 +431,7 @@ local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
 	ask(cx, picked, cb)
 end
 
-local MAX_LISTED_FILES = 8
+local MAX_LISTED_FILES = 10
 
 local function staging_line(err: any): string?
 	if err ~= nil and type(err.staging) == "string" then
@@ -482,21 +482,28 @@ local function failure_message(err: any, path: string): (string, { string })
 	local listing: { string } = {}
 	local files = err.files
 	if err.code == "dirty_worktree" and type(files) == "table" and #files > 0 then
-		local hasIgnored = false
-		for i = 1, math.min(#files, MAX_LISTED_FILES) do
+		local changes: { string } = {}
+		local ignored: { string } = {}
+		for i = 1, #files do
 			local entry = tostring(files[i])
-			hasIgnored = hasIgnored or string.sub(entry, 1, 3) == "!! "
-			table.insert(listing, entry)
+			if string.sub(entry, 1, 3) == "!! " then
+				table.insert(ignored, string.sub(entry, 4))
+			else
+				table.insert(changes, entry)
+			end
 		end
-		if #files > MAX_LISTED_FILES then
-			table.insert(listing, "and " .. (#files - MAX_LISTED_FILES) .. " more")
+		local ignoredShown = math.min(#ignored, MAX_LISTED_FILES)
+		local changesShown = math.min(#changes, MAX_LISTED_FILES - ignoredShown)
+		table.move(changes, 1, changesShown, 1, listing)
+		if ignoredShown > 0 then
+			table.insert(listing, "Ignored files that are hard to rebuild:")
+			table.move(ignored, 1, ignoredShown, #listing + 1, listing)
 		end
-		table.insert(
-			lines,
-			if hasIgnored
-				then "Removing this worktree loses these changes, including ignored files (marked !!):"
-				else "Removing this worktree loses these changes:"
-		)
+		local omitted = #changes + #ignored - changesShown - ignoredShown
+		if omitted > 0 then
+			table.insert(listing, "and " .. omitted .. " more")
+		end
+		table.insert(lines, "Removing this worktree loses these changes:")
 	else
 		table.insert(lines, replace_plain(tostring(err.message), path, short_path(path)))
 	end
