@@ -30,4 +30,4 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## Gates
 
-Run `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage` before each commit. Mutation: `vp exec stryker run --mutate <files>`.
+Run `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage` before each commit. Mutation: `vp run test.mutation -- --mutate <files>`.
