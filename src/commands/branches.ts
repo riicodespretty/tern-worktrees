@@ -1,0 +1,95 @@
+import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { defaultBranch, originSlug, repoRoot, worktrees } from '../git.ts';
+import type { RepoSlug } from '../git.ts';
+import { isUnder, worktreeRoot } from '../paths.ts';
+import { CliError, must, run as runProcess } from '../proc.ts';
+
+/** An open pull request of the repository. */
+export interface PullRequest {
+  number: number;
+  title: string;
+  branch: string;
+  fork: boolean;
+}
+
+/** A worktree of the repository, and if it is in the worktree root. */
+export interface BranchWorktree {
+  branch: string | null;
+  path: string;
+  managed: boolean;
+}
+
+/** The branch picker data of a repository. */
+export interface BranchesResult {
+  repo: string;
+  name: string;
+  default: string;
+  branches: string[];
+  prs: PullRequest[];
+  worktrees: BranchWorktree[];
+  warnings: string[];
+}
+
+interface GhPullRequest {
+  number: number;
+  title: string;
+  headRefName: string;
+  isCrossRepository: boolean;
+}
+
+const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]> => {
+  const refs = hasOrigin ? ['--format=%(refname:lstrip=3)', 'refs/remotes/origin'] : ['--format=%(refname:lstrip=2)', 'refs/heads'];
+  const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', ...refs], 'git_failed');
+  return output.split('\n').filter(name => name !== '' && name !== 'HEAD');
+};
+
+const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<PullRequest[]> => {
+  const argv = ['gh', 'pr', 'list', '--repo', `${slug.owner}/${slug.name}`, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
+  const result = await runProcess(argv);
+  if (result.status !== 0) {
+    warnings.push(`pr list failed: ${result.stderr.trim()}`);
+    return [];
+  }
+  // SAFETY: `gh pr list --json` prints an array with the fields it names.
+  const prs = JSON.parse(result.stdout) as GhPullRequest[];
+  return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
+};
+
+/** `branches --repo <dir>`: the branches, open pull requests and worktrees of the repository that holds `dir`. */
+export const run = async (args: string[]): Promise<BranchesResult> => {
+  const { values } = parseArgs({ args, options: { repo: { type: 'string' } } });
+  if (values.repo === undefined) {
+    throw new CliError('bad_args', 'branches needs --repo <dir>');
+  }
+  const root = await repoRoot(values.repo);
+  if (root === null) {
+    throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
+  }
+  const warnings: string[] = [];
+  const remote = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
+  const hasOrigin = remote.status === 0;
+  if (hasOrigin) {
+    const fetch = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
+    if (fetch.status !== 0) {
+      warnings.push(`fetch failed: ${fetch.stderr.trim()}`);
+    }
+  }
+  const slug = await originSlug(root);
+  const [branches, prs, all, defaultName] = await Promise.all([
+    listBranches(root, hasOrigin),
+    slug === null ? [] : listPullRequests(slug, warnings),
+    worktrees(root),
+    defaultBranch(root),
+  ]);
+  const managedRoot = worktreeRoot();
+  return {
+    branches,
+    default: defaultName,
+    name: path.basename(root),
+    prs,
+    repo: root,
+    warnings,
+    worktrees: all.map(worktree => ({ branch: worktree.branch, managed: isUnder(worktree.path, managedRoot), path: worktree.path })),
+  };
+};
