@@ -1,15 +1,173 @@
-.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button {
-  padding: 3px 12px;
-  border-radius: 6px;
-  background: var(--l1);
+.sf-layer[data-surface='plugin.tern-worktrees.dialog'] {
+  .twt-dim {
+    position: absolute;
+    inset: 0;
+    background: var(--dim);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.18s var(--ease);
+    pointer-events: auto;
+  }
+
+  .twt-card {
+    zoom: 1;
+    font: 400 14px/1.5 var(--sans);
+    letter-spacing: -0.003em;
+    color: var(--t1);
+    pointer-events: auto;
+  }
+
+  .twt-card .sf-picker {
+    position: relative;
+    height: auto;
+  }
+
+  .twt-card .sf-picker .pk-sheet {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    background: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none;
+    animation: none;
+  }
+
+  .twt-card .sf-picker .pk-sheet::after,
+  .twt-card .sf-picker .pk-count {
+    display: none;
+  }
+
+  .twt-card .sf-picker .pk-body,
+  .twt-card .sf-picker .pk-list,
+  .twt-card .sf-picker .pk-scroll {
+    flex: 0 1 auto;
+  }
+
+  .twt-card .ck-top .sf-input,
+  .twt-card .ck-top .sf-input.focused {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: none;
+    box-shadow: none;
+    font-size: 1.15em;
+  }
+
+  .twt-card .sf-picker .pk-list {
+    max-height: min(460px, 58vh, calc(88vh - 151px + 24px / var(--tn-zoom, 1)));
+  }
+
+  .twt-mono {
+    font-family: var(--mono);
+  }
+
+  .twt-msg {
+    color: var(--t2);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .twt-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: -10px;
+    font-size: 0.9em;
+    color: var(--t3);
+  }
+
+  .twt-line {
+    overflow: hidden;
+    white-space: pre;
+    text-overflow: ellipsis;
+  }
+
+  .twt-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--t3);
+  }
+
+  .twt-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
-.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button.primary {
-  background: var(--accent-fill);
-  color: #fff;
+html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .pk-ic,
+html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .ck-top > .sf-icon {
+  display: none;
 }
 
-.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button.danger {
-  background: var(--bad-fill);
-  color: #fff;
+html:not(.lay-studio) .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card {
+  .pk-scroll {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .pk-spacer {
+    margin: 0 8px;
+  }
+
+  .pk-row:not(.grp) {
+    gap: 11px;
+    padding: 0 10px 0 8px;
+    border-radius: 9px;
+    color: var(--t2);
+  }
+
+  .pk-row.sel {
+    color: var(--t1);
+  }
+
+  .pk-row:not(.grp) .pk-l1,
+  .pk-row:not(.grp) .pk-label {
+    font-size: 13.5px;
+  }
+
+  .pk-row:not(.grp) .pk-label {
+    margin-right: 0;
+    color: inherit;
+  }
+
+  .pk-row:not(.grp) .pk-l1 {
+    gap: 0;
+  }
+
+  .pk-selbar {
+    border-radius: 9px;
+    background: var(--l1);
+  }
+
+  .pk-row:not(.grp) .pk-lead {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    color: var(--t2);
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--l2);
+  }
+
+  .pk-row.sel .pk-lead {
+    color: var(--t1);
+    box-shadow: inset 0 0 0 1px var(--l3);
+  }
+
+  .pk-row:not(.grp) .pk-lead .ico {
+    width: 14px;
+    height: 14px;
+  }
+
+  .pk-row:not(.grp) .pk-detail {
+    margin-left: 8px;
+    font: 11.5px var(--mono);
+    color: var(--t4);
+  }
 }

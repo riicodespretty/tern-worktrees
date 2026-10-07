@@ -4,10 +4,10 @@ local ui = tern.ui
 
 local NEW_ID = "__new__"
 local UNGROUPED = "__ungrouped__"
-local PICK_ID = "layer.pick"
+local PICK_ID = "layer.card.pick"
 local PROMPT_INPUT_ID = "layer.prompt.text"
 
-type Item = { id: string, label: string, detail: string?, group: string? }
+type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
 type Button = { id: string, label: string, kind: string? }
 type Request = {
 	mode: string,
@@ -17,8 +17,11 @@ type Request = {
 	newLabel: string?,
 	selected: string?,
 	message: string?,
+	path: string?,
+	detail: { string }?,
 	buttons: { Button }?,
 	placeholder: string?,
+	verb: string?,
 	text: string?,
 }
 type Answer = { [string]: any }
@@ -125,64 +128,151 @@ local function typed_text(key: Key): string?
 	return text
 end
 
+local function kbd(key: string): Node
+	return ui.el("span", { class = "kbd", text = key })
+end
+
+local function hint(keys: { string }, label: string, class: string?): Node
+	local parts: { Node } = {}
+	for _, key in ipairs(keys) do
+		table.insert(parts, kbd(key))
+	end
+	table.insert(parts, ui.el("span", { text = label }))
+	return ui.el("span", { class = class }, parts)
+end
+
+local function palette(key: string, aria: string, children: { Node }): Node
+	return ui.col({
+		ui.el("div", { class = "twt-dim", actions = { click = "close" } }),
+		ui.el("div", {
+			key = key,
+			class = "cmdk tn-cmdk twt-card",
+			attrs = { role = "dialog", ["aria-modal"] = "true", ["aria-label"] = aria },
+		}, children),
+	})
+end
+
+local function legend(verb: string): Node
+	return ui.el("div", { class = "ck-foot" }, {
+		hint({ "↑", "↓" }, "navigate"),
+		hint({ "↵" }, verb),
+		hint({ "esc" }, "close", "grow"),
+	})
+end
+
 local function pick_view(state: State): Node
 	local req = state.req
 	local _, order = visible_entries(state)
 	local items = tern.json.array()
 	if offers_new(req, state.query) then
-		table.insert(items, { id = NEW_ID, label = new_label(req, state.query) })
+		table.insert(items, { id = NEW_ID, label = new_label(req, state.query), icon = "plus" })
 	end
 	for _, item in ipairs(req.items or {}) do
-		table.insert(items, { id = item.id, label = item.label, detail = item.detail })
+		table.insert(items, { id = item.id, label = item.label, detail = item.detail, icon = item.icon })
 	end
-	return ui.col({
+	local placeholder = req.placeholder or req.title
+	return palette("card", placeholder, {
 		ui.node("picker", {
 			key = "pick",
-			size = "md",
-			title = req.title,
+			size = "screen",
+			preview = "none",
+			icon = "search",
 			query = state.query,
-			placeholder = "Search",
+			placeholder = placeholder,
 			items = items,
 			order = tern.json.array(order),
 			selected = state.selected,
 		}),
+		legend(req.verb or "open"),
 	})
+end
+
+local function button_key(button: Button, index: number): string
+	if index == 1 then
+		return "↵"
+	elseif button.id == "cancel" then
+		return "esc"
+	end
+	return tostring(index)
 end
 
 local function confirm_view(state: State): Node
 	local req = state.req
 	local buttons = req.buttons or {}
-	local row: { Node } = {}
+	local titles: { Node } = { ui.el("div", { class = "mdl-t", text = req.title }) }
+	if req.path ~= nil and req.path ~= "" then
+		table.insert(titles, ui.el("div", { class = "mdl-sub twt-mono", text = req.path }))
+	end
+	local body: { Node } = {}
+	if req.message ~= nil and req.message ~= "" then
+		table.insert(body, ui.el("div", { class = "twt-msg", text = req.message }))
+	end
+	if req.detail ~= nil and #req.detail > 0 then
+		local lines: { Node } = {}
+		for _, line in ipairs(req.detail) do
+			table.insert(lines, ui.el("div", { class = "twt-line", text = line }))
+		end
+		table.insert(body, ui.el("div", { class = "twt-detail twt-mono" }, lines))
+	end
+	local lead: { Node } = {}
+	local cancels = false
 	for _, button in ipairs(buttons) do
+		cancels = cancels or button.id == "cancel"
+	end
+	if not cancels then
+		table.insert(lead, hint({ "esc" }, "cancel", "twt-hint"))
+	end
+	local foot: { Node } = { ui.el("div", { class = "mdl-lead" }, lead) }
+	for i = #buttons, 1, -1 do
+		local button = buttons[i]
+		local class = "btn mdl-go twt-btn"
+		if button.kind == "danger" then
+			class ..= " bad"
+		elseif button.kind == "primary" then
+			class ..= " accent"
+		end
 		table.insert(
-			row,
-			ui.el("button", { text = button.label, class = button.kind, actions = { click = "btn=" .. button.id } })
+			foot,
+			ui.el("button", { class = class, actions = { click = "btn=" .. button.id } }, {
+				ui.el("span", { text = button.label }),
+				kbd(button_key(button, i)),
+			})
 		)
 	end
-	local enter_label = if buttons[1] then buttons[1].label else "OK"
-	return ui.col({
-		ui.node("overlay", { key = "confirm", head = req.title, modal = true, size = "sm" }, {
-			ui.text(req.message or ""),
-			ui.row(row),
-			ui.text({ ui.span("Enter: " .. enter_label .. " · Esc: cancel", "muted") }),
-		}),
-	})
+	local children: { Node } = {
+		ui.el("div", { class = "mdl-head" }, { ui.el("div", { class = "mdl-titles" }, titles) }),
+	}
+	if #body > 0 then
+		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
+	end
+	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
+	return palette("confirm", req.title, children)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
 	local req = state.req
-	local body: { Node } = {}
+	local children: { Node } = {
+		ui.el("div", { class = "ck-top" }, {
+			ui.node("icon", { name = "pen" }),
+			ui.node("input", { key = "text", text = state.text, placeholder = req.placeholder or req.title }),
+			kbd("esc"),
+		}),
+	}
 	if req.message ~= nil and req.message ~= "" then
-		table.insert(body, ui.text(req.message))
+		table.insert(children, ui.el("div", { class = "twt-msg" }, { ui.text(req.message) }))
 	end
-	table.insert(body, ui.node("input", { key = "text", text = state.text, placeholder = req.placeholder }))
+	table.insert(
+		children,
+		ui.el("div", { class = "ck-foot" }, {
+			hint({ "↵" }, req.verb or "OK"),
+			hint({ "esc" }, "close", "grow"),
+		})
+	)
 	if not state.focused then
 		state.focused = true
 		cx:frame({ { "focus", PROMPT_INPUT_ID } })
 	end
-	return ui.col({
-		ui.node("overlay", { key = "prompt", head = req.title, modal = true, size = "sm" }, body),
-	})
+	return palette("prompt", req.title, children)
 end
 
 local function pick_key(state: State, key: Key): boolean

@@ -27,9 +27,9 @@ local ROOT = initial_root()
 local DEFAULT_KEYS = { "ctrl+b>w" }
 local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
-	worktree = "remove worktree, keep branch",
-	["worktree+merged-branch"] = "remove worktree, delete branch if merged",
-	["worktree+branch"] = "remove worktree and branch",
+	worktree = "Removes the worktree and keeps the branch.",
+	["worktree+merged-branch"] = "Removes the worktree, and deletes the branch if it is merged.",
+	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
 type Answer = { [string]: any }
@@ -290,20 +290,45 @@ local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: b
 	return true
 end
 
+local MAX_PATH = 72
+
+local function short_path(path: string): string
+	local home = env("HOME")
+	local short = path
+	if home ~= nil and string.sub(path, 1, #home + 1) == home .. "/" then
+		short = "~" .. string.sub(path, #home + 1)
+	elseif string.sub(path, 1, #ROOT + 1) == ROOT .. "/" then
+		short = "…/worktrees" .. string.sub(path, #ROOT + 1)
+	end
+	local length = utf8.len(short) or #short
+	if length <= MAX_PATH then
+		return short
+	end
+	local keep = MAX_PATH - 1
+	local head = math.floor(keep / 3)
+	local tailStart = utf8.offset(short, length - (keep - head) + 1) or (#short - (keep - head) + 1)
+	local headEnd = (utf8.offset(short, head + 1) or (head + 1)) - 1
+	return string.sub(short, 1, headEnd) .. "…" .. string.sub(short, tailStart)
+end
+
 local function confirm(
 	cx: WindowCx,
 	title: string,
+	path: string,
 	message: string,
+	detail: { string }?,
 	buttons: { any },
 	cb: AnswerCb,
 	reveal: boolean?
 ): boolean
-	return ask(
-		cx,
-		{ mode = "confirm", title = title, message = message, buttons = tern.json.array(buttons) },
-		cb,
-		reveal
-	)
+	return ask(cx, {
+		mode = "confirm",
+		title = title,
+		path = path,
+		message = message,
+		detail = if detail ~= nil and #detail > 0 then tern.json.array(detail) else nil,
+		buttons = tern.json.array(buttons),
+	}, cb, reveal)
 end
 
 local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
@@ -312,7 +337,7 @@ local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
 	ask(cx, req, cb)
 end
 
-local MAX_LISTED_FILES = 10
+local MAX_LISTED_FILES = 8
 
 local function staging_line(err: any): string?
 	if err ~= nil and type(err.staging) == "string" then
@@ -325,37 +350,53 @@ local function toast_error(cx: WindowCx, err: any)
 	cx:toast("error", tostring(err and err.message or "tern-wt failed"), staging_line(err))
 end
 
-local function failure_message(err: any): string
-	local lines: { string } = { tostring(err.message) }
+local function replace_plain(text: string, find: string, with: string): string
+	if find == "" then
+		return text
+	end
+	local parts: { string } = {}
+	local start = 1
+	while true do
+		local from, to = string.find(text, find, start, true)
+		if from == nil or to == nil then
+			break
+		end
+		table.insert(parts, string.sub(text, start, from - 1))
+		table.insert(parts, with)
+		start = to + 1
+	end
+	table.insert(parts, string.sub(text, start))
+	return table.concat(parts)
+end
+
+local function failure_message(err: any, path: string): (string, { string })
+	local lines: { string } = {}
+	local detail: { string } = {}
 	local files = err.files
 	if err.code == "dirty_worktree" and type(files) == "table" and #files > 0 then
-		local changes: { string } = {}
-		local ignored: { string } = {}
+		local ignored = false
 		for i = 1, math.min(#files, MAX_LISTED_FILES) do
 			local entry = tostring(files[i])
-			if string.sub(entry, 1, 3) == "!! " then
-				table.insert(ignored, string.sub(entry, 4))
-			else
-				table.insert(changes, entry)
-			end
-		end
-		if #changes > 0 then
-			table.insert(lines, "Changes:")
-			table.move(changes, 1, #changes, #lines + 1, lines)
-		end
-		if #ignored > 0 then
-			table.insert(lines, "Ignored files that are hard to rebuild:")
-			table.move(ignored, 1, #ignored, #lines + 1, lines)
+			ignored = ignored or string.sub(entry, 1, 3) == "!! "
+			table.insert(detail, entry)
 		end
 		if #files > MAX_LISTED_FILES then
-			table.insert(lines, "… and " .. (#files - MAX_LISTED_FILES) .. " more")
+			table.insert(detail, "and " .. (#files - MAX_LISTED_FILES) .. " more")
 		end
+		table.insert(
+			lines,
+			if ignored
+				then "Removing it would lose this work, including ignored files (!!):"
+				else "Removing it would lose this work:"
+		)
+	else
+		table.insert(lines, replace_plain(tostring(err.message), path, short_path(path)))
 	end
 	local saved = staging_line(err)
 	if saved ~= nil then
-		table.insert(lines, saved)
+		table.insert(lines, replace_plain(saved, path, short_path(path)))
 	end
-	return table.concat(lines, "\n")
+	return table.concat(lines, "\n"), detail
 end
 
 local function fnv1a(text: string): string
@@ -482,7 +523,9 @@ local function create(cx: WindowCx, root: string, extra: { string })
 				confirm(
 					cx2,
 					"Branch has a worktree elsewhere",
-					tostring(err.existing) .. "\nRelocate it to " .. tostring(err.target) .. "?",
+					short_path(tostring(err.existing)),
+					"Relocate it to " .. short_path(tostring(err.target)) .. "?",
+					nil,
 					{ { id = "relocate", label = "Relocate", kind = "primary" }, { id = "cancel", label = "Cancel" } },
 					function(answer, cx3)
 						if answer.action == "button" and answer.id == "relocate" then
@@ -675,13 +718,14 @@ local function branch_picker(cx: WindowCx, root: string)
 				worktreeOfBranch[w.branch] = w.path
 			end
 		end
-		local items: { any } = { { id = "other", label = "Other repo…" } }
+		local items: { any } = { { id = "other", label = "Other repo…", icon = "folder" } }
 		for _, pr in ipairs(res.prs or {}) do
 			table.insert(items, {
 				id = "pr:" .. tostring(pr.number),
 				label = "#" .. tostring(pr.number) .. " " .. tostring(pr.title),
 				detail = pr.branch,
 				group = "Pull requests",
+				icon = "merge",
 			})
 		end
 		for _, name in ipairs(res.branches or {}) do
@@ -691,10 +735,12 @@ local function branch_picker(cx: WindowCx, root: string)
 				label = name,
 				detail = if path then "worktree" else nil,
 				group = "Branches",
+				icon = "branch",
 			})
 		end
 		pick(cx2, {
 			title = tostring(res.name) .. ": choose branch",
+			placeholder = "Search branches in " .. tostring(res.name),
 			items = items,
 			allowNew = true,
 			newLabel = "Create branch “%s” from " .. tostring(res.default),
@@ -732,9 +778,15 @@ local function github_picker(cx: WindowCx)
 				label = nameWithOwner,
 				detail = if type(r.description) == "string" and r.description ~= "" then r.description else nil,
 				group = string.match(nameWithOwner, "^([^/]+)/") or nameWithOwner,
+				icon = "globe",
 			})
 		end
-		pick(cx2, { title = "Choose GitHub repository", items = items }, function(answer, cx3)
+		pick(cx2, {
+			title = "Choose GitHub repository",
+			placeholder = "Search GitHub repositories",
+			verb = "clone",
+			items = items,
+		}, function(answer, cx3)
 			local nameWithOwner = if answer.action == "select" and type(answer.id) == "string"
 				then string.match(answer.id, "^gh:(.*)$")
 				else nil
@@ -760,49 +812,69 @@ local function new_repo(cx: WindowCx)
 		end
 		local owners: { any } = {}
 		for _, o in ipairs(res.owners or {}) do
-			table.insert(owners, { id = o, label = o })
+			table.insert(owners, { id = o, label = o, icon = "user" })
 		end
-		pick(cx2, { title = "Repository owner", items = owners }, function(ownerAnswer, cx3)
-			if ownerAnswer.action ~= "select" or type(ownerAnswer.id) ~= "string" then
-				return
-			end
-			local owner: string = ownerAnswer.id
-			ask(cx3, { mode = "prompt", title = "Repository name", placeholder = "name" }, function(nameAnswer, cx4)
-				if nameAnswer.action ~= "text" or type(nameAnswer.text) ~= "string" or nameAnswer.text == "" then
+		pick(
+			cx2,
+			{ title = "Repository owner", placeholder = "Search owners", verb = "choose", items = owners },
+			function(ownerAnswer, cx3)
+				if ownerAnswer.action ~= "select" or type(ownerAnswer.id) ~= "string" then
 					return
 				end
-				local name: string = nameAnswer.text
-				pick(cx4, {
-					title = "Visibility of " .. owner .. "/" .. name,
-					items = { { id = "private", label = "private" }, { id = "public", label = "public" } },
-				}, function(visibilityAnswer, cx5)
-					if visibilityAnswer.action ~= "select" or type(visibilityAnswer.id) ~= "string" then
+				local owner: string = ownerAnswer.id
+				ask(cx3, {
+					mode = "prompt",
+					title = "Repository name",
+					placeholder = "Repository name in " .. owner,
+					verb = "continue",
+				}, function(nameAnswer, cx4)
+					if nameAnswer.action ~= "text" or type(nameAnswer.text) ~= "string" or nameAnswer.text == "" then
 						return
 					end
-					cli(
-						{ "new-repo", owner .. "/" .. name, "--visibility", visibilityAnswer.id },
-						function(newRepo, newRepoErr, cx6)
-							if newRepoErr ~= nil then
-								toast_error(cx6, newRepoErr)
-								return
-							end
-							branch_picker(cx6, newRepo.root)
+					local name: string = nameAnswer.text
+					pick(cx4, {
+						title = "Visibility of " .. owner .. "/" .. name,
+						placeholder = "Choose visibility of " .. owner .. "/" .. name,
+						verb = "create",
+						items = {
+							{ id = "private", label = "private", icon = "lock" },
+							{ id = "public", label = "public", icon = "globe" },
+						},
+					}, function(visibilityAnswer, cx5)
+						if visibilityAnswer.action ~= "select" or type(visibilityAnswer.id) ~= "string" then
+							return
 						end
-					)
+						cli(
+							{ "new-repo", owner .. "/" .. name, "--visibility", visibilityAnswer.id },
+							function(newRepo, newRepoErr, cx6)
+								if newRepoErr ~= nil then
+									toast_error(cx6, newRepoErr)
+									return
+								end
+								branch_picker(cx6, newRepo.root)
+							end
+						)
+					end)
 				end)
-			end)
-		end)
+			end
+		)
 	end)
 end
 
 repo_picker = function(cx: WindowCx)
 	local items: { any } = {}
 	for _, r in ipairs(localRepos) do
-		table.insert(items, { id = "local:" .. r.root, label = r.name, detail = r.root, group = "Open sessions" })
+		table.insert(items, {
+			id = "local:" .. r.root,
+			label = r.name,
+			detail = short_path(r.root),
+			group = "Open sessions",
+			icon = "folder",
+		})
 	end
-	table.insert(items, { id = "github", label = "Browse GitHub repos…" })
-	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…" })
-	pick(cx, { title = "Choose repository", items = items }, function(answer, cx2)
+	table.insert(items, { id = "github", label = "Browse GitHub repos…", icon = "globe" })
+	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…", icon = "folder-plus" })
+	pick(cx, { title = "Choose repository", placeholder = "Search repositories", items = items }, function(answer, cx2)
 		if answer.action ~= "select" or type(answer.id) ~= "string" then
 			return
 		end
@@ -844,7 +916,8 @@ local function run_remove(
 	end
 	cli(args, function(res, err, cx2)
 		if err ~= nil then
-			confirm(cx2, "Teardown failed", failure_message(err), {
+			local message, detail = failure_message(err, path)
+			confirm(cx2, "Teardown failed", short_path(path), message, detail, {
 				{ id = "retry", label = "Retry", kind = "primary" },
 				{ id = "force", label = "Force delete", kind = "danger" },
 				{ id = "cancel", label = "Cancel" },
@@ -890,7 +963,9 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	return confirm(
 		cx,
 		"Tear down worktree?",
-		path .. "\nPolicy: " .. (POLICY[policy] or policy),
+		short_path(path),
+		POLICY[policy] or ("Policy: " .. policy),
+		nil,
 		buttons,
 		function(answer, cx2)
 			if answer.action == "button" and answer.id == "teardown" then
