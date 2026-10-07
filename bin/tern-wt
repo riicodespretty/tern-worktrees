@@ -16,6 +16,6 @@ else
 	exit 1
 fi
 
-PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:$HOME/.local/bin"
 export PATH
 exec "$BUN" "$DIR/../src/bin.ts" "$@"

@@ -1,11 +1,11 @@
-import { readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { CommandModule } from '../src/cli.ts';
 import { checkCommandName, commandLoader, main } from '../src/cli.ts';
-import { CliError } from '../src/proc.ts';
+import { CliError, must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, spawnCli, tmpRepo, useSandbox } from './helpers.ts';
+import { REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 interface Envelope {
   error: { code: string; message: string };
@@ -119,6 +119,22 @@ describe('cli', () => {
         { status: 0, stderr: '', stdout: `${JSON.stringify({ repos: [{ dir: '/tmp', name: null, owner: null, root: null }] })}\n` },
         { status: 1, stderr: 'unknown command nope\n', stdout: envelope('bad_args', 'unknown command nope') },
       ]);
+    });
+
+    it('keeps the PATH of the caller ahead of the fallback dirs of the shim', async () => {
+      const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
+      const realGit = gitPath.trim();
+      const home = tempDir('home');
+      const fallbackBin = path.join(home, '.local', 'bin');
+      mkdirSync(fallbackBin, { recursive: true });
+      writeFileSync(path.join(fallbackBin, 'git'), `#!/bin/sh\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+      const callerBin = tempDir('caller-bin');
+      const marker = path.join(callerBin, 'ran');
+      writeFileSync(path.join(callerBin, 'git'), `#!/bin/sh\n: > '${marker}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('PATH', `${callerBin}:${process.env.PATH ?? ''}`);
+      expect(spawnCli(['resolve', '/tmp']).status).toBe(0);
+      expect(existsSync(marker)).toBeTruthy();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig } from '../src/config.ts';
@@ -60,6 +60,21 @@ describe('config', () => {
       expect(thrown()?.message).toContain(`${file}: (root): invalid JSON: SyntaxError: `);
     });
 
+    it('raises config_invalid when config.json is a directory', () => {
+      mkdirSync(file);
+      const error = thrown();
+      expect(error?.code).toBe('config_invalid');
+      expect(error?.message).toContain(`${file}: (root): cannot read: Error: EISDIR`);
+    });
+
+    it('raises config_invalid when config.json cannot be read', () => {
+      write('{}');
+      chmodSync(file, 0o000);
+      const error = thrown();
+      expect(error?.code).toBe('config_invalid');
+      expect(error?.message).toContain(`${file}: (root): cannot read: Error: EACCES`);
+    });
+
     it.each([
       ['[]', '(root): expected an object'],
       ['null', '(root): expected an object'],
@@ -68,6 +83,8 @@ describe('config', () => {
       ['{"teardown":1}', 'teardown: expected one of worktree, worktree+merged-branch, worktree+branch'],
       ['{"cloneRoot":""}', 'cloneRoot: expected a non-empty string'],
       ['{"cloneRoot":3}', 'cloneRoot: expected a non-empty string'],
+      ['{"cloneRoot":"relative/dir"}', 'cloneRoot: expected an absolute path or a path that starts with ~'],
+      ['{"cloneRoot":"~other/dir"}', 'cloneRoot: expected an absolute path or a path that starts with ~'],
       ['{"hotkeys":[]}', 'hotkeys: expected an object'],
       ['{"hotkeys":null}', 'hotkeys: expected an object'],
       ['{"hotkeys":"ctrl+b>w"}', 'hotkeys: expected an object'],

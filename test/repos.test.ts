@@ -180,8 +180,37 @@ describe('GitHub repo commands', () => {
       expect(existsSync(path.dirname(dest))).toBeTruthy();
     });
 
-    it.each([[[]], [['me']], [['me/x/y']], [['/x']], [['me/']], [['me/x', 'me/y']]])('raises bad_args on %j', async args => {
+    it.each([
+      [[]],
+      [['me']],
+      [['me/x/y']],
+      [['/x']],
+      [['me/']],
+      [['me/x', 'me/y']],
+      [['../x']],
+      [['x/..']],
+      [['../..']],
+      [['./x']],
+      [['me/.']],
+      [['me/..']],
+      [['.me/x']],
+      [['--', '-me/x']],
+      [['me/-x']],
+      [['--', '--depth=1/x']],
+      [['me/x y']],
+    ])('raises bad_args on %j and runs no gh', async args => {
       await expect(clone(args)).rejects.toMatchObject({ code: 'bad_args', message: 'clone needs one <owner/name>' });
+      expect(ghLog()).toStrictEqual([]);
+    });
+
+    it.each([
+      ['my-org.1/repo_name.js', 'my-org.1', 'repo_name.js'],
+      ['me/.github', 'me', '.github'],
+      ['me/_x', 'me', '_x'],
+    ])('accepts %s', async (nameWithOwner, owner, name) => {
+      const dest = path.join(cloneRoot, owner, name);
+      ghFixture(['repo', 'clone', nameWithOwner, dest], '');
+      await expect(clone([nameWithOwner])).resolves.toStrictEqual({ cloned: true, root: dest });
     });
   });
 
@@ -204,8 +233,18 @@ describe('GitHub repo commands', () => {
       [['me/x'], 'new-repo needs --visibility private or public'],
       [['mex', '--visibility', 'private'], 'new-repo needs one <owner/name>'],
       [['--visibility', 'private'], 'new-repo needs one <owner/name>'],
+      [['../evil', '--visibility', 'private'], 'new-repo needs one <owner/name>'],
+      [['--visibility', 'private', '--', '--template=evil/x'], 'new-repo needs one <owner/name>'],
     ])('raises bad_args on %j', async (args, message) => {
       await expect(newRepo(args)).rejects.toMatchObject({ code: 'bad_args', message });
+      expect(ghLog()).toStrictEqual([]);
+    });
+
+    it('raises path_conflict before it creates the GitHub repo when the clone path is taken', async () => {
+      const dest = path.join(cloneRoot, 'me', 'x');
+      mkdirSync(dest, { recursive: true });
+      ghFixture(['repo', 'create', 'me/x', '--private', '--add-readme'], '');
+      await expect(newRepo(['me/x', '--visibility', 'private'])).rejects.toMatchObject({ code: 'path_conflict', extra: { path: dest } });
       expect(ghLog()).toStrictEqual([]);
     });
   });
