@@ -47,25 +47,25 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 ### Open a worktree tab
 
 1. Press `ctrl+b w`. The branch picker opens for the repository of the current session. When the current session has no repository, the repo picker opens first.
-2. Type to filter the open pull requests and the branches. A branch with a worktree shows the detail `worktree`.
+2. Type to filter the open pull requests and the branches. A branch with a worktree shows `worktree` adjacent to its name.
 3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, type its name and press Enter on `Create branch “<name>” from <default>`.
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
 
-Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It follows the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
+Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
 
 ### Open a worktree from the command palette
 
-In a pane of a repository or of one of its worktrees, the command palette (`cmd+shift+p`) lists a worktree row for each branch and each open pull request, in the `Worktrees` group:
+In a pane of a repository or of one of its worktrees, the command palette (`cmd+shift+p`) shows the `Worktrees` group. This group has a worktree row for each branch and each open pull request:
 
 - `<repo>: <branch>`, with ` · worktree` at the end when the branch has a worktree.
 - `<repo>: #<n> <title>` for a pull request.
 
 Press Enter on a row to open its worktree tab, as the branch picker does. The rows of a repository show only in its panes.
 
-The rows refresh from local refs when a shell command ends in a pane of the repository, when one of its panes gets focus, and after a worktree is made or removed. That refresh uses no network. The fetch from `origin` and the list of open pull requests run at most once in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
+The rows refresh from local refs, with no network traffic. This refresh runs when a shell command ends in a pane of the repository and when one of its panes gets focus. It also runs after the plugin makes or removes a worktree. The fetch from `origin` and the list of open pull requests run at most one time in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
 
-`ctrl+b w` still opens the dialog, for a new branch and for `Other repo…`.
+`ctrl+b w` still opens the dialog. Use it to make a new branch or to select `Other repo…`.
 
 ### Select a different repository
 

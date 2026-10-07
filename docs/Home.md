@@ -13,7 +13,7 @@ A branch can still have an Orca worktree. When the user picks that branch, the p
 The design has three parts:
 
 - `tern-wt`, a Bun and TypeScript CLI in `src/`, the single implementation. Each git and gh step runs in the CLI.
-- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the dialog block, turns each answer into a CLI call, keeps each worktree tab matched to its worktree, and keeps the worktree rows of the command palette current.
+- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the dialog block, turns each answer into a CLI call, and keeps each worktree tab matched to its worktree. It also keeps the worktree rows of the command palette current.
 - The dialog block, in `host.luau`, a floating block that shows a picker, a confirmation or a text prompt.
 
 The omp skill and the Carly exports give agents the same CLI, so the user and the agents get the same behavior.
@@ -26,22 +26,38 @@ Each command prints one JSON object, and each failure has an error code. The win
 
 ### Worktree rows
 
-The window half registers one Tern command for each branch and each open pull request of each repository that it knows from a pane `cwd`, with `tern.command` in the `Worktrees` group. A row runs `tern-wt create`, as the branch picker does. Its `available` hook only reads tables: the row shows when the `cwd` of the active pane belongs to its repository. A branch that goes away keeps its command, and `available` hides it. Tern ranks the rows, and the plugin sets only their titles.
+The window half knows each repository from the `cwd` of a pane. With `tern.command`, it registers one Tern command in the `Worktrees` group for each branch and each open pull request of that repository. A row runs `tern-wt create`, as the branch picker does. Its `available` hook only reads tables: the row shows when the `cwd` of the active pane belongs to its repository. A branch that goes away keeps its command, and `available` hides it. Tern ranks the rows, and the plugin sets only their titles.
 
 Two types of refresh keep the rows current:
 
 - A local refresh runs `tern-wt branches --offline`. It keeps the pull request rows of the last network refresh.
-- A network refresh runs `tern-wt branches`, which fetches `origin` and lists the open pull requests. A trigger gets a network refresh, not a local one, when the last network refresh of that repository is older than the Tern setting `git.auto_fetch_minutes`, read at that time. With 0, no network refresh starts. The pull request rows of an earlier network refresh stay, with no update, until the window or the plugin reloads. A failed pull request list keeps the earlier pull request rows.
+- A network refresh runs `tern-wt branches`, which fetches `origin` and lists the open pull requests. A trigger gets a network refresh, not a local one, when the last network refresh of that repository is older than `git.auto_fetch_minutes`. The window half reads that Tern setting at each trigger. With 0, no network refresh starts. The pull request rows of an earlier network refresh stay, with no update, until the window or the plugin reloads. When the pull request list fails, the rows keep the earlier pull request rows.
 
-The triggers are the start of the window (each repository open in a session), focus on a pane and a change of the active pane's `cwd`, the `command_finished` event of a shell command in a pane, and a successful create or remove, from the plugin or from the Carly exports. One refresh for each repository runs at a time. A trigger during a refresh queues one more refresh.
+These events start a refresh:
+
+- The start of the window, for each repository open in a session.
+- Focus on a pane.
+- A change of the `cwd` of the active pane.
+- The `command_finished` event, when a shell command in a pane ends.
+- A create or remove that succeeds, from the plugin or from the Carly exports.
+
+One refresh for each repository runs at a time. A trigger during a refresh queues one more refresh.
 
 ### The dialog block
 
 The window half opens the dialog block with a request: a pick, a confirmation or a prompt. The dialog floats over the layout. When it cannot float, it stays docked adjacent to the active pane, and it works the same.
 
-The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`), and the Tern classes `mdl`, `btn`, `kbd` and `ck-foot`. `styles.css` gets its colors, font families and easing from the Tern theme variables. Where Tern has no variable, it copies the value from the Tern theme rule on `body`, the palette rules, or the overlay rules (`.tn-pl-*`). Some values are the plugin's own: the focus ring, the gap of the key hints, and the size of the prompt input. Thus the dialog opens where the palette opens, and it follows the Tern theme colors, fonts, font size and interface style. Two differences stay. Picker rows keep the fixed pitch of the picker element, 36 pixels, where palette rows are 40 pixels. In the studio layout, the prompt input has no box, where the palette input is a pill. Each dialog shows paths in a short form: `~` for the home folder, `…/worktrees/…` for a worktree root that is not in the home folder, and a cut in the middle of a long path. The Teardown failed dialog lists the files with work to lose.
+The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`), and the Tern classes `mdl`, `btn`, `kbd` and `ck-foot`. `styles.css` gets its colors, font families and easing from the Tern theme variables. Where Tern has no variable, it copies the value from the Tern theme rule on `body`, the palette rules, or the overlay rules (`.tn-pl-*`). Some values are the plugin's own: the focus ring, the gap of the key hints, and the size of the prompt input. Thus the dialog opens where the palette opens, and it uses the Tern theme colors, fonts, font size and interface style. Two differences stay. Picker rows keep the fixed pitch of the picker element, 36 pixels, where palette rows are 40 pixels. In the studio layout, the prompt input has no box, where the palette input is a pill. Each dialog shows paths in a short form:
 
-A floating pane comes with a frame: a title bar, a border and a background. The float has no attribute that names its pane, and the Tern CSS engine rejects `:has()`, so no static rule can pick out the dialog. The window half installs `dialog-float.css` with `tern.css` while a dialog waits for an answer, and clears the sheet when the last dialog ends. It also clears the sheet at load, so a reload removes a sheet that the previous plugin left. The sheet strips the frame from each floating pane, so a float of the user's own that is open at that time also loses its frame until the dialog ends. The rules use Tern-internal classes, for example `section.tn-pane.pip` and `tn-head`. When a Tern update renames them, the dialog shows with its frame again. When the plugin cannot read the file, it installs no sheet.
+- `~` for the home folder.
+- `…/worktrees/…` for a worktree root that is not in the home folder.
+- A cut in the middle of a long path.
+
+The Teardown failed dialog lists the files with work to lose.
+
+A floating pane comes with a frame: a title bar, a border and a background. The float has no attribute that names its pane, and the Tern CSS engine rejects `:has()`, so no static rule can pick out the dialog. The window half installs `dialog-float.css` with `tern.css` while a dialog waits for an answer, and clears the sheet when the last dialog ends. It also clears the sheet at load, so a reload removes a sheet that the previous plugin left.
+
+The sheet removes the frame from each floating pane. Thus a float that the user opened also shows with no frame until the last dialog ends. The rules use Tern-internal classes, for example `section.tn-pane.pip` and `tn-head`. When a Tern update renames them, the dialog shows with its frame again. When the plugin cannot read the file, it installs no sheet.
 
 The block gives its answer through its pane title. After the user answers, the title changes to `twt:<request id>:<answer as JSON>`. The window half listens for `title` events, decodes the answer of its pending request, closes the dialog and goes on. When the user closes the dialog, the window half reads that as Cancel.
 

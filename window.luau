@@ -46,10 +46,11 @@ local rootOfSession: { [number]: string } = {}
 local localRepos: { Repo } = {}
 local queuedErrors: { string } = {}
 local configWarned = false
+local NOT_A_REPO = ""
 local rootOfDir: { [string]: string } = {}
 local cwdOfPane: { [number]: string } = {}
 local resolving: { [string]: boolean } = {}
-local live: { [string]: string } = {}
+local rootOfLiveRow: { [string]: string } = {}
 local rowsOfRoot: { [string]: { string } } = {}
 local prsOfRoot: { [string]: { any } } = {}
 local networkAt: { [string]: number } = {}
@@ -262,7 +263,7 @@ local function rebuild_managed(cx: WindowCx)
 	end
 end
 
-local function settle(pane: number)
+local function end_wait(pane: number)
 	pending[pane] = nil
 	if next(pending) == nil then
 		tern.css(FLOAT_SHEET, "")
@@ -304,11 +305,12 @@ local function short_path(path: string): string
 	if length <= MAX_PATH then
 		return short
 	end
-	local keep = MAX_PATH - 1
-	local head = math.floor(keep / 3)
-	local tailStart = utf8.offset(short, length - (keep - head) + 1) or (#short - (keep - head) + 1)
-	local headEnd = (utf8.offset(short, head + 1) or (head + 1)) - 1
-	return string.sub(short, 1, headEnd) .. "…" .. string.sub(short, tailStart)
+	local keptChars = MAX_PATH - 1
+	local headChars = math.floor(keptChars / 3)
+	local tailStartByte = utf8.offset(short, length - (keptChars - headChars) + 1)
+		or (#short - (keptChars - headChars) + 1)
+	local headEndByte = (utf8.offset(short, headChars + 1) or (headChars + 1)) - 1
+	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
 local function confirm(
@@ -316,7 +318,7 @@ local function confirm(
 	title: string,
 	path: string,
 	message: string,
-	detail: { string }?,
+	listing: { string }?,
 	buttons: { any },
 	cb: AnswerCb,
 	reveal: boolean?
@@ -326,7 +328,7 @@ local function confirm(
 		title = title,
 		path = path,
 		message = message,
-		detail = if detail ~= nil and #detail > 0 then tern.json.array(detail) else nil,
+		listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil,
 		buttons = tern.json.array(buttons),
 	}, cb, reveal)
 end
@@ -350,19 +352,19 @@ local function toast_error(cx: WindowCx, err: any)
 	cx:toast("error", tostring(err and err.message or "tern-wt failed"), staging_line(err))
 end
 
-local function replace_plain(text: string, find: string, with: string): string
-	if find == "" then
+local function replace_plain(text: string, old: string, new: string): string
+	if old == "" then
 		return text
 	end
 	local parts: { string } = {}
 	local start = 1
 	while true do
-		local from, to = string.find(text, find, start, true)
+		local from, to = string.find(text, old, start, true)
 		if from == nil or to == nil then
 			break
 		end
 		table.insert(parts, string.sub(text, start, from - 1))
-		table.insert(parts, with)
+		table.insert(parts, new)
 		start = to + 1
 	end
 	table.insert(parts, string.sub(text, start))
@@ -371,23 +373,23 @@ end
 
 local function failure_message(err: any, path: string): (string, { string })
 	local lines: { string } = {}
-	local detail: { string } = {}
+	local listing: { string } = {}
 	local files = err.files
 	if err.code == "dirty_worktree" and type(files) == "table" and #files > 0 then
-		local ignored = false
+		local hasIgnored = false
 		for i = 1, math.min(#files, MAX_LISTED_FILES) do
 			local entry = tostring(files[i])
-			ignored = ignored or string.sub(entry, 1, 3) == "!! "
-			table.insert(detail, entry)
+			hasIgnored = hasIgnored or string.sub(entry, 1, 3) == "!! "
+			table.insert(listing, entry)
 		end
 		if #files > MAX_LISTED_FILES then
-			table.insert(detail, "and " .. (#files - MAX_LISTED_FILES) .. " more")
+			table.insert(listing, "and " .. (#files - MAX_LISTED_FILES) .. " more")
 		end
 		table.insert(
 			lines,
-			if ignored
-				then "Removing it would lose this work, including ignored files (!!):"
-				else "Removing it would lose this work:"
+			if hasIgnored
+				then "Removing this worktree loses these changes, including ignored files (marked !!):"
+				else "Removing this worktree loses these changes:"
 		)
 	else
 		table.insert(lines, replace_plain(tostring(err.message), path, short_path(path)))
@@ -396,7 +398,7 @@ local function failure_message(err: any, path: string): (string, { string })
 	if saved ~= nil then
 		table.insert(lines, replace_plain(saved, path, short_path(path)))
 	end
-	return table.concat(lines, "\n"), detail
+	return table.concat(lines, "\n"), listing
 end
 
 local function fnv1a(text: string): string
@@ -408,10 +410,10 @@ local function fnv1a(text: string): string
 	return string.format("%08x", h)
 end
 
-local function learn(res: any)
+local function learn_roots(res: any)
 	for _, r in ipairs(res.repos or {}) do
 		if type(r.dir) == "string" then
-			rootOfDir[r.dir] = if type(r.root) == "string" then r.root else ""
+			rootOfDir[r.dir] = if type(r.root) == "string" then r.root else NOT_A_REPO
 		end
 	end
 end
@@ -439,7 +441,7 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 			cb(cx2)
 			return
 		end
-		learn(res)
+		learn_roots(res)
 		table.clear(localRepos)
 		local listedRoots: { [string]: boolean } = {}
 		for _, r in ipairs(res.repos or {}) do
@@ -452,7 +454,7 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 		for _, pane in ipairs(cx2.session:panes()) do
 			local sid = session_of_tab(cx2, pane.tab)
 			local root = pane.cwd and rootOfDir[pane.cwd]
-			if sid ~= nil and root ~= nil and root ~= "" and rootOfSession[sid] == nil then
+			if sid ~= nil and root ~= nil and root ~= NOT_A_REPO and rootOfSession[sid] == nil then
 				rootOfSession[sid] = root
 			end
 		end
@@ -559,8 +561,8 @@ local function create(cx: WindowCx, root: string, extra: { string })
 	end)
 end
 
-local function add_row(root: string, id: string, title: string, extra: { string }, ids: { string })
-	live[id] = root
+local function add_row(root: string, id: string, title: string, createArgs: { string }, ids: { string })
+	rootOfLiveRow[id] = root
 	table.insert(ids, id)
 	tern.command({
 		id = id,
@@ -568,7 +570,7 @@ local function add_row(root: string, id: string, title: string, extra: { string 
 		icon = "branch",
 		group = "Worktrees",
 		available = function(cx: WindowCx): boolean
-			if live[id] ~= root then
+			if rootOfLiveRow[id] ~= root then
 				return false
 			end
 			local focused = cx.session:focused()
@@ -576,7 +578,7 @@ local function add_row(root: string, id: string, title: string, extra: { string 
 			return cwd ~= nil and rootOfDir[cwd] == root
 		end,
 		run = function(cx: WindowCx)
-			create(cx, root, extra)
+			create(cx, root, createArgs)
 		end,
 	})
 end
@@ -601,13 +603,13 @@ local function register_rows(root: string, res: any, prs: { any })
 			add_row(root, prefix .. fnv1a(branch), title, { "--branch", branch }, ids)
 		end
 	end
-	local current: { [string]: boolean } = {}
+	local currentIds: { [string]: boolean } = {}
 	for _, id in ipairs(ids) do
-		current[id] = true
+		currentIds[id] = true
 	end
 	for _, id in ipairs(rowsOfRoot[root] or {}) do
-		if not current[id] then
-			live[id] = nil
+		if not currentIds[id] then
+			rootOfLiveRow[id] = nil
 		end
 	end
 	rowsOfRoot[root] = ids
@@ -639,10 +641,10 @@ refresh = function(cx: WindowCx, root: string)
 	end
 	refreshing[root] = true
 	local interval = fetch_interval_ms(cx)
-	local at = networkAt[root]
-	local network = interval > 0 and (at == nil or tern.now() - at >= interval)
+	local lastNetworkAt = networkAt[root]
+	local useNetwork = interval > 0 and (lastNetworkAt == nil or tern.now() - lastNetworkAt >= interval)
 	local args = { "branches", "--repo", root }
-	if network then
+	if useNetwork then
 		networkAt[root] = tern.now()
 	else
 		table.insert(args, "--offline")
@@ -650,7 +652,7 @@ refresh = function(cx: WindowCx, root: string)
 	cli(args, function(res, err, cx2)
 		refreshing[root] = nil
 		if err == nil then
-			if network and not pr_list_failed(res) then
+			if useNetwork and not pr_list_failed(res) then
 				prsOfRoot[root] = if type(res.prs) == "table" then res.prs else {}
 			end
 			register_rows(root, res, prsOfRoot[root] or {})
@@ -662,13 +664,13 @@ refresh = function(cx: WindowCx, root: string)
 	end)
 end
 
-local function refresh_rows(cx: WindowCx)
+local function refresh_all_roots(cx: WindowCx)
 	for root in pairs(rowsOfRoot) do
 		refresh(cx, root)
 	end
 end
 
-local function remember(pane: number, cwd: string?)
+local function remember_cwd(pane: number, cwd: string?)
 	if cwd == nil or cwd == "" then
 		cwdOfPane[pane] = nil
 	else
@@ -682,7 +684,7 @@ local function refresh_dir(cx: WindowCx, cwd: string?)
 	end
 	local root = rootOfDir[cwd]
 	if root ~= nil then
-		if root ~= "" then
+		if root ~= NOT_A_REPO then
 			refresh(cx, root)
 		end
 		return
@@ -696,9 +698,9 @@ local function refresh_dir(cx: WindowCx, cwd: string?)
 		if err ~= nil then
 			return
 		end
-		learn(res)
+		learn_roots(res)
 		local found = rootOfDir[cwd]
-		if found ~= nil and found ~= "" then
+		if found ~= nil and found ~= NOT_A_REPO then
 			refresh(cx2, found)
 		end
 	end)
@@ -825,7 +827,7 @@ local function new_repo(cx: WindowCx)
 				ask(cx3, {
 					mode = "prompt",
 					title = "Repository name",
-					placeholder = "Repository name in " .. owner,
+					placeholder = "Name of the new repository under " .. owner,
 					verb = "continue",
 				}, function(nameAnswer, cx4)
 					if nameAnswer.action ~= "text" or type(nameAnswer.text) ~= "string" or nameAnswer.text == "" then
@@ -916,8 +918,8 @@ local function run_remove(
 	end
 	cli(args, function(res, err, cx2)
 		if err ~= nil then
-			local message, detail = failure_message(err, path)
-			confirm(cx2, "Teardown failed", short_path(path), message, detail, {
+			local message, listing = failure_message(err, path)
+			confirm(cx2, "Teardown failed", short_path(path), message, listing, {
 				{ id = "retry", label = "Retry", kind = "primary" },
 				{ id = "force", label = "Force delete", kind = "danger" },
 				{ id = "cancel", label = "Cancel" },
@@ -933,7 +935,7 @@ local function run_remove(
 			return
 		end
 		cx2:toast("success", "Removed " .. tostring(res.branch or path), join_or_nil(res.warnings, "; "))
-		refresh_rows(cx2)
+		refresh_all_roots(cx2)
 		done(cx2)
 	end)
 end
@@ -1037,7 +1039,7 @@ end)
 tern.on("window_start", function(cx: WindowCx)
 	rebuild_managed(cx)
 	for _, pane in ipairs(cx.session:panes()) do
-		remember(pane.pane, pane.cwd)
+		remember_cwd(pane.pane, pane.cwd)
 	end
 	resolve_sessions(cx, function(cx2)
 		for _, repo in ipairs(localRepos) do
@@ -1061,7 +1063,7 @@ end
 
 tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
 	rebuild_managed(cx)
-	remember(ev.pane, ev.path)
+	remember_cwd(ev.pane, ev.path)
 	if ev.pane == cx.session:focused() then
 		refresh_dir(cx, ev.path)
 	end
@@ -1070,7 +1072,7 @@ end)
 tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
 	local pane = cx.session:pane(ev.pane)
 	if pane ~= nil then
-		remember(ev.pane, pane.cwd)
+		remember_cwd(ev.pane, pane.cwd)
 		if ev.pane == cx.session:focused() then
 			refresh_dir(cx, pane.cwd)
 		end
@@ -1097,7 +1099,7 @@ tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 	end
 	local ok, decoded = pcall(tern.json.decode, string.sub(ev.title, #prefix + 1))
 	local answer: Answer = if ok and type(decoded) == "table" then decoded else { action = "cancel" }
-	settle(ev.pane)
+	end_wait(ev.pane)
 	cx.layout:close(ev.pane)
 	entry.cb(answer, cx)
 end)
@@ -1108,7 +1110,7 @@ tern.on("pane_closed", function(ev: PaneEvent, cx: WindowCx)
 	if entry == nil then
 		return
 	end
-	settle(ev.pane)
+	end_wait(ev.pane)
 	entry.cb({ action = "cancel" }, cx)
 end)
 
@@ -1214,7 +1216,7 @@ tern.carly.export("remove", {
 	end
 	cli(argv, function(res, err, cx2)
 		if err == nil then
-			refresh_rows(cx2)
+			refresh_all_roots(cx2)
 		end
 		reply_to(call)(res, err, cx2)
 	end)

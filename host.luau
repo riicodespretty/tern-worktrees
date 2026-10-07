@@ -18,7 +18,7 @@ type Request = {
 	selected: string?,
 	message: string?,
 	path: string?,
-	detail: { string }?,
+	listing: { string }?,
 	buttons: { Button }?,
 	placeholder: string?,
 	verb: string?,
@@ -141,18 +141,18 @@ local function hint(keys: { string }, label: string, class: string?): Node
 	return ui.el("span", { class = class }, parts)
 end
 
-local function palette(key: string, aria: string, children: { Node }): Node
+local function palette_card(node_key: string, aria: string, children: { Node }): Node
 	return ui.col({
 		ui.el("div", { class = "twt-dim", actions = { click = "close" } }),
 		ui.el("div", {
-			key = key,
+			key = node_key,
 			class = "cmdk tn-cmdk twt-card",
 			attrs = { role = "dialog", ["aria-modal"] = "true", ["aria-label"] = aria },
 		}, children),
 	})
 end
 
-local function legend(verb: string): Node
+local function footer_hints(verb: string): Node
 	return ui.el("div", { class = "ck-foot" }, {
 		hint({ "↑", "↓" }, "navigate"),
 		hint({ "↵" }, verb),
@@ -171,7 +171,7 @@ local function pick_view(state: State): Node
 		table.insert(items, { id = item.id, label = item.label, detail = item.detail, icon = item.icon })
 	end
 	local placeholder = req.placeholder or req.title
-	return palette("card", placeholder, {
+	return palette_card("card", placeholder, {
 		ui.node("picker", {
 			key = "pick",
 			size = "screen",
@@ -183,11 +183,11 @@ local function pick_view(state: State): Node
 			order = tern.json.array(order),
 			selected = state.selected,
 		}),
-		legend(req.verb or "open"),
+		footer_hints(req.verb or "open"),
 	})
 end
 
-local function button_key(button: Button, index: number): string
+local function button_shortcut(button: Button, index: number): string
 	if index == 1 then
 		return "↵"
 	elseif button.id == "cancel" then
@@ -207,19 +207,19 @@ local function confirm_view(state: State): Node
 	if req.message ~= nil and req.message ~= "" then
 		table.insert(body, ui.el("div", { class = "twt-msg", text = req.message }))
 	end
-	if req.detail ~= nil and #req.detail > 0 then
+	if req.listing ~= nil and #req.listing > 0 then
 		local lines: { Node } = {}
-		for _, line in ipairs(req.detail) do
+		for _, line in ipairs(req.listing) do
 			table.insert(lines, ui.el("div", { class = "twt-line", text = line }))
 		end
 		table.insert(body, ui.el("div", { class = "twt-detail twt-mono" }, lines))
 	end
 	local lead: { Node } = {}
-	local cancels = false
+	local hasCancel = false
 	for _, button in ipairs(buttons) do
-		cancels = cancels or button.id == "cancel"
+		hasCancel = hasCancel or button.id == "cancel"
 	end
-	if not cancels then
+	if not hasCancel then
 		table.insert(lead, hint({ "esc" }, "cancel", "twt-hint"))
 	end
 	local foot: { Node } = { ui.el("div", { class = "mdl-lead" }, lead) }
@@ -235,7 +235,7 @@ local function confirm_view(state: State): Node
 			foot,
 			ui.el("button", { class = class, actions = { click = "btn=" .. button.id } }, {
 				ui.el("span", { text = button.label }),
-				kbd(button_key(button, i)),
+				kbd(button_shortcut(button, i)),
 			})
 		)
 	end
@@ -246,7 +246,7 @@ local function confirm_view(state: State): Node
 		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
 	end
 	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
-	return palette("confirm", req.title, children)
+	return palette_card("confirm", req.title, children)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
@@ -272,7 +272,7 @@ local function prompt_view(state: State, cx: BlockCx): Node
 		state.focused = true
 		cx:frame({ { "focus", PROMPT_INPUT_ID } })
 	end
-	return palette("prompt", req.title, children)
+	return palette_card("prompt", req.title, children)
 end
 
 local function pick_key(state: State, key: Key): boolean

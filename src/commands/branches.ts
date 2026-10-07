@@ -66,7 +66,7 @@ const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<Pul
 
 /** `branches --repo <dir> [--offline]`: the branches, open pull requests and worktrees of the repository that holds `dir`. `--offline` reads only local refs: no fetch and no pull requests. */
 export const run = async (args: string[]): Promise<BranchesResult> => {
-  const { values } = parseArgs({ args, options: { offline: { type: 'boolean' }, repo: { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { offline: { default: false, type: 'boolean' }, repo: { type: 'string' } } });
   if (values.repo === undefined) {
     throw new CliError('bad_args', 'branches needs --repo <dir>');
   }
@@ -74,7 +74,7 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
   if (root === null) {
     throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
   }
-  const offline = values.offline === true;
+  const { offline } = values;
   const warnings: string[] = [];
   const originUrl = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
   const hasOrigin = originUrl.status === 0;

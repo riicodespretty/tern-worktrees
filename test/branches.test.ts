@@ -97,8 +97,10 @@ describe('branches command', () => {
       const repo = await tmpRepo('aoyama');
       await git(repo.dir, 'fetch', '--quiet', 'origin');
       const fetchHead = path.join(repo.dir, '.git', 'FETCH_HEAD');
-      utimesSync(fetchHead, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
-      const before = { content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs };
+      const fetchHeadState = () => ({ content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs });
+      const past = new Date('2000-01-01T00:00:00Z');
+      utimesSync(fetchHead, past, past);
+      const before = fetchHeadState();
       await git(repo.origin, 'branch', 'pushed', 'main');
       await git(repo.dir, 'branch', 'local-only');
       const offline = await run(['--repo', repo.dir, '--offline']);
@@ -111,12 +113,12 @@ describe('branches command', () => {
         warnings: [],
         worktrees: [{ branch: 'main', managed: false, path: repo.dir }],
       });
-      expect({ content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs }).toStrictEqual(before);
+      expect(fetchHeadState()).toStrictEqual(before);
       const online = await run(['--repo', repo.dir]);
       expect(online.branches.toSorted()).toStrictEqual(['local-only', 'main', 'pushed']);
     });
 
-    it('gives no PRs and asks gh nothing offline', async () => {
+    it('gives no PRs and makes no gh call offline', async () => {
       const repo = await tmpRepo('aoyama');
       await useGithubOrigin(repo);
       writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
@@ -131,7 +133,7 @@ describe('branches command', () => {
       expect(readFileSync(sandbox.ghLog, 'utf-8')).toContain('pr list');
     });
 
-    it('gives the current branch as default offline when origin/HEAD is unset', async () => {
+    it('offline, gives the current branch as default when origin/HEAD is unset', async () => {
       const repo = await tmpRepo('aoyama');
       await useGithubOrigin(repo);
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
