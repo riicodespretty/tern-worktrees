@@ -1,0 +1,15 @@
+schema = 1
+id = "tern-worktrees"
+name = "Tern Worktrees"
+version = "0.1.0"
+description = "Git worktrees as Tern tabs: create, relocate and tear down."
+icon = "branch"
+host = "host.luau"
+window = "window.luau"
+styles = ["styles.css"]
+
+[[blocks]]
+id = "dialog"
+title = "Worktree"
+icon = "branch"
+palette = false

@@ -1,0 +1,15 @@
+.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button {
+  padding: 3px 12px;
+  border-radius: 6px;
+  background: var(--l1);
+}
+
+.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button.primary {
+  background: var(--accent-fill);
+  color: #fff;
+}
+
+.sf-layer[data-surface='plugin.tern-worktrees.dialog'] button.danger {
+  background: var(--bad-fill);
+  color: #fff;
+}

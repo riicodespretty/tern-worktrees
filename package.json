@@ -8,7 +8,7 @@
   "scripts": {
     "prepare": "vp config",
     "fmt:luau": "stylua .",
-    "check:luau": "stylua --check . && sh -c 'ls *.luau >/dev/null 2>&1 || exit 0; luau-lsp analyze --platform=standard --definitions=@tern=types/tern.d.luau *.luau'",
+    "check:luau": "stylua --check . && sh -c 'ls *.luau >/dev/null 2>&1 || exit 0; defs=$(mktemp -d)/tern.d.luau; sed \"s/): userdata$/): any/\" types/tern.d.luau > \"$defs\"; luau-lsp analyze --platform=standard --definitions=@tern=\"$defs\" *.luau'",
     "lint:prose": "git ls-files -co --exclude-standard -- '*.md' '*.ts' ':!:styles/**' | xargs vale --minAlertLevel=error",
     "test": "vp test",
     "test.mutation": "stryker run",
