@@ -1,0 +1,137 @@
+# STE rule 3.7
+extends: substitution
+message: "ASD-STE100 3.7: Use %[1]s, not '%[2]s'. Keep '%[2]s' if it is a technical noun or verb of your field and %[1]s changes the meaning. Then add '%[2]s' to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: suggestion
+scope: paragraph
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  'are in agreement with(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': agree with
+  'be in agreement with(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': agree with
+  'did a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrated
+  'did a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'did a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaced
+  'did an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installed
+  'did the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrated
+  'did the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installed
+  'did the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'did the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaced
+  'do a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrate
+  'do a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'do a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replace
+  'do an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'do the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrate
+  'do the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'do the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'do the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replace
+  'does a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrates
+  'does a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'does a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaces
+  'does an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'does the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrates
+  'does the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'does the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'does the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaces
+  'gave an explanation(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': told
+  'gave an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': told about
+  'gave an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': showed
+  'gave consideration to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thought about
+  'give an explanation(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tell
+  'give an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tell about
+  'give an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': show
+  'give consideration to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': think about
+  'gives an explanation(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tells
+  'gives an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tells about
+  'gives an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': shows
+  'gives consideration to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thinks about
+  'had an effect on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'changed|caused an effect on'
+  'has a requirement for(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': must have
+  'has an effect on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'changes|causes an effect on'
+  'have a requirement for(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': must have
+  'have an effect on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'change|cause an effect on'
+  'is in agreement with(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': agrees with
+  'made a comparison between(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compared
+  'made a comparison of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compared
+  'made adjustments to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusted
+  'made an adjustment of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusted
+  'made an adjustment to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusted
+  'made an application of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': applied
+  'made use of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': used
+  'make a comparison between(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compare
+  'make a comparison of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compare
+  'make adjustments to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjust
+  'make an adjustment of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjust
+  'make an adjustment to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjust
+  'make an application of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': apply
+  'make use of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': use
+  'makes a comparison between(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compares
+  'makes a comparison of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': compares
+  'makes adjustments to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusts
+  'makes an adjustment of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusts
+  'makes an adjustment to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': adjusts
+  'makes an application of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': applies
+  'makes use of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': uses
+  'perform a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrate
+  'perform a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'perform a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replace
+  'perform an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'perform the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrate
+  'perform the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'perform the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'perform the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replace
+  'performed a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrated
+  'performed a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'performed a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaced
+  'performed an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installed
+  'performed the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrated
+  'performed the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installed
+  'performed the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'performed the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaced
+  'performs a calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrates
+  'performs a removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'performs a replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaces
+  'performs an installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'performs the calibration of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calibrates
+  'performs the installation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'performs the removal of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'performs the replacement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': replaces
+  'provide an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tell about
+  'provide an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': show
+  'provide lubrication to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': lubricate
+  'provide protection for(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevent damage to
+  'provide protection to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevent damage to
+  'provided an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': told about
+  'provided an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': showed
+  'provided lubrication to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': lubricated
+  'provided protection for(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevented damage to
+  'provided protection to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevented damage to
+  'provides an explanation of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': tells about
+  'provides an indication of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': shows
+  'provides lubrication to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': lubricates
+  'provides protection for(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevents damage to
+  'provides protection to(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prevents damage to
+  'put in place(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'put into place(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': install
+  'puts in place(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'puts into place(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': installs
+  'take a measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measure
+  'take into account(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': think about
+  'take into consideration(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': think about
+  'take measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measure
+  'take measurements of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measure
+  'takes a measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measures
+  'takes into account(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thinks about
+  'takes into consideration(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thinks about
+  'takes measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measures
+  'takes measurements of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measures
+  'took a measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measured
+  'took into account(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thought about
+  'took into consideration(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': thought about
+  'took measurement of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measured
+  'took measurements of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': measured
+  'was in agreement with(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': agreed with
+  'were in agreement with(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': agreed with

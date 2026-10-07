@@ -1,0 +1,9 @@
+# STE general recommendation GR-1
+extends: existence
+message: "ASD-STE100 GR-1: Write 'that' after '%[1]s' to start the clause that follows."
+link: https://asd-ste100.org/
+level: suggestion
+vocab: false
+ignorecase: true
+raw:
+  - '(?i)\b(?:make\s+sure|makes\s+sure|made\s+sure|show|shows|showed|shown|recommend|recommends|recommended|state|states|stated|know|knows|knew|known|indicate|indicates|indicated|ensure|ensures|ensured|verify|verifies|verified|confirm|confirms|confirmed)\s+(?:the|a|an|this|these|all|no|your|each|you|it|they|we|he|she|one)\b(?=[^.?!;]+?\b(?:is|are|was|were|be|been|being|can|could|will|would|should|must|may|might|has|have|had|do|does|did)\b)'

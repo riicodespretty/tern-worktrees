@@ -1,0 +1,16 @@
+extends: existence
+message: "ASD-STE100 1.1: '%[1]s' is not an approved word. Write the sentence again with approved words. Keep it if it is a technical noun or verb of your field and no approved word has its meaning. Then add it to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: suggestion
+ignorecase: true
+scope: paragraph
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+tokens:
+  - 'approves(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'approving(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'guarded(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'lain(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'preserved(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'preserves(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'
+  - 'preserving(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)'

@@ -1,0 +1,17 @@
+# neighbor/ColonialAndViolentLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js VIOLENT_COLONIAL_TERMS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags terms rooted in colonialism or violent imagery applied to people.
+
+extends: substitution
+message: "'%s' has violent or colonial origins. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bstakeholder[s]?\b: 'partner / collaborator / contributor / community member'
+  \btarget (population|audience)\b: 'group of focus / intended audience / specific population'
+  # Note: JS lookahead stripped for RE2 compatibility (sources: CDC, WHO)
+  \b(combat|tackle)\b: 'address / collaborate with / eliminate'

@@ -1,0 +1,9 @@
+# STE rule 5.5
+extends: existence
+message: "ASD-STE100 5.5: A note gives only information. Move the instruction, limit, or danger in '%[1]s' to a step or a warning."
+link: https://asd-ste100.org/
+level: error
+vocab: false
+ignorecase: true
+raw:
+  - '(?i)(?:\bnote\s*:|\[!NOTE\])\s*(?:>\s*)?(?:do\s+not|must\s+not|never|always|make\s+sure|make\s+certain|be\s+sure|ensure|verify|adjust|align|apply|assemble|attach|calculate|catch|change|check|clean|close|connect|cut|deactivate|decrease|discard|disconnect|disassemble|drain|enter|examine|fill|flush|hold|increase|insert|install|keep|lift|lock|loosen|lower|lubricate|measure|move|obey|open|operate|park|perform|point|position|press|pull|push|read|record|release|remove|replace|rotate|seal|set|show|shut|start|stay|stop|tighten|turn|unlock|use|write|you\s+must|you\s+should|the\s+operator\s+must|the\s+operator\s+should|the\s+user\s+must|the\s+technician\s+must|(?:it\s+is|it[''’]s)\s+(?:necessary\s+to|recommended\s+that|required\s+to|important\s+to)|care\s+must\s+be\s+taken|care\s+should\s+be\s+taken|(?:the\s+)?(?:maximum|minimum|limit|limits|tolerance|clearance)\b|(?:the\s+)?(?:torque|pressure|temperature|voltage|current|speed|flow|weight|dimension|rate|force|thickness)\s+(?:limit|must|is|cannot|can\s+only|should))\b|(?:\bnote\s*:|\[!NOTE\])[^\n]*?\b(?:injur(?:y|ies)|death|kill|explosion|fire|electric\s+shock|burns?|damage\s+to)\b'

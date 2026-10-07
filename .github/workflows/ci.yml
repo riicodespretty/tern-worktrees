@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ['**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: Luau tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo JohnnyMorganz/StyLua --pattern stylua-linux-x86_64.zip --dir "$RUNNER_TEMP/luau"
+          gh release download --repo JohnnyMorganz/luau-lsp --pattern luau-lsp-linux-x86_64.zip --dir "$RUNNER_TEMP/luau"
+          mkdir -p "$HOME/.local/bin"
+          unzip -o "$RUNNER_TEMP/luau/stylua-linux-x86_64.zip" -d "$HOME/.local/bin"
+          unzip -o "$RUNNER_TEMP/luau/luau-lsp-linux-x86_64.zip" -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/stylua" "$HOME/.local/bin/luau-lsp"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - run: vp check
+
+      - run: vp run check:luau
+
+      - run: vp run lint:prose
+
+      - id: test
+        name: Test with coverage gate
+        run: vp test --coverage
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: node --experimental-strip-types scripts/ci-summary.ts coverage
+
+      - name: Upload coverage summary
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-summary
+          path: |
+            coverage/coverage-summary.json
+            coverage/coverage-final.json
+          retention-days: 30
+
+  mutation:
+    name: Mutation testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+
+      - name: Restore incremental mutation state
+        uses: actions/cache/restore@v6
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ runner.os }}-${{ github.sha }}
+          restore-keys: stryker-incremental-${{ runner.os }}-
+
+      - id: stryker
+        name: Mutation score gate
+        run: vp exec stryker run ${{ github.ref == 'refs/heads/main' && '--force' || '' }}
+
+      - name: Mutation summary
+        if: ${{ !cancelled() && steps.stryker.outcome != 'skipped' }}
+        run: node --experimental-strip-types scripts/ci-summary.ts mutation
+
+      - name: Save incremental mutation state
+        if: ${{ !cancelled() && steps.stryker.outcome != 'skipped' }}
+        uses: actions/cache/save@v6
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ runner.os }}-${{ github.sha }}
+
+      - name: Upload mutation report
+        if: ${{ !cancelled() && steps.stryker.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report
+          path: reports/mutation
+          retention-days: 30
+
+  coverage-comment:
+    name: Coverage report (no test re-run)
+    needs: ci
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download coverage summary
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-summary
+          path: coverage
+
+      - name: Download base coverage summary
+        id: base-coverage
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        continue-on-error: true
+        with:
+          workflow: ci.yml
+          branch: ${{ github.event.pull_request.base.ref }}
+          name: coverage-summary
+          workflow_conclusion: success
+          path: coverage-base
+          if_no_artifact_found: warn
+
+      - name: Report coverage delta
+        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+          json-summary-compare-path: ${{ steps.base-coverage.outcome == 'success' && steps.base-coverage.outputs.found_artifact == 'true' && 'coverage-base/coverage-summary.json' || '' }}
+
+  mutation-comment:
+    name: Mutation report (no re-run)
+    needs: mutation
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
+        with:
+          node-version: 22
+          cache: true
+
+      - name: Download mutation report
+        uses: actions/download-artifact@v8
+        with:
+          name: mutation-report
+          path: mutation
+
+      - name: Download base mutation report
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        continue-on-error: true
+        with:
+          workflow: ci.yml
+          branch: ${{ github.event.pull_request.base.ref }}
+          name: mutation-report
+          workflow_conclusion: success
+          path: mutation-base
+          if_no_artifact_found: warn
+
+      - name: Render mutation comment
+        run: node --experimental-strip-types scripts/ci-summary.ts mutation --report mutation/mutation.json --base mutation-base/mutation.json --marker --out mutation-comment.md
+
+      - name: Upsert mutation comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- mutation-report -->';
+            const body = fs.readFileSync('mutation-comment.md', 'utf8');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => (c.body || '').includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }

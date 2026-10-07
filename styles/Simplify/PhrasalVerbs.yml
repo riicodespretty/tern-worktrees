@@ -1,0 +1,82 @@
+# STE rule 9.3
+extends: substitution
+message: "ASD-STE100 9.3: Use %[1]s, not '%[2]s'. Keep '%[2]s' if it is a technical noun or verb of your field and %[1]s changes the meaning. Then add '%[2]s' to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: suggestion
+scope: paragraph
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  'backs up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': copies
+  'bring about(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cause
+  'brings about(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': causes
+  'brought about(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': caused
+  'called off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': canceled
+  'carried on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': continued
+  'carried out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': did
+  'checked in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': reported
+  'checked out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': examined
+  'crossed out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': deleted
+  'go ahead(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': continue
+  'goes ahead(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': continues
+  'gone ahead(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': continued
+  'gotten in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': entered
+  'gotten off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'left|removed'
+  'gotten on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': entered
+  'gotten out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'left|removed'
+  'gotten rid of(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'gotten through(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': completed
+  'plugged in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': connected
+  'ran into(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': hit
+  'ran out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': became empty
+  'ran over(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': hit
+  'setting up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': prepare
+  'stood by(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': waited
+  'stuck out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'extended|protruded'
+  'switched off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'stopped|de-energized'
+  'switched on(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'started|energized'
+  'take apart(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassemble
+  'take away(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'take down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'remove|lower'
+  'take in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'absorb|receive'
+  'take off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'take out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': remove
+  'take over(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': control
+  'taken apart(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassembled
+  'taken away(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'taken down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'removed|lowered'
+  'taken in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'absorbed|received'
+  'taken off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'taken out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'taken over(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': controlled
+  'takes apart(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassembles
+  'takes away(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'takes down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'removes|lowers'
+  'takes in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'absorbs|receives'
+  'takes off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'takes out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removes
+  'takes over(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': controls
+  'took apart(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassembled
+  'took away(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'took down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'removed|lowered'
+  'took in(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': 'absorbed|received'
+  'took off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'took out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'took over(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': controlled
+  'tore down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassembled
+  'tore off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'torn down(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': disassembled
+  'torn off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': removed
+  'wash out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': clean
+  'wash up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': clean
+  'washed out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleaned
+  'washed up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleaned
+  'washes out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleans
+  'washes up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleans
+  'went ahead(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': continued
+  'wiped off(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleaned
+  'wiped up(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': cleaned
+  'worked out(?<!(?:^|\n)[^"\n]*(?:"[^"\n]*"[^"\n]*)*"[^"\n]*)(?<!“[^”\n]*)': calculated

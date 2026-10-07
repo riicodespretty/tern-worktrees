@@ -1,0 +1,10 @@
+# STE rule 5.3
+extends: existence
+message: "ASD-STE100 5.3: Write the instruction as a command. Start the sentence with the verb, not with '%[1]s'."
+link: https://asd-ste100.org/
+level: suggestion
+vocab: false
+scope: sentence
+ignorecase: true
+raw:
+  - '(?i)(?:^\s*(?:You|The\s+\w+)\s+must\s+\w+|\b(?:(?:the\s+)?[a-z]+(?:\s+[a-z]+)?\s+must\s+be\s+[a-z]+|(?:the\s+)?[a-z]+(?:\s+[a-z]+)?\s+(?:is|are)\s+to\s+be\s+[a-z]+|(?:the\s+)?[a-z]+(?:\s+[a-z]+)?\s+should\s+be\s+[a-z]+|(?:it\s+is|it[''’]s)\s+(?:necessary\s+to|recommended\s+that|required\s+to|important\s+to)|the\s+(?:operator|technician|user|mechanic)\s+(?:must|should)|you\s+(?:must|should)|care\s+(?:should|must)\s+be\s+taken)\b)'

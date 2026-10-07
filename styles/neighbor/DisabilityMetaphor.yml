@@ -1,0 +1,41 @@
+# neighbor/DisabilityMetaphor.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js DISABILITY_METAPHORS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags figurative uses of disability-related language - disability used
+# as a metaphor in non-clinical prose.
+#
+# These uses are often unintentional. The goal is not to shame but to
+# prompt reflection: does using disability as a shorthand for something
+# negative reinforce assumptions about what disability means?
+#
+# Sources:
+#   NCDJ Disability Language Style Guide
+#     cronkite.asu.edu/ncdj/disability-language-style-guide
+#   A11y Collective - Accessible Writing
+#     a11y-collective.com/blog/accessible-writing/
+#   APA Style - Bias-Free Language
+#     apastyle.apa.org/style-grammar-guidelines/bias-free-language/disability
+#   Nicolas Steenhout
+#     incl.ca/disability-language-is-a-nuanced-thing/
+#
+# Each metaphor listed here appears in at least two independent sources.
+
+
+extends: substitution
+message: "'%s' uses disability as a metaphor. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bblind (spot|eye|to)\b: 'gap / oversight / unaware of'
+  \bturning a blind eye\b: 'ignoring / overlooking'
+  \btone[- ]deaf\b: 'out of touch / insensitive / unaware'
+  \bfalling on deaf ears\b: 'being ignored / going unheard'
+  \bdeaf ears\b: 'ignored / unheard'
+  \bparalyzed (with|by)\b: 'overwhelmed by / unable to act because of'
+  \bcrippling (debt|fear|blow|anxiety)\b: 'devastating / crushing / severe'
+  \bschizophrenic (approach|strategy|policy|market)\b: 'contradictory / inconsistent / unpredictable'
+  \bstands? on its own two feet\b: 'self-sufficient / independent'
+  \bbasket[- ]case[s]?\b: 'anxious / nervous / overwhelmed'

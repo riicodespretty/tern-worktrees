@@ -1,0 +1,38 @@
+# neighbor/DirectionalLanguage.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js DIRECTIONAL_PATTERNS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags content that gives instructions using screen position references
+# ("see above", "in the right sidebar", "the table below").
+#
+# WCAG basis: SC 1.3.3 (Sensory Characteristics) - instructions shall not
+# rely solely on sensory characteristics of components, including location.
+# Position references break for screen reader users, keyboard users, and
+# anyone who zooms, reflows, or resizes the page.
+#
+# Sources:
+#   SBA Office of Advocacy Content Style Guide
+#     advocacy.sba.gov/office-of-advocacy-content-style-guide/
+#   Google Developer Style Guide
+#     developers.google.com/style/accessibility
+#   WCAG SC 1.3.3 - Sensory Characteristics
+#     w3.org/WAI/WCAG22/Understanding/sensory-characteristics
+
+
+extends: existence
+message: "'%s' uses layout position to give instructions. Position-based references break when users zoom, reflow, or use a screen reader. Reference content by name or heading instead."
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+tokens:
+  # Suggest: use a heading or section name instead
+  - '\b(the )?(right[- ]hand |left[- ]hand )?(side)?bar\b'
+  # Suggest: use a heading or section name instead
+  - '\bin the (right|left) (column|panel|sidebar|navigation|nav|menu)\b'
+  # Suggest: "see [section name]" or restructure
+  - '\b(see|refer to|check|click) (the )?(above|below)\b'
+  # Suggest: "as described in [section]" or restructure
+  - 'as (shown|seen|described|mentioned|noted) (above|below)\b'
+  # Suggest: refer to the item by its caption or figure number
+  - '\bthe following (image|figure|table|chart|diagram) (above|below)\b'

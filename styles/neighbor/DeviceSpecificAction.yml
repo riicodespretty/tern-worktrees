@@ -1,0 +1,16 @@
+# neighbor/DeviceSpecificAction.yml  [GENERATED - do not edit by hand]
+#
+# Source of truth: lib/content-rules.js DEVICE_SPECIFIC_PATTERNS
+# Regenerate: node scripts/generate-vale.mjs
+#
+# Flags instructions that assume the user's input device.
+
+extends: substitution
+message: "'%s' assumes a specific input device. Consider: %s"
+level: warning
+link: https://github.com/a11yfred/neighbor
+ignorecase: true
+swap:
+  \bclick(ing|ed)? (on|the|this)\b: 'choose / select'
+  \btap(ping|ped)? (on|the|this)\b: 'choose / select'
+  \bswipe (the|this)\b: 'choose / select / navigate'

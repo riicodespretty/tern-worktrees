@@ -1,0 +1,14 @@
+# STE rule 2.1
+extends: sequence
+message: "ASD-STE100 2.1: '%[1]s' is a multi-word noun of more than three words. Divide it, or use a preposition, for example of or for."
+link: https://asd-ste100.org/
+level: suggestion
+tokens:
+  - tag: 'NN.*|JJ.*|VBG|VBN'
+    pattern: '.*[A-Za-z][a-z]+.*'
+  - tag: 'NN.*|JJ.*|VBG|VBN'
+    pattern: '.*[A-Za-z][a-z]+.*'
+  - tag: 'NN.*|JJ.*|VBG|VBN'
+    pattern: '.*[A-Za-z][a-z]+.*'
+  - tag: 'NN.*'
+    pattern: '.*[A-Za-z][a-z]+.*'

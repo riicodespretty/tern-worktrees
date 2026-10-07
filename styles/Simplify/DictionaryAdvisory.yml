@@ -1,0 +1,365 @@
+extends: substitution
+message: "ASD-STE100 1.1: Use %[1]s, not '%[2]s'. Keep '%[2]s' if it is a technical noun or verb of your field and %[1]s changes the meaning. Then add '%[2]s' to the vocabulary of your project, not to the Simplify vocabulary."
+link: https://asd-ste100.org/
+level: suggestion
+ignorecase: true
+exceptions:
+  - '(?-i:^[A-Z][A-Z'' -]+$)'
+action:
+  name: replace
+swap:
+  accuracies: precisions
+  accuracy: precision
+  action: step|procedure|task
+  actions: steps|procedures|tasks
+  activities: tasks|procedures|works
+  activity: task|procedure|work
+  actuate: start|operate|push
+  actuated: started|operated|pushed
+  actuates: starts|operates|pushes
+  actuating: start|operate|push
+  admit: let
+  admited: let
+  admiting: let
+  admits: lets
+  adopt: use
+  adopted: used
+  adopting: use
+  adopts: uses
+  '(?<!\b(?:go\s+|goes\s+|gone\s+|went\s+))ahead': forward
+  anchored: attached
+  approve: approval
+  article: object
+  articles: objects
+  asked: told|spoke
+  assign: give
+  assigned: gave
+  assigning: give
+  assigns: gives
+  assist: help
+  assisted: helped
+  assisting: help
+  assists: helps
+  at least: minimum
+  aware: know|tell
+  '(?<!\b(?:touch\s+))base': bottom|use
+  based: used
+  bases: bottoms|uses
+  beyond: more than
+  bind: freely|wind around
+  binding: wind around
+  binds: wind around
+  bound: wind around
+  bounds: limit
+  boundses: limits
+  breadth: width
+  breadths: widths
+  breakdown: stop
+  breakdowns: stop
+  'bring(?!(?:\s+about)\b)': move|put
+  bringing: move|put
+  'brings(?!(?:\s+about)\b)': moves|puts
+  'brought(?!(?:\s+about)\b)': put|moved
+  capable: approved|can
+  'carried(?!(?:\s+on|\s+out)\b)': transmitted
+  '(?<!\b(?:in\s+))case': condition
+  cases: conditions
+  closely: carefully
+  collapsed: closed|fell
+  common: same
+  '(?<!\b(?:made\s+a\s+|make\s+a\s+|makes\s+a\s+))comparison': compare
+  comparisons: compare
+  completely: fully
+  consecutive: other
+  consequence: because of
+  consequences: because of
+  consider: think
+  considered: thought
+  considering: think
+  considers: thinks
+  conventional: standard
+  correctness: correct|correctly
+  correctnesses: correct|correctly
+  covered: included|had
+  critical: careful|very important
+  deliver: supply
+  delivered: supplied
+  deliveries: supply
+  delivering: supply
+  delivers: supplies
+  delivery: supply
+  describe: give
+  described: gave
+  describes: gives
+  describing: give
+  designed: had
+  destroy: break
+  destroyed: broke
+  destroying: break
+  destroys: breaks
+  detach: disconnect|disengage|remove
+  detached: disconnected|disengaged|removed
+  detaches: disconnects|disengages|removes
+  detaching: disconnect|disengage|remove
+  detail: instruction|give|refer|specified
+  detailed: gave|referred
+  details: instructions|gives|refers
+  diagnose: find
+  diagnosed: found
+  diagnoses: finds
+  diagnosing: find
+  direct: point
+  directed: pointed
+  directing: point
+  directs: points
+  distinct: clear
+  distribution: supply
+  distributions: supplies
+  drifted: moved
+  driven: moved|removed|operated
+  dropped: fell|decreased
+  drove: moved|removed|operated
+  early: short
+  emptied: removed
+  empties: removes
+  emptying: remove
+  enforce: obey
+  enforced: obeyed
+  enforces: obeys
+  enforcing: obey
+  establish: make sure
+  established: made sure
+  establishes: makes sure
+  establishing: make sure
+  evaluate: examine|analysis
+  evaluated: examined
+  evaluates: examines
+  evaluating: examine
+  even: smooth|same|flat|flush|level
+  evidence: indication|sign|show|find
+  evidenced: showed|found
+  evidences: indications|signs|show|shows|finds
+  exactly: accurately|fully|correct
+  exceed: more than
+  exceeded: more than
+  exceeding: more than
+  exceeds: more than
+  execute: do
+  executed: did
+  executes: does
+  executing: do
+  expose: get
+  exposed: got
+  exposes: gets
+  exposing: get
+  extremely: very
+  fabricate: make
+  fabricated: made
+  fabricates: makes
+  fabricating: make
+  'false': incorrect
+  fixed: set|attached|repaired|installed
+  forbidden: do not|not permitted
+  foreign: unwanted
+  form: shape|be
+  formed: was
+  forms: shapes|is
+  further: more
+  gap: clearance|distance|space
+  gaps: clearances|distances|spaces
+  generate: be|give|supply
+  generated: was|gave|supplied
+  generates: is|gives|supplies
+  generating: be|give|supply
+  hardened: cure
+  hazard: dangerous
+  hazards: dangerous
+  immediate: immediately
+  in case of: if
+  inform: tell
+  informed: told
+  informing: tell
+  informs: tells
+  intact: not damaged
+  just: immediately
+  keyed: referred
+  labeled: identified
+  '(?<!\b(?:at\s+))least': minimum
+  led: put
+  lie: be
+  lies: is
+  limited: small
+  lose: decrease
+  loses: decreases
+  losing: decrease
+  lying: be
+  maintain: keep|hold|maintenance
+  maintained: kept|held
+  maintaining: keep|hold
+  maintains: keeps|holds
+  major: primary
+  matched: aligned|agreed
+  matter: material
+  matters: materials
+  meet: engage|touch
+  meeting: engage|touch
+  meets: engages|touches
+  met: engaged|touched
+  modified: changed
+  modifies: changes
+  modify: change|modification
+  modifying: change
+  motion: movement
+  motions: movements
+  observe: monitor|see|obey
+  observed: monitored|saw|obeyed
+  observes: monitors|sees|obeys
+  observing: monitor|see|obey
+  omit: ignore|do not do
+  omited: do not do|ignored
+  omiting: ignore|do not do
+  omits: do not do|ignores
+  once: when
+  ordered: told
+  otherwise: differently
+  passage: flow|hole|opening
+  passages: flows|holes|openings
+  passed: went|gave
+  past: around|through
+  persist: continue
+  persisted: continued
+  persistent: continuous
+  persisting: continue
+  persists: continues
+  precisely: accurately
+  preparation: prepare
+  preparations: prepare
+  preserve: preservation
+  priorities: important|before|first
+  priority: important|before|first
+  profile: contour
+  profiles: contours
+  program: sequence
+  programs: sequences
+  protect: prevent|protection
+  protected: prevented
+  protecting: prevent
+  protects: prevents
+  'quick(?!(?:\s+and\s+dirty)\b)': quickly
+  quoted: gave
+  raise: lift|increase|retract
+  raised: lifted|increased|retracted
+  raises: lifts|increases|retracts
+  raising: lift|increase|retract
+  readied: prepared
+  readies: prepares
+  reading: indication
+  readings: indications
+  ready: prepare
+  readying: prepare
+  recover: collect
+  recovered: collected
+  recovering: collect
+  recovers: collects
+  reduce: decrease
+  reduced: decreased
+  reduces: decreases
+  reducing: decrease
+  referenced: show
+  registered: showed
+  rejection: reject
+  rejections: reject
+  reposition: move|put|set
+  repositioned: put|set|moved
+  repositioning: move|put|set
+  repositions: moves|puts|sets
+  restored: put|repaired
+  restrict: decrease|prevent|only|limit
+  restricted: decreased|prevented
+  restricting: decrease|prevent
+  restricts: decreases|prevents
+  resume: start|continue
+  resumed: started|continued
+  resumes: starts|continues
+  resuming: start|continue
+  reusable: use
+  reused: used
+  searched: examined
+  secure: tight|safe|attach|safety|correctly
+  secured: attached|safetied
+  secures: attaches|safeties
+  securing: attach|safety
+  securities: correctly
+  security: correctly
+  'setting(?!(?:\s+up)\b)': adjustment|position|set
+  settings: adjustments|positions|set
+  settle: collect|stable
+  settled: collected
+  settles: collects
+  settling: collect
+  shall: must
+  shalled: must
+  shalling: must
+  shalls: must
+  slack: tension
+  slacks: tension
+  so that: until|prevent
+  soon: time
+  specific: approved|specified
+  speech: voice
+  speeches: voices
+  spot: mark|find|stain
+  spots: marks|stain|finds
+  spotted: found
+  stage: step
+  stages: steps
+  '(?<!\b(?:actual\s+))state': condition|tell
+  stated: told
+  states: conditions|tells
+  sticky: tacky
+  strictly: fully
+  successful: correct|satisfactory
+  supported: held
+  switch off: set|stop|de-energize
+  switches off: sets|stops|de-energizes
+  switching off: set|stop|de-energize
+  talk: speak
+  talked: spoke
+  talking: speak
+  talks: speaks
+  terminate: stop
+  terminated: stopped
+  terminates: stops
+  terminating: stop
+  throughout: during
+  tip: point|tilt
+  tipped: tilted
+  tips: points|tilts
+  tracked: monitored
+  treat: apply|touch
+  treated: applied|touched
+  treating: apply|touch
+  treats: applies|touches
+  'true': correct|agree
+  twice: two
+  uncovered: cover
+  usage: use
+  usages: use
+  utilization: use
+  utilizations: use
+  validities: correct|applicable
+  validity: correct|applicable
+  verified: made sure
+  verifies: makes sure
+  verify: make sure
+  verifying: make sure
+  warn: tell|warning
+  warned: told
+  warns: tells
+  way: procedure
+  ways: procedures
+  '(?<!\b(?:as\s+))well': correctly|fully|good
+  labelled: identified
+  programme: sequence
+  programmes: sequences
+  utilisation: use
