@@ -5,7 +5,7 @@ import { loadConfig } from '../config.ts';
 import { must, run as runProcess } from '../proc.ts';
 import { isCheckoutTop } from './clone.ts';
 
-/** A GitHub repository, with its clone in the clone root or null. */
+/** A GitHub repository. `local` is its clone in the clone root, or null when no clone is there. */
 export interface GithubRepo {
   nameWithOwner: string;
   isPrivate: boolean;
@@ -13,7 +13,7 @@ export interface GithubRepo {
   local: string | null;
 }
 
-/** The GitHub repositories of the user and of each org of the user. */
+/** The GitHub repositories of the user and of each organization of the user. */
 export interface ReposResult {
   owners: string[];
   repos: GithubRepo[];
@@ -55,16 +55,16 @@ const localClone = async (cloneRoot: string, nameWithOwner: string): Promise<str
   return existsSync(dir) && (await isCheckoutTop(dir)) ? dir : null;
 };
 
-/** `repos`: the GitHub repositories of the user and of each organization of the user, with the local clone of each. An organization whose list fails is left out with a warning. */
+/** `repos`: the GitHub repositories of the user and of each organization of the user, with the local clone of each. When the repository list of an organization fails, the result does not include that organization and has a warning. */
 export const run = async (args: string[]): Promise<ReposResult> => {
   parseArgs({ args, options: {} });
   const { cloneRoot } = loadConfig();
-  const user = await must(['gh', 'api', 'user', '--jq', '.login'], 'gh_failed');
-  const login = user.trim();
+  const loginOutput = await must(['gh', 'api', 'user', '--jq', '.login'], 'gh_failed');
+  const login = loginOutput.trim();
   const warnings: string[] = [];
   const orgs = await listOrgs(warnings);
-  const owners = await Promise.all([login, ...orgs].map(async owner => await listRepos(owner, warnings)));
-  const listed = owners.filter(entry => entry !== null);
+  const ownerRepos = await Promise.all([login, ...orgs].map(async owner => await listRepos(owner, warnings)));
+  const listed = ownerRepos.filter(entry => entry !== null);
   const repos = await Promise.all(listed.flatMap(entry => entry.repos).map(async repo => ({ ...repo, local: await localClone(cloneRoot, repo.nameWithOwner) })));
   return { owners: listed.map(entry => entry.owner), repos, warnings };
 };

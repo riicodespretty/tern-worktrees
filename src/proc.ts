@@ -45,8 +45,8 @@ export interface RunOptions {
 }
 
 /**
- * Runs `argv` until it stops and collects its output.
- * A program that fails to start gives status 127 with the spawn error in `stderr`. A signal gives status 1.
+ * Runs `argv`, waits for it to exit, and returns its output.
+ * A command that fails to start gives status 127 with the spawn error in `stderr`. A command that a signal stops gives status 1.
  */
 export const run = async (argv: string[], opts: RunOptions = {}): Promise<RunResult> => {
   const [command, ...args] = argv;

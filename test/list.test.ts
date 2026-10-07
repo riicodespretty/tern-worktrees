@@ -8,10 +8,10 @@ import type { Sandbox, TmpRepo } from './helpers.ts';
 let sandbox: Sandbox;
 let repo: TmpRepo;
 
-const root = (): string => path.join(sandbox.wtHome, 'worktrees');
+const worktreeRootDir = (): string => path.join(sandbox.wtHome, 'worktrees');
 
-const add = async (target: TmpRepo, dirName: string, ...flags: string[]): Promise<string> => {
-  const dir = path.join(root(), path.basename(target.dir), dirName);
+const addWorktree = async (target: TmpRepo, dirName: string, ...flags: string[]): Promise<string> => {
+  const dir = path.join(worktreeRootDir(), path.basename(target.dir), dirName);
   await git(target.dir, 'worktree', 'add', '--quiet', ...flags, dir, 'origin/main');
   return dir;
 };
@@ -23,22 +23,22 @@ describe('list command', () => {
   });
 
   it('lists nothing when the worktree root is missing', async () => {
-    await expect(run([])).resolves.toStrictEqual({ root: root(), worktrees: [] });
+    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
   });
 
   it('lists the managed worktrees of every repo and skips other dirs', async () => {
     const other = await tmpRepo('maui');
-    const clean = await add(repo, 'feature-x', '-b', 'feature/x');
-    const detached = await add(repo, 'PR-7', '--detach');
-    const dirty = await add(other, 'feature-y', '-b', 'feature/y');
+    const clean = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    const detached = await addWorktree(repo, 'PR-7', '--detach');
+    const dirty = await addWorktree(other, 'feature-y', '-b', 'feature/y');
     writeFileSync(path.join(dirty, 'junk.txt'), 'x\n');
-    mkdirSync(path.join(root(), 'aoyama', 'plain'));
+    mkdirSync(path.join(worktreeRootDir(), 'aoyama', 'plain'));
     mkdirSync(path.join(clean, 'src'));
-    writeFileSync(path.join(root(), 'aoyama', 'note.txt'), 'x\n');
-    symlinkSync(clean, path.join(root(), 'aoyama', 'link'));
-    await git(repo.dir, 'clone', '--quiet', repo.origin, path.join(root(), 'aoyama', 'clone'));
+    writeFileSync(path.join(worktreeRootDir(), 'aoyama', 'note.txt'), 'x\n');
+    symlinkSync(clean, path.join(worktreeRootDir(), 'aoyama', 'link'));
+    await git(repo.dir, 'clone', '--quiet', repo.origin, path.join(worktreeRootDir(), 'aoyama', 'clone'));
     await expect(run([])).resolves.toStrictEqual({
-      root: root(),
+      root: worktreeRootDir(),
       worktrees: [
         { branch: 'feature/x', dirty: false, path: clean, repo: repo.dir },
         { branch: null, dirty: false, path: detached, repo: repo.dir },
@@ -49,9 +49,9 @@ describe('list command', () => {
 
   it('lists only the worktrees of --repo', async () => {
     const other = await tmpRepo('maui');
-    const mine = await add(repo, 'feature-x', '-b', 'feature/x');
-    await add(other, 'feature-y', '-b', 'feature/y');
-    await expect(run(['--repo', mine])).resolves.toStrictEqual({ root: root(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    await addWorktree(other, 'feature-y', '-b', 'feature/y');
+    await expect(run(['--repo', mine])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
   });
 
   it('rejects a --repo outside a repo', async () => {

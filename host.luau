@@ -51,11 +51,11 @@ local function matches(item: Item, needle: string): boolean
 	if needle == "" then
 		return true
 	end
-	local hay = string.lower(item.label .. " " .. (item.detail or ""))
-	return string.find(hay, needle, 1, true) ~= nil
+	local searchable = string.lower(item.label .. " " .. (item.detail or ""))
+	return string.find(searchable, needle, 1, true) ~= nil
 end
 
-local function filtered(state: State): ({ string }, { any })
+local function visible_entries(state: State): ({ string }, { any })
 	local req = state.req
 	local ids: { string } = {}
 	local order: { any } = {}
@@ -78,7 +78,7 @@ local function filtered(state: State): ({ string }, { any })
 	return ids, order
 end
 
-local function fix_selection(state: State, ids: { string })
+local function keep_selection_visible(state: State, ids: { string })
 	local selected = state.selected
 	if selected ~= nil and table.find(ids, selected) ~= nil then
 		return
@@ -101,7 +101,7 @@ local function answer_pick(state: State, id: string?)
 	end
 end
 
-local function trim_char(s: string): string
+local function drop_last_char(s: string): string
 	if s == "" then
 		return s
 	end
@@ -109,7 +109,7 @@ local function trim_char(s: string): string
 	return string.sub(s, 1, last - 1)
 end
 
-local function typed(key: Key): string?
+local function typed_text(key: Key): string?
 	if key.ctrl or key.meta or key.text == nil then
 		return nil
 	end
@@ -122,7 +122,7 @@ end
 
 local function pick_view(state: State): Node
 	local req = state.req
-	local _, order = filtered(state)
+	local _, order = visible_entries(state)
 	local items = tern.json.array()
 	if offers_new(req, state.query) then
 		table.insert(items, { id = NEW_ID, label = new_label(req, state.query) })
@@ -148,15 +148,18 @@ local function confirm_view(state: State): Node
 	local req = state.req
 	local buttons = req.buttons or {}
 	local row: { Node } = {}
-	for _, b in ipairs(buttons) do
-		table.insert(row, ui.el("button", { text = b.label, class = b.kind, actions = { click = "btn=" .. b.id } }))
+	for _, button in ipairs(buttons) do
+		table.insert(
+			row,
+			ui.el("button", { text = button.label, class = button.kind, actions = { click = "btn=" .. button.id } })
+		)
 	end
-	local first = if buttons[1] then buttons[1].label else "OK"
+	local enter_label = if buttons[1] then buttons[1].label else "OK"
 	return ui.col({
 		ui.node("overlay", { key = "confirm", head = req.title, modal = true, size = "sm" }, {
 			ui.text(req.message or ""),
 			ui.row(row),
-			ui.text({ ui.span("Enter: " .. first .. " · Esc: cancel", "muted") }),
+			ui.text({ ui.span("Enter: " .. enter_label .. " · Esc: cancel", "muted") }),
 		}),
 	})
 end
@@ -190,7 +193,7 @@ local function pick_key(state: State, key: Key): boolean
 		return true
 	end
 	if key.name == "up" or key.name == "down" then
-		local ids = filtered(state)
+		local ids = visible_entries(state)
 		local count = #ids
 		if count == 0 then
 			return false
@@ -208,16 +211,16 @@ local function pick_key(state: State, key: Key): boolean
 		if state.query == "" then
 			return false
 		end
-		state.query = trim_char(state.query)
-		fix_selection(state, (filtered(state)))
+		state.query = drop_last_char(state.query)
+		keep_selection_visible(state, (visible_entries(state)))
 		return true
 	end
-	local text = typed(key)
+	local text = typed_text(key)
 	if text == nil then
 		return false
 	end
 	state.query ..= text
-	fix_selection(state, (filtered(state)))
+	keep_selection_visible(state, (visible_entries(state)))
 	return true
 end
 
@@ -234,9 +237,9 @@ local function confirm_key(state: State, key: Key): boolean
 		answer(state, { action = "button", id = buttons[1].id })
 		return true
 	end
-	local n = if key.ctrl or key.meta then nil else tonumber(key.name)
-	if n ~= nil and buttons[n] ~= nil then
-		answer(state, { action = "button", id = buttons[n].id })
+	local digit = if key.ctrl or key.meta then nil else tonumber(key.name)
+	if digit ~= nil and buttons[digit] ~= nil then
+		answer(state, { action = "button", id = buttons[digit].id })
 		return true
 	end
 	return false
@@ -255,10 +258,10 @@ local function prompt_key(state: State, key: Key): boolean
 		if state.text == "" then
 			return false
 		end
-		state.text = trim_char(state.text)
+		state.text = drop_last_char(state.text)
 		return true
 	end
-	local text = typed(key)
+	local text = typed_text(key)
 	if text == nil then
 		return false
 	end
@@ -284,11 +287,11 @@ local def: BlockDef<State> = {
 			focused = false,
 		}
 		if req.mode == "pick" then
-			local ids = filtered(state)
+			local ids = visible_entries(state)
 			if req.selected ~= nil and table.find(ids, req.selected) ~= nil then
 				state.selected = req.selected
 			end
-			fix_selection(state, ids)
+			keep_selection_visible(state, ids)
 		end
 		return state
 	end,
@@ -348,7 +351,7 @@ local def: BlockDef<State> = {
 				answer(state, { action = "cancel" })
 			elseif ev.act == "clear" then
 				state.query = ""
-				fix_selection(state, (filtered(state)))
+				keep_selection_visible(state, (visible_entries(state)))
 			elseif ev.act == "btn" and type(ev.value) == "string" then
 				answer(state, { action = "button", id = ev.value })
 			end

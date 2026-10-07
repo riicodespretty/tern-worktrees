@@ -103,7 +103,7 @@ describe('GitHub repo commands', () => {
       });
     });
 
-    it('raises gh_failed when gh has no user', async () => {
+    it('raises gh_failed when gh cannot read the user login', async () => {
       rmSync(path.join(sandbox.ghDir, 'api_user_--jq_.login.json'));
       await expect(repos([])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
@@ -119,7 +119,7 @@ describe('GitHub repo commands', () => {
       expect(readFileSync(log).toString().trim().split('\n')).toHaveLength(1);
     });
 
-    it('rejects arguments', async () => {
+    it('rejects positional arguments', async () => {
       await expect(repos(['extra'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL' });
     });
   });
@@ -171,7 +171,7 @@ describe('GitHub repo commands', () => {
       await expect(clone(['me/x'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
 
-    it('makes the missing parent dirs of the clone root', async () => {
+    it('makes the clone root and the owner dir when they are missing', async () => {
       const nestedRoot = path.join(cloneRoot, 'deep', 'clones');
       writeFileSync(path.join(sandbox.pluginData, 'config.json'), JSON.stringify({ cloneRoot: nestedRoot }));
       const dest = path.join(nestedRoot, 'me', 'x');

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
 
-/** What closing a worktree tab removes: the worktree, plus the branch always or only once merged. */
+/** What closing a worktree tab removes: the worktree only, the worktree and its branch when merged, or the worktree and its branch. */
 export type Teardown = 'worktree' | 'worktree+merged-branch' | 'worktree+branch';
 
 /** The plugin settings from `config.json` in the plugin data directory. */
@@ -15,7 +15,7 @@ export interface Config {
 
 const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
 
-const DEFAULT_NEW_KEYS: readonly string[] = ['ctrl+b>w'];
+const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['ctrl+b>w'];
 
 type Fail = (key: string, reason: string) => never;
 
@@ -56,9 +56,9 @@ const readCloneRoot = (raw: RawOptions, fail: Fail): string => {
   return isString(raw.cloneRoot) && raw.cloneRoot !== '' ? expandHome(raw.cloneRoot) : fail('cloneRoot', 'expected a non-empty string');
 };
 
-const readNewKeys = (raw: RawOptions, fail: Fail): string[] => {
+const readNewTabHotkeys = (raw: RawOptions, fail: Fail): string[] => {
   if (!('hotkeys' in raw)) {
-    return [...DEFAULT_NEW_KEYS];
+    return [...DEFAULT_NEW_TAB_HOTKEYS];
   }
   if (!isJsonObject(raw.hotkeys)) {
     return fail('hotkeys', 'expected an object');
@@ -66,7 +66,7 @@ const readNewKeys = (raw: RawOptions, fail: Fail): string[] => {
   rejectUnknownKeys(Object.keys(raw.hotkeys), ['new'], 'hotkeys.', fail);
   const hotkeys: RawHotkeys = raw.hotkeys;
   if (!('new' in hotkeys)) {
-    return [...DEFAULT_NEW_KEYS];
+    return [...DEFAULT_NEW_TAB_HOTKEYS];
   }
   return isStringList(hotkeys.new) ? hotkeys.new : fail('hotkeys.new', 'expected an array of strings');
 };
@@ -94,7 +94,7 @@ export const loadConfig = (): Config => {
   rejectUnknownKeys(Object.keys(raw), ['teardown', 'cloneRoot', 'hotkeys'], '', fail);
   return {
     cloneRoot: readCloneRoot(raw, fail),
-    hotkeys: { new: readNewKeys(raw, fail) },
+    hotkeys: { new: readNewTabHotkeys(raw, fail) },
     teardown: readTeardown(raw, fail),
   };
 };

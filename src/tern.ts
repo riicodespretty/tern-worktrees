@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from './git.ts';
-import { envVar, isUnder, ternConfigDir } from './paths.ts';
+import { envVar, isUnder, PLUGIN_ID, ternConfigDir } from './paths.ts';
 import { must } from './proc.ts';
 
 /** A pane of a Tern tab, as `tern ls --json` prints it. */
@@ -44,8 +44,6 @@ interface Created {
 /** Where the macOS app bundle keeps the Tern binary. */
 export const TERN_APP_BIN = '/Applications/Tern.app/Contents/MacOS/tern';
 
-const PLUGIN_ID = 'tern-worktrees';
-
 /** The Tern binary: `$TERN_BIN`, else the binary of the app bundle when the bundle is on disk, else `tern` from `PATH`. */
 export const ternBin = (appBin: string = TERN_APP_BIN): string => envVar('TERN_BIN') ?? (existsSync(appBin) ? appBin : 'tern');
 
@@ -56,19 +54,17 @@ export const ls = async (): Promise<TernListing> =>
   // SAFETY: `tern ls --json` prints the TernListing layout.
   JSON.parse(await tern(['ls'])) as TernListing;
 
-/** Opens a tab in `session` at `cwd` and returns its block id. */
-export const newTab = async (session: string, cwd: string): Promise<number> => {
-  // SAFETY: `tern new --json` prints the id of the block it opened as `block`.
-  const created = JSON.parse(await tern(['new', 'tab', session, '--cwd', cwd])) as Created;
+const newBlock = async (args: string[]): Promise<number> => {
+  // SAFETY: `tern new --json` prints the id of the new block in the `block` field.
+  const created = JSON.parse(await tern(['new', ...args])) as Created;
   return created.block;
 };
 
+/** Opens a tab in `session` at `cwd` and returns its block id. */
+export const newTab = async (session: string, cwd: string): Promise<number> => await newBlock(['tab', session, '--cwd', cwd]);
+
 /** Opens a session named `name` at `cwd` and returns its block id. */
-export const newSession = async (name: string, cwd: string): Promise<number> => {
-  // SAFETY: `tern new --json` prints the id of the block it opened as `block`.
-  const created = JSON.parse(await tern(['new', 'session', name, '--cwd', cwd])) as Created;
-  return created.block;
-};
+export const newSession = async (name: string, cwd: string): Promise<number> => await newBlock(['session', name, '--cwd', cwd]);
 
 /** Names the tab that holds `block`. */
 export const rename = async (block: number, name: string): Promise<void> => {
@@ -104,7 +100,7 @@ export const sessionForRepo = async (root: string): Promise<TernSession | null> 
   return placed.find(({ block }) => roots.get(cwdOf(block)) === root)?.session ?? null;
 };
 
-/** Where the plugin is installed: the linked package directory, `"installed"` for a copied install, or null. */
+/** Where Tern loads the plugin from: the linked package directory, `"installed"` for a copied install, or null when Tern does not have the plugin. */
 export const pluginLinked = (): string | null => {
   const plugins = path.join(ternConfigDir(), 'plugins');
   const pathFile = path.join(plugins, `${PLUGIN_ID}.path`);

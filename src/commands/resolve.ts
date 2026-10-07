@@ -10,7 +10,7 @@ export interface ResolvedDir {
   owner: string | null;
 }
 
-const describe = async (dir: string): Promise<ResolvedDir> => {
+const resolveDir = async (dir: string): Promise<ResolvedDir> => {
   const root = await repoRoot(dir);
   if (root === null) {
     return { dir, name: null, owner: null, root: null };
@@ -22,11 +22,11 @@ const describe = async (dir: string): Promise<ResolvedDir> => {
 /** `resolve <dir>...`: the repository root, name and GitHub owner of each directory. Each distinct directory resolves once. */
 export const run = async (args: string[]): Promise<{ repos: ResolvedDir[] }> => {
   const { positionals } = parseArgs({ allowPositionals: true, args, options: {} });
-  const pending = new Map<string, Promise<ResolvedDir>>();
+  const byDir = new Map<string, Promise<ResolvedDir>>();
   const repos = positionals.map(async dir => {
-    const known = pending.get(dir) ?? describe(dir);
-    pending.set(dir, known);
-    return await known;
+    const resolving = byDir.get(dir) ?? resolveDir(dir);
+    byDir.set(dir, resolving);
+    return await resolving;
   });
   return { repos: await Promise.all(repos) };
 };

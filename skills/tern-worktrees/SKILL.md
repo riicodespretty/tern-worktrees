@@ -5,7 +5,7 @@ description: Use to create, list, relocate or tear down git worktrees as Tern ta
 
 # tern-worktrees
 
-`tern-wt` keeps git worktrees in the worktree root, `~/.tern-wt/worktrees/<repo>/<slug>`, and shows each one as a Tern tab. The slug is the branch name with each `/` made `-`. A worktree in the root is a managed worktree.
+`tern-wt` keeps git worktrees in the worktree root, `~/.tern-wt/worktrees/<repo>/<slug>`, and opens each one in a Tern tab. The slug is the branch name with each `/` changed to `-`. A worktree in the root is a managed worktree.
 
 ## Rules
 
@@ -18,7 +18,7 @@ description: Use to create, list, relocate or tear down git worktrees as Tern ta
 
 Each command prints one JSON object to standard output.
 
-- Exit 0: the result. Read its `warnings`: the command went on past each one.
+- Exit 0: the result. Read its `warnings`. Each warning is a problem that did not stop the command.
 - Exit 1: `{"error":{"code":"<code>","message":"<text>", ...}}`, plus the message on standard error. Some codes add fields: see [Error codes](#error-codes).
 
 ## Commands
@@ -27,11 +27,11 @@ Each command prints one JSON object to standard output.
 
 `tern-wt create --repo <dir> (--branch <name> [--new] | --pr <number>) [--relocate] [--no-tab]`
 
-Makes or reuses the managed worktree of a branch and opens or focuses its tab.
+Makes the managed worktree of a branch, or reuses it. Then opens its tab, or focuses the tab that is open.
 
 - `--repo`: a dir in the repository.
 - `--branch`: a local branch or a branch on `origin`.
-- `--new`: make `--branch` as a new branch from `origin/<default>`. When the branch is local or on `origin`, it gives `bad_args`.
+- `--new`: make `--branch` a new branch from `origin/<default>`. When the branch is local or on `origin`, `--new` gives `bad_args`.
 - `--pr`: the branch of a pull request. A pull request from a fork gets the branch `pr-<number>`.
 - `--relocate`: move the worktree of the branch from a different path into the root. Pass it only after the user says yes.
 - `--no-tab`: skip the tab.
@@ -39,7 +39,7 @@ Makes or reuses the managed worktree of a branch and opens or focuses its tab.
 Output: `{"path", "branch", "repo", "status", "tab", "warnings"}`.
 
 - `status`: `created`, `reused` or `relocated`.
-- `tab`: `{"session", "block", "opened"}`, or null with a `tab not opened:` warning. `opened` is false when an open tab got the focus.
+- `tab`: `{"session", "block", "opened"}`, or null with a `tab not opened:` warning. `opened` is false when `create` focused a tab that was open before.
 
 ### `remove`
 
@@ -53,13 +53,13 @@ Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `b
 
 `tern-wt list [--repo <dir>]`
 
-Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. `--repo` limits the list to the repository that holds `<dir>`.
+Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`.
 
 ### `branches`
 
 `tern-wt branches --repo <dir>`
 
-Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` lists the local branches and the branches on `origin`, each once, newest commit first.
+Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once.
 
 ### `resolve`
 
@@ -71,7 +71,7 @@ Output: `{"repos": [{"dir", "root", "name", "owner"}]}`. `root`, `name` and `own
 
 `tern-wt repos`
 
-Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` lists the GitHub user and each GitHub organization of the user. `local` is the clone in the clone root, or null.
+Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` is the GitHub user, then each GitHub organization of that user. `local` is the clone in the clone root, or null.
 
 ### `clone`
 
@@ -117,6 +117,6 @@ The file is `config.json` in the plugin data dir, the first of:
 
 An invalid file makes each command fail with `config_invalid`. The keys:
 
-- `teardown`: the teardown policy, the branch step of `remove` and of a closed worktree tab. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. Merged means an ancestor of `origin/<default>`, or the branch of a merged pull request.
+- `teardown`: the teardown policy. It sets what `remove`, and the close of a worktree tab, do to the branch. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. A branch is merged when it is an ancestor of `origin/<default>`, or when it is the head branch of a merged pull request.
 - `cloneRoot`: the dir for `clone` and `new-repo`. The default is `~/Developer`.
-- `hotkeys.new`: the Tern key chords of the new worktree tab picker. The default is `["ctrl+b>w"]`.
+- `hotkeys.new`: the Tern key chords that open the picker for a new worktree tab. The default is `["ctrl+b>w"]`.
