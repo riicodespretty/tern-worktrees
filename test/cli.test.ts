@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { CommandModule } from '../src/cli.ts';
-import { checkCommandName, commandLoader, main } from '../src/cli.ts';
+import { commandLoader, main } from '../src/cli.ts';
 import { CliError, must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
 import { REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
@@ -32,16 +32,6 @@ describe('cli', () => {
     sandbox = useSandbox();
   });
 
-  describe(checkCommandName, () => {
-    it.each(['resolve', 'new-repo', 'x'])('accepts %s', name => {
-      expect(checkCommandName(name)).toBe(name);
-    });
-
-    it.each(['Resolve', '../cli', 'nope1', '1nope', 'new_repo', ''])('rejects %j', name => {
-      expect(() => checkCommandName(name)).toThrow(new CliError('bad_args', `unknown command ${name}`));
-    });
-  });
-
   describe(commandLoader, () => {
     it.each(['Resolve', '../cli', 'resolve.ts'])('never imports the name %j', async name => {
       const imported: string[] = [];
@@ -64,9 +54,19 @@ describe('cli', () => {
       });
     });
 
-    it.each(['nope', 'Resolve', '../cli', 'resolve.ts', ''])('rejects the command %j as unknown', async name => {
+    it.each(['nope', 'Resolve', '../cli', 'resolve.ts', '', 'nope1', '1nope', 'new_repo'])('rejects the command %j as unknown', async name => {
       const message = `unknown command ${name}`;
       await expect(main([name])).resolves.toStrictEqual({ code: 1, stderr: `${message}\n`, stdout: envelope('bad_args', message) });
+    });
+
+    it.each(['nope1', '1nope', 'new_repo', ''])('rejects the command %j before importing it', async name => {
+      const imported: string[] = [];
+      const load = commandLoader(async moduleName => {
+        imported.push(moduleName);
+        return await fixtures('throw-error');
+      });
+      await expect(main([name], load)).resolves.toStrictEqual({ code: 1, stderr: `unknown command ${name}\n`, stdout: envelope('bad_args', `unknown command ${name}`) });
+      expect(imported).toStrictEqual([]);
     });
 
     it('rejects an empty argv as an unknown command', async () => {

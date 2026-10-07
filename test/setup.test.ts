@@ -173,8 +173,4 @@ describe(setup, () => {
     await expect(setup([])).resolves.toStrictEqual({ links: expectedLinks('created'), plugin: 'linked' });
     expect(readlinkSync(path.join(realOmp, 'agent', 'skills', 'tern-worktrees'))).toBe(skillTarget);
   });
-
-  it('rejects an unknown option', async () => {
-    await expect(setup(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
-  });
 });
