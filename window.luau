@@ -347,7 +347,7 @@ end
 
 local function pane_under(cx: WindowCx, path: string, exceptTab: number?): boolean
 	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab ~= exceptTab and is_under(pane.cwd, path) then
+		if (exceptTab == nil or pane.tab ~= exceptTab) and is_under(pane.cwd, path) then
 			return true
 		end
 	end
@@ -690,25 +690,43 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 	local path = res.path
 	local tab: number? = nil
 	local index = session_index(cx)
+	local parked: number? = nil
 	for _, pane in ipairs(cx.session:panes()) do
 		if is_under(pane.cwd, path) and not pending[pane.pane] then
-			local sid = session_of_tab(index, pane.tab)
-			if sid ~= nil then
-				switch_to_session_if_current_known(cx, index, sid)
-			end
-			cx.layout:focus(pane.pane)
-			tab = pane.tab
-			break
-		end
-	end
-	if tab == nil then
-		local sid: number? = nil
-		for id, root in pairs(rootOfSession) do
-			if root == res.repo and index.byId[id] ~= nil then
-				sid = id
+			if pane.parked then
+				parked = parked or pane.pane
+			else
+				local sid = session_of_tab(index, pane.tab)
+				if sid ~= nil then
+					switch_to_session_if_current_known(cx, index, sid)
+				end
+				cx.layout:focus(pane.pane)
+				tab = pane.tab
 				break
 			end
 		end
+	end
+	local sid: number? = nil
+	for id, root in pairs(rootOfSession) do
+		if root == res.repo and index.byId[id] ~= nil then
+			sid = id
+			break
+		end
+	end
+	if tab == nil and parked ~= nil then
+		if sid ~= nil then
+			switch_to_session(cx, index, sid)
+		end
+		if cx.layout:unpark(parked) then
+			tab = cx.layout:move_to_new_tab(parked, sid)
+			if tab ~= nil then
+				cx.layout:name_tab(tab, res.branch)
+			else
+				cx.layout:park(parked)
+			end
+		end
+	end
+	if tab == nil then
 		if sid ~= nil then
 			switch_to_session(cx, index, sid)
 			local pane = cx.layout:new_tab({ cwd = path })

@@ -256,7 +256,8 @@ local function palette_card(node_key: string, aria: string, children: { Node }, 
 		ui.el("div", {
 			key = node_key,
 			class = if modifier then "cmdk tn-cmdk twt-card " .. modifier else "cmdk tn-cmdk twt-card",
-			attrs = { role = "dialog", ["aria-modal"] = "true", ["aria-label"] = aria },
+			aria = aria,
+			attrs = { role = "dialog", ["aria-modal"] = "true" },
 		}, children),
 	})
 end

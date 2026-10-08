@@ -107,6 +107,8 @@ A close through the CLI, for example `tern close <block>`, sends no event to the
 
 A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
 
+Tern 0.6 can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half switches to the session of the repository, calls `unpark` on the first parked pane, and moves that pane to a new tab of that session with the name of the branch. When the move fails, it parks the pane again and opens a new tab.
+
 When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) and Cancel (Escape). Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
 
 ## Development
