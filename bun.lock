@@ -30,6 +30,9 @@
   "trustedDependencies": [
     "@vvago/vale",
   ],
+  "patchedDependencies": {
+    "@vvago/vale@3.24.0": "patches/@vvago%2Fvale@3.24.0.patch",
+  },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@0.3.0",
     "vitest": "4.1.11",

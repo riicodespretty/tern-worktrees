@@ -146,10 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
-        with:
-          node-version: 22
-          cache: true
+      - uses: ./.github/actions/setup
 
       - name: Download mutation report
         uses: actions/download-artifact@v8

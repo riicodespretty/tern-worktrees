@@ -48,5 +48,8 @@
       "version": "1.4.2",
       "onFail": "download"
     }
+  },
+  "patchedDependencies": {
+    "@vvago/vale@3.24.0": "patches/@vvago%2Fvale@3.24.0.patch"
   }
 }
