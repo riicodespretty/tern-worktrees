@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -81,14 +82,27 @@ const smoke = async (): Promise<void> => {
 mkdirSync(env.TERN_PLUGIN_DATA, { recursive: true });
 mkdirSync(env.TERN_CONFIG_DIR, { recursive: true });
 const daemon = spawn(ternBin(), ['daemon', '--socket', env.TERN_DAEMON_SOCKET], { stdio: 'ignore' });
+let spawnError: Error | undefined;
+daemon.on('error', error => {
+  spawnError = error;
+});
 try {
-  await waitFor(() => existsSync(env.TERN_DAEMON_SOCKET), `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
+  await waitFor(() => {
+    if (spawnError) {
+      throw spawnError;
+    }
+    return existsSync(env.TERN_DAEMON_SOCKET);
+  }, `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
   await smoke();
   process.stdout.write('smoke ok\n');
 } catch (error) {
   process.stderr.write(`smoke failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 } finally {
-  daemon.kill();
+  if (daemon.exitCode === null && daemon.signalCode === null && !spawnError) {
+    const exited = once(daemon, 'exit');
+    daemon.kill();
+    await exited;
+  }
   rmSync(tempRoot, { force: true, recursive: true });
 }

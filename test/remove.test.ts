@@ -218,6 +218,17 @@ describe('remove command', () => {
       expect(result.warnings[0]).toMatch(/^branch feature\/x not deleted: error: .*feature\/x.*\S$/su);
     });
 
+    it('gives the not-deleted warning before an earlier warning', async () => {
+      setTeardown('worktree+branch');
+      const dir = await addFeature();
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--force', path.join(tempDir('other'), 'wt'), 'feature/x');
+      vi.stubEnv('FAKE_TERN_FAIL', 'ls');
+      const result = await run([dir]);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings[0]).toMatch(/^branch feature\/x not deleted: /u);
+      expect(result.warnings[1]).toBe('tabs not closed: fake tern: ls failed');
+    });
+
     it('leaves the branches alone for a detached worktree', async () => {
       setTeardown('worktree+branch');
       const dir = await addManaged(['--detach']);
