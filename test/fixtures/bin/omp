@@ -1,0 +1,48 @@
+#!/bin/sh
+# A fake omp for the tests.
+# `config list --json` prints `.fake-omp.json` of the working directory when it is there, else `$FAKE_OMP_DIR/config.json`.
+# `worktree add -q -C <repo> <args>` runs `git -C <repo> worktree add <args>`, with `--no-track` when `<args>` make a branch,
+# so it sets no upstream, as omp does. Then it copies the ignored `.env` of `<repo>`, as the clone of omp does.
+# It prints `$FAKE_OMP_WARN` to standard error when it is set, and `$FAKE_OMP_FAIL` names a verb that fails.
+if [ -n "${FAKE_OMP_LOG:-}" ]; then
+	printf '%s\n' "$*" >>"$FAKE_OMP_LOG"
+fi
+verb=${1:-}
+if [ -n "${FAKE_OMP_FAIL:-}" ] && [ "$verb" = "$FAKE_OMP_FAIL" ]; then
+	echo "fake omp: $verb failed" >&2
+	exit 1
+fi
+case "$verb ${2:-}" in
+"config list")
+	if [ -f .fake-omp.json ]; then
+		exec cat .fake-omp.json
+	fi
+	exec cat "$FAKE_OMP_DIR/config.json"
+	;;
+"worktree add")
+	if [ "$3" != -q ] || [ "$4" != -C ]; then
+		echo "fake omp: expected worktree add -q -C <repo>" >&2
+		exit 2
+	fi
+	repo=$5
+	shift 5
+	case " $* " in
+	*" -b "* | *" -B "*) track=--no-track ;;
+	*) track= ;;
+	esac
+	git -C "$repo" worktree add --quiet $track "$@" || exit 1
+	dest=
+	last=
+	for arg; do
+		dest=$last
+		last=$arg
+	done
+	if [ -f "$repo/.env" ]; then
+		cp "$repo/.env" "$dest/.env"
+	fi
+	if [ -n "${FAKE_OMP_WARN:-}" ]; then
+		echo "$FAKE_OMP_WARN" >&2
+	fi
+	;;
+esac
+exit 0

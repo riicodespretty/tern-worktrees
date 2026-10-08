@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync,
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { ghFixture, git, ignoreGlobally, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
+import { ghFixture, git, ignoreGlobally, ompLog, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
@@ -78,6 +78,17 @@ describe('create command', () => {
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ status: 'relocated', warnings: [] });
       expect(existsSync(old)).toBeFalsy();
       await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
+    });
+
+    it('moves a worktree elsewhere into the omp root', async () => {
+      const base = tempDir('omp-wt');
+      useOmp({ base, clone: true });
+      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({ code: 'worktree_exists_elsewhere', extra: { existing: old, target } });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'relocated', warnings: [] });
+      expect(existsSync(old)).toBeFalsy();
+      await expect(currentBranch(target)).resolves.toBe('feature/x');
     });
 
     it('unlocks a locked worktree before the move', async () => {
@@ -283,6 +294,25 @@ describe('create command', () => {
         expect(existsSync(old)).toBeFalsy();
         await expect(currentBranch(managedPath('feature-s'))).resolves.toBe('feature/s');
         expect(existsSync(path.join(managedPath('feature-s'), 'sub', 'README.md'))).toBeTruthy();
+      });
+
+      it('recreates through plain git in omp clone mode, so the old ignored files win over the copies of the main checkout', async () => {
+        allowFileProtocol();
+        await ignoreGlobally('.env');
+        const base = tempDir('omp-wt');
+        useOmp({ base, clone: true });
+        writeFileSync(path.join(repo.dir, '.env'), 'MAIN\n');
+        const old = await submoduleWorktree();
+        writeFileSync(path.join(old, '.env'), 'OLD\n');
+        const target = path.join(base, 'aoyama', 'feature-s');
+        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).resolves.toMatchObject({
+          carried: ['.env'],
+          path: target,
+          status: 'relocated',
+          warnings: [SUBMODULE_REFUSED],
+        });
+        expect(readFileSync(path.join(target, '.env'), 'utf-8')).toBe('OLD\n');
+        expect(ompLog().filter(line => line.startsWith('worktree add'))).toStrictEqual([]);
       });
 
       it('warns when the submodule update fails and keeps the worktree', async () => {

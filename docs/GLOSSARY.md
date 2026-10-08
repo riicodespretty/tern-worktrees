@@ -7,12 +7,20 @@ Git worktrees shown as Tern tabs, for the user and for agents, without Orca.
 ### Worktrees
 
 **Worktree root**:
-The directory where the plugin makes worktrees, one folder for each repository.
+The directory where the plugin makes worktrees, one folder for each repository. When omp is installed and `TERN_WT_HOME` is not set, it is omp's default worktree root, usually `~/.omp/wt`, which also holds omp-owned worktrees. Then, when `omp config list --json` fails, the root is unknown and the commands fail with `omp_failed`.
 _Avoid_: Workspace, worktree dir
 
 **Managed worktree**:
-A worktree in the worktree root.
+A worktree at `<root>/<repo>/<slug>`, two levels below the worktree root, where `<repo>` is the folder name of the main checkout. `tern-wt` makes it, lists it and tears it down. The CLI docs also call it tern-managed, and `branches` gives it the owner `tern`.
 _Avoid_: Tern worktree, own worktree
+
+**omp-owned worktree**:
+A worktree in the omp worktree root that is not a managed worktree, for example a pull request checkout on the branch `pr-<n>` or a `/wt` session worktree of omp. `tern-wt` opens it where it is and does not tear it down.
+_Avoid_: Foreign worktree, omp worktree
+
+**Clone mode**:
+The omp setting `worktree.clone`, read in the repository when omp is installed, for each worktree root. When it is true, `tern-wt` makes each worktree that `create` adds with `omp worktree add`, as a copy-on-write clone of the main checkout with its ignored files. A rebuilt relocation uses plain git.
+_Avoid_: Copy mode, fast checkout
 
 **Worktree tab**:
 A Tern tab with its panes in a managed worktree.
@@ -27,7 +35,7 @@ To move the worktree of a branch into the worktree root from a directory that is
 _Avoid_: Adopt, migrate, import
 
 **Hard-to-rebuild file**:
-An ignored file that no build or install makes again, for example a `.env` file. Its loss counts as work to lose. Ignored build output and installed packages are not hard to rebuild.
+An ignored file that no build or install makes again, for example a `.env` file. Its loss counts as work to lose. Ignored build output and installed packages are not hard to rebuild. At teardown, a copy with the bytes of the file at the same path in the main checkout also does not count.
 _Avoid_: Secret file, precious file
 
 ### Teardown

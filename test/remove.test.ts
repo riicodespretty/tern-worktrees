@@ -377,6 +377,18 @@ describe('remove command', () => {
       expect(existsSync(dir)).toBeFalsy();
     });
 
+    it('removes a copy of an ignored file of the submodule in the main checkout', async () => {
+      await ignoreGlobally('.env.local');
+      const dir = await subWorktree();
+      mkdirSync(path.join(repo.dir, 'sub'), { recursive: true });
+      writeFileSync(path.join(repo.dir, 'sub', '.env.local'), 'SECRET=1\n');
+      writeFileSync(path.join(dir, 'sub', '.env.local'), 'SECRET=2\n');
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['!! sub/.env.local'] } });
+      writeFileSync(path.join(dir, 'sub', '.env.local'), 'SECRET=1\n');
+      await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
+      expect(existsSync(dir)).toBeFalsy();
+    });
+
     it('removes a clean worktree without --force', async () => {
       const dir = await subWorktree();
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });

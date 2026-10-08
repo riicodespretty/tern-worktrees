@@ -3,7 +3,8 @@ import { parseArgs } from 'node:util';
 import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
 import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
 import type { GithubRepoRef } from '../github.ts';
-import { isUnder, worktreeRoot } from '../paths.ts';
+import { worktreeOwner, worktreeRoot } from '../paths.ts';
+import type { WorktreeOwner } from '../paths.ts';
 import { CliError } from '../proc.ts';
 
 /** An open pull request of the repository. */
@@ -14,11 +15,15 @@ export interface PullRequest {
   fork: boolean;
 }
 
-/** A worktree of the repository. `managed` tells if the worktree is in the worktree root. */
+/**
+ * A worktree of the repository. `owner` tells who owns it: `tern` for a tern-managed worktree, `<root>/<repo>/<slug>`, `omp` for an omp-owned one,
+ * elsewhere in the omp worktree root, and null for a worktree that is not in the worktree root. `managed` is true for a tern-managed worktree.
+ */
 export interface BranchWorktree {
   branch: string | null;
   path: string;
   managed: boolean;
+  owner: WorktreeOwner;
 }
 
 /** The branch picker data of a repository. */
@@ -71,13 +76,13 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     }
   }
   const repoRef = offline ? null : await originRepo(root);
-  const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
+  const [branches, prs, repoWorktrees, defaultName, wtRoot] = await Promise.all([
     listBranches(root, withOrigin),
     repoRef === null ? [] : openPullRequests(repoRef, warnings),
     worktrees(root),
     defaultBranch(root, { offline }),
+    worktreeRoot(),
   ]);
-  const worktreeRootDir = worktreeRoot();
   return {
     branches,
     default: defaultName,
@@ -85,6 +90,9 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     prs,
     repo: root,
     warnings,
-    worktrees: repoWorktrees.map(worktree => ({ branch: worktree.branch, managed: isUnder(worktree.path, worktreeRootDir), path: worktree.path })),
+    worktrees: repoWorktrees.map(worktree => {
+      const owner = worktreeOwner(wtRoot, root, worktree.path);
+      return { branch: worktree.branch, managed: owner === 'tern', owner, path: worktree.path };
+    }),
   };
 };

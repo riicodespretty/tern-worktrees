@@ -6,7 +6,9 @@ import { fetchOrigin, gitMust, gitRun, gitSucceeds, hardToRebuild, hasOrigin, re
 import type { Worktree } from '../git.ts';
 import { defaultBranch, ghMust, ghMustWith, nameWithOwner, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
-import { isUnder, worktreePath } from '../paths.ts';
+import { ompSettings, ompWorktreeAdd } from '../omp.ts';
+import { isUnder, worktreeOwner, worktreePath, worktreeRoot } from '../paths.ts';
+import type { WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo } from '../tern.ts';
 
@@ -45,23 +47,42 @@ interface Carry {
   staging: string;
 }
 
+/** `clone` is the omp binary when omp clone mode makes the worktrees, else null. */
 interface Context {
   carry: Carry | null;
+  clone: string | null;
   repoName: string;
   root: string;
   warnings: string[];
   withOrigin: boolean;
+  wtRoot: WorktreeRoot;
 }
 
+/** `ompPrBranch` is `pr-<n>`, the branch of the omp checkout of a same-repository pull request, else null. */
 interface Target {
   branch: string;
   forkPr: string | null;
+  ompPrBranch: string | null;
   path: string;
 }
 
 interface Placement {
   isNew: boolean;
   relocate: boolean;
+}
+
+interface Placed {
+  branch: string;
+  path: string;
+  status: CreateStatus;
+}
+
+/** How to add a worktree: at `start`, detached or on `newBranch` when it is set, with `origin/<newBranch>` as upstream when `track` is true. */
+interface AddSpec {
+  detach: boolean;
+  newBranch: string | null;
+  start: string;
+  track: boolean;
 }
 
 type Source = { branch: string; isNew: boolean } | { pr: string };
@@ -119,14 +140,15 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   const { headRefName, isCrossRepository } = JSON.parse(view) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository'>;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
-    return { branch, forkPr: pr, path: worktreePath(ctx.repoName, branch) };
+    return { branch, forkPr: pr, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, branch) };
   }
-  return { branch: headRefName, forkPr: null, path: worktreePath(ctx.repoName, headRefName) };
+  return { branch: headRefName, forkPr: null, ompPrBranch: `pr-${pr}`, path: worktreePath(ctx.wtRoot, ctx.repoName, headRefName) };
 };
 
 const sourceTarget = async (ctx: Context, source: Source): Promise<{ isNew: boolean; target: Target }> => {
   if ('branch' in source) {
-    return { isNew: source.isNew, target: { branch: source.branch, forkPr: null, path: worktreePath(ctx.repoName, source.branch) } };
+    const target = { branch: source.branch, forkPr: null, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, source.branch) };
+    return { isNew: source.isNew, target };
   }
   return { isNew: false, target: await pullRequestTarget(ctx, source.pr) };
 };
@@ -147,17 +169,44 @@ const checkBranch = async (ctx: Context, target: Target, isNew: boolean): Promis
   }
 };
 
-const worktreeAddArgs = async (ctx: Context, target: Target, isNew: boolean): Promise<string[]> => {
+const addSpec = async (ctx: Context, target: Target, isNew: boolean): Promise<AddSpec> => {
+  if (target.forkPr !== null) {
+    return { detach: true, newBranch: null, start: await startPoint(ctx), track: false };
+  }
   if (isNew) {
-    return ['-b', target.branch, '--', target.path, await startPoint(ctx)];
+    return { detach: false, newBranch: target.branch, start: await startPoint(ctx), track: false };
   }
   if (await hasRef(ctx, `refs/heads/${target.branch}`)) {
-    return ['--', target.path, target.branch];
+    return { detach: false, newBranch: null, start: target.branch, track: false };
   }
   if (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)) {
-    return ['--track', '-b', target.branch, '--', target.path, `origin/${target.branch}`];
+    return { detach: false, newBranch: target.branch, start: `origin/${target.branch}`, track: true };
   }
   throw badArgs(`no branch ${target.branch}; pass --new to create it`);
+};
+
+const addArgs = (spec: AddSpec): string[] => [...(spec.detach ? ['--detach'] : []), ...(spec.newBranch === null ? [] : ['-b', spec.newBranch])];
+
+/**
+ * Adds the worktree with `omp worktree add` when `clone` is the omp binary, else with `git worktree add`. omp sets no upstream, so in clone mode
+ * `git branch` makes a new branch first: it sets the same upstream as `git worktree add -b`, and omp then checks out that branch.
+ */
+const addWith = async (ctx: Context, clone: string | null, target: Target, spec: AddSpec): Promise<void> => {
+  if (clone === null) {
+    await gitMust(ctx.root, 'worktree', 'add', ...(spec.track ? ['--track'] : []), ...addArgs(spec), '--', target.path, spec.start);
+    return;
+  }
+  if (spec.newBranch === null) {
+    ctx.warnings.push(...(await ompWorktreeAdd(clone, ctx.root, [...addArgs(spec), target.path, spec.start])));
+    return;
+  }
+  await gitMust(ctx.root, 'branch', ...(spec.track ? ['--track'] : []), spec.newBranch, spec.start);
+  try {
+    ctx.warnings.push(...(await ompWorktreeAdd(clone, ctx.root, [target.path, spec.newBranch])));
+  } catch (error) {
+    await gitMust(ctx.root, 'branch', '-D', spec.newBranch);
+    throw error;
+  }
 };
 
 const assertPathFree = (target: Target): void => {
@@ -166,13 +215,13 @@ const assertPathFree = (target: Target): void => {
   }
 };
 
-const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promise<void> => {
+/** Adds the worktree of `target`, through omp when `clone` is the omp binary. A fork pull request gets a detached worktree, then `gh pr checkout`. */
+const addWorktree = async (ctx: Context, target: Target, isNew: boolean, clone: string | null): Promise<void> => {
   assertPathFree(target);
+  await addWith(ctx, clone, target, await addSpec(ctx, target, isNew));
   if (target.forkPr === null) {
-    await gitMust(ctx.root, 'worktree', 'add', ...(await worktreeAddArgs(ctx, target, isNew)));
     return;
   }
-  await gitMust(ctx.root, 'worktree', 'add', '--detach', '--', target.path, await startPoint(ctx));
   try {
     await ghMustWith({ cwd: target.path }, 'pr', 'checkout', target.forkPr, '--branch', target.branch);
   } catch (error) {
@@ -252,12 +301,26 @@ const relocate = async (ctx: Context, target: Target, existing: Worktree): Promi
     throw error;
   }
   if (refusal !== null) {
-    await addWorktree(ctx, target, false);
+    await addWorktree(ctx, target, false, null);
     ctx.warnings.push(`recreated: git worktree move refused (${refusal})`);
   }
 };
 
-const placeWorktree = async (ctx: Context, target: Target, placement: Placement): Promise<CreateStatus> => {
+/**
+ * Reuses the omp checkout of the same-repository pull request of `target`: an omp-owned worktree on branch `pr-<n>`, when the `ompPrHeadRef`
+ * that omp records in the git config of that branch is the head branch of the pull request, or when that key is not set. Null when there is none.
+ */
+const reuseOmpPrCheckout = async (ctx: Context, target: Target, listed: Worktree[]): Promise<Placed | null> => {
+  const branch = target.ompPrBranch;
+  const found = listed.find(worktree => worktree.branch === branch && !worktree.prunable && worktreeOwner(ctx.wtRoot, ctx.root, worktree.path) === 'omp');
+  if (branch === null || !found) {
+    return null;
+  }
+  const headRef = await gitRun(ctx.root, 'config', '--get', `branch.${branch}.ompPrHeadRef`);
+  return headRef.status !== 0 || headRef.stdout.trim() === target.branch ? { branch, path: found.path, status: 'reused' } : null;
+};
+
+const placeWorktree = async (ctx: Context, target: Target, placement: Placement): Promise<Placed> => {
   await checkBranch(ctx, target, placement.isNew);
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
@@ -265,12 +328,16 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
     await gitMust(ctx.root, 'worktree', 'remove', existing.path);
   }
   if (!existing || existing.prunable) {
-    await addWorktree(ctx, target, placement.isNew);
-    return 'created';
+    const reused = await reuseOmpPrCheckout(ctx, target, listed);
+    if (reused) {
+      return reused;
+    }
+    await addWorktree(ctx, target, placement.isNew, ctx.clone);
+    return { branch: target.branch, path: target.path, status: 'created' };
   }
   const samePath = isUnder(existing.path, target.path) && isUnder(target.path, existing.path);
-  if (samePath) {
-    return 'reused';
+  if (samePath || worktreeOwner(ctx.wtRoot, ctx.root, existing.path) === 'omp') {
+    return { branch: target.branch, path: samePath ? target.path : existing.path, status: 'reused' };
   }
   if (existing.main) {
     throw new CliError('branch_in_main_checkout', `${target.branch} is checked out in the main checkout at ${existing.path}`, { existing: existing.path });
@@ -282,7 +349,7 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
     });
   }
   await relocate(ctx, target, existing);
-  return 'relocated';
+  return { branch: target.branch, path: target.path, status: 'relocated' };
 };
 
 const updateSubmodules = async (ctx: Context, dir: string): Promise<void> => {
@@ -319,13 +386,18 @@ const tryOpenTab = async (ctx: Context, target: Target): Promise<CreatedTab | nu
 
 /**
  * `create --repo <dir> (--branch <name> [--new] | --pr <number>) [--relocate] [--no-tab]`:
- * creates or reuses the managed worktree of a branch or pull request, and opens or focuses its Tern tab.
+ * creates or reuses the tern-managed worktree of a branch or pull request, and opens or focuses its Tern tab.
+ * An omp-owned worktree of the branch opens where it is, and so does the omp checkout of a same-repository pull request, on branch `pr-<n>`.
+ * omp clone mode, the omp setting `worktree.clone` in the repository, makes new worktrees through omp.
  */
 export const run = async (args: string[]): Promise<CreateResult> => {
   const options = parse(args);
   const { repo, source } = checkOptions(options);
   const root = await requireRepoRoot(repo);
-  const ctx: Context = { carry: null, repoName: path.basename(root), root, warnings: [], withOrigin: await hasOrigin(root) };
+  const [wtRoot, probe, withOrigin] = await Promise.all([worktreeRoot(), ompSettings(root), hasOrigin(root)]);
+  const warnings = probe.warning === null ? [] : [probe.warning];
+  const clone = probe.settings?.clone === true ? probe.omp : null;
+  const ctx: Context = { carry: null, clone, repoName: path.basename(root), root, warnings, withOrigin, wtRoot };
   if (ctx.withOrigin) {
     const fetchWarning = await fetchOrigin(root, true);
     if (fetchWarning !== null) {
@@ -333,15 +405,15 @@ export const run = async (args: string[]): Promise<CreateResult> => {
     }
   }
   const { isNew, target } = await sourceTarget(ctx, source);
-  let status: CreateStatus;
+  let placed: Placed;
   let carried: string[] = [];
   try {
-    status = await placeWorktree(ctx, target, { isNew, relocate: options.relocate });
-    if (status !== 'reused') {
-      await updateSubmodules(ctx, target.path);
+    placed = await placeWorktree(ctx, target, { isNew, relocate: options.relocate });
+    if (placed.status !== 'reused') {
+      await updateSubmodules(ctx, placed.path);
     }
     if (ctx.carry !== null) {
-      carried = unstage(ctx, ctx.carry, target.path);
+      carried = unstage(ctx, ctx.carry, placed.path);
     }
   } catch (error) {
     if (ctx.carry === null) {
@@ -350,6 +422,6 @@ export const run = async (args: string[]): Promise<CreateResult> => {
     // SAFETY: the steps after staging throw a CliError, or an Error from node:fs.
     throw withStaging(error as Error, ctx.carry.staging);
   }
-  const tab = options['no-tab'] ? null : await tryOpenTab(ctx, target);
-  return { branch: target.branch, carried, path: target.path, repo: root, status, tab, warnings: ctx.warnings };
+  const tab = options['no-tab'] ? null : await tryOpenTab(ctx, { ...target, branch: placed.branch, path: placed.path });
+  return { branch: placed.branch, carried, path: placed.path, repo: root, status: placed.status, tab, warnings: ctx.warnings };
 };

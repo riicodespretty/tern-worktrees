@@ -6,7 +6,7 @@ Git worktrees as [Tern](https://docs.stencil.so/tern) tabs, in three parts:
 - The `tern-wt` CLI, the one implementation of each git and GitHub step. The plugin runs it, and agents run it directly.
 - The `tern-worktrees` omp skill, the contract that agents follow.
 
-Each managed worktree lives in the worktree root, `~/.tern-wt/worktrees/<repo>/<slug>`. The slug is the branch name with each `/` changed to `-`. `TERN_WT_HOME`, when you set it, replaces `~/.tern-wt`.
+Each tern-managed worktree lives in the worktree root, at `<root>/<repo>/<slug>`. The slug is the branch name with each `/` changed to `-`. The worktree root is `$TERN_WT_HOME/worktrees` when you set `TERN_WT_HOME`, else the omp worktree root when omp is installed, else `~/.tern-wt/worktrees`. See [Work with omp](#work-with-omp).
 
 ## Requirements
 
@@ -79,7 +79,9 @@ The branch picker of that repository opens next.
 
 ### Relocate
 
-A branch can have a worktree that is not in the worktree root, for example from Orca. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+
+An omp-owned worktree of the branch needs no relocation: `tern-wt` opens its tab where it is.
 
 Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not stop the rebuild: `tern-wt` copies them into the new worktree, in the submodules too, and lists them in `carried`. An ignored file is a build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. Those files stay behind. When a step after the copy fails, the error names the temporary folder that keeps the copies.
 
@@ -88,7 +90,7 @@ Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not st
 When you close a worktree tab, a dialog titled "Closing a worktree tab" shows the path and what Tear down does with your teardown policy:
 
 - Keep worktree (Enter): closes the tab and keeps the worktree.
-- Tear down (`⌫`): removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do.
+- Tear down (`⌫`): removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
 - Cancel (Escape): keeps the tab and the worktree.
 
 When the tab closes before the dialog opens, for example from the tab bar, the dialog is titled "Worktree tab closed" and offers Keep worktree and Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
@@ -98,6 +100,20 @@ When the teardown fails, for example because of uncommitted changes or an ignore
 - Retry (Enter): runs the teardown again.
 - Force delete (`⌘⌫`): removes the worktree and discards its uncommitted work.
 - Cancel (Escape): keeps the tab and the worktree.
+
+## Work with omp
+
+When omp is on `PATH` and `TERN_WT_HOME` is not set, `tern-wt` shares omp's default worktree root, usually `~/.omp/wt`. It resolves the root as omp 18.8.6 does: `$OMP_WORKTREE_DIR`, else the omp setting `worktree.base`, else the `wt` folder of the omp data folder. omp removes the spaces at the two ends of each override, a leading `~` becomes the home folder, and a value that is still relative does not count. The omp data folder is `~/.omp`, or `~/$PI_CONFIG_DIR`, with `profiles/<profile>` added for the profile in `OMP_PROFILE` or `PI_PROFILE`. On Linux and macOS, `$XDG_DATA_HOME/omp` replaces it when that folder is on disk (`$XDG_DATA_HOME/omp/profiles/<profile>` for a profile). `tern-wt` reads the omp settings with `omp config list --json` run in `/`, so the config of a project does not move the root.
+
+- A tern-managed worktree is at `<root>/<repo>/<slug>`, two levels below the root, where `<repo>` is the folder name of the main checkout.
+- Each other worktree in the root is omp-owned, for example the `<n>-<hash>` folder of a pull request checkout or the folder of a `/wt` session. `list` does not show omp-owned worktrees, `branches` marks them with `owner: "omp"`, `create` opens them where they are, and `remove` refuses them with `not_managed`.
+- `create` finds an omp-owned worktree by its branch. omp checks out each pull request on the branch `pr-<n>`, so `create --pr <n>` reuses that checkout. For a pull request from the same repository, it does so when no worktree has the head branch and the git config key `branch.pr-<n>.ompPrHeadRef` that omp writes, when set, names that head branch.
+
+When omp is on disk but `omp config list --json` fails in `/`, the worktree root is unknown, so `create`, `remove`, `list` and `branches` fail with `omp_failed` rather than use a different root. `tern-wt` uses `~/.tern-wt/worktrees` only when no omp binary is on disk.
+
+Clone mode applies when omp is installed, also when `TERN_WT_HOME` is set: when the omp setting `worktree.clone` is true in the repository, project config included, `create` makes each new worktree with `omp worktree add`. A rebuilt relocation uses plain git. The new worktree starts as a copy-on-write clone of the main checkout, with its ignored files, for example `.env` and `node_modules`. A new branch gets the same upstream as with plain `git worktree add -b`. When the clone falls back to a plain checkout, the omp message shows in `warnings`. When `omp config list --json` fails in the repository, `create` uses plain git and adds a warning. omp 18.8.6 moves an invalid `.omp/config.yml` aside to `.omp/config.yml.broken-<id>` when it reads it, so that probe can change the repository.
+
+`omp worktree clear` deletes each worktree in the root that omp sees as orphaned, also without `--all`. omp can see a live tern-managed worktree as orphaned, for example when git has `worktree.useRelativePaths=true` or when you moved the main checkout. Run `omp worktree clear --dry-run` first, and check its list.
 
 ## Options file
 
@@ -141,17 +157,17 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 [`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) is the reference for each command: its arguments, its output fields, the next step for each error code, and the rules agents follow for teardown. The commands:
 
-- `create`: makes or reuses the managed worktree of a branch or a pull request, and opens its tab.
-- `remove`: tears down a managed worktree as the teardown policy says, and closes its tabs.
-- `list`: lists the managed worktrees.
-- `branches`: lists the branches, the open pull requests and the worktrees of a repository. `--offline` reads only local refs, with no fetch and no pull requests.
+- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab.
+- `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
+- `list`: lists the tern-managed worktrees.
+- `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.
 - `resolve`: gives the repository root, name and owner of each directory.
 - `repos`: lists the GitHub repositories of your user and organizations.
 - `clone`: clones a GitHub repository to the clone root.
 - `new-repo`: makes a GitHub repository, then clones it.
 - `setup`: links the plugin, the CLI and the skill.
 
-Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `branch_in_main_checkout`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `tern_failed`.
+Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `branch_in_main_checkout`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `omp_failed`, `tern_failed`.
 
 The plugin also gives Carly the exports `create`, `list` and `remove`, which run the CLI commands of the same names.
 

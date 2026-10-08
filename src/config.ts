@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { isJsonObject, isString } from './json.ts';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
 
@@ -28,10 +29,6 @@ interface RawOptions {
 interface RawHotkeys {
   new?: unknown;
 }
-
-const isString = (value: unknown): value is string => typeof value === 'string';
-
-const isJsonObject = (value: unknown): value is object => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
 

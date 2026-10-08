@@ -24,6 +24,22 @@ Each command prints one JSON object, and each failure has an error code. The win
 
 `branches` lists the local branches and the branches on `origin`, each once, newest commit first. `branches --offline` reads only local refs: no fetch, no pull request list and no GitHub lookup of the default branch. The worktree rows use it, so most of their refreshes cost no network traffic.
 
+### omp
+
+omp makes worktrees too: pull request checkouts, `/wt` session worktrees and task sandboxes, all in one worktree root. When omp is installed, `tern-wt` uses that root, omp's default worktree root, usually `~/.omp/wt`, so the user has one folder for all worktrees, and omp lists the managed worktrees as its own. `TERN_WT_HOME` still wins, so the tests and the smoke test do not touch the real root. `src/omp.ts` is the one module that runs omp.
+
+omp does not print its root in `omp config list`, so `ompRootDir` in `src/paths.ts` copies the rule of omp 18.8.6: `$OMP_WORKTREE_DIR`, else the omp setting `worktree.base`, else `<data root>/wt`. The spaces at the two ends of each override do not count, a leading `~` becomes the home folder of the OS, a value that is still relative does not count, and the result is normalized without a trailing separator, so the window half can match path prefixes. The data root is `~/<PI_CONFIG_DIR or .omp>`, plus `profiles/<profile>` for the profile in `OMP_PROFILE`, or in `PI_PROFILE` when `OMP_PROFILE` is not set. On Linux and macOS, with the default agent folder, `$XDG_DATA_HOME/omp` (or `$XDG_DATA_HOME/omp/profiles/<profile>`) replaces it when that folder is on disk. The unit tests inject the env, the platform and the file check, and a check against the real omp in scratch home folders gave the same root for each case.
+
+The root comes from `omp config list --json` run in `/`, so the config of a project cannot move it. When omp is on disk but that command fails or prints no JSON object, the commands that need the root fail with `omp_failed`. A fallback to `~/.tern-wt/worktrees` can put new worktrees where omp does not see them, hide the managed worktrees from `list` and `remove`, and relocate an omp-owned worktree, so the CLI fails closed. `~/.tern-wt/worktrees` is the root only when no omp binary is on disk.
+
+Clone mode comes from the same command run in the repository, so the config of the project applies, and it applies for each root, `TERN_WT_HOME` included. When that run fails, `create` uses plain git and adds a warning. omp 18.8.6 moves an invalid `.omp/config.yml` aside to `.omp/config.yml.broken-<id>` when it reads it, so this probe can change the repository.
+
+A worktree at `<root>/<repo>/<slug>` is a managed worktree. Each other worktree in the root is omp-owned: `create` opens it where it is, `list` does not show it, `branches` marks it with `owner: "omp"`, and `remove` refuses it with `not_managed`. `create` matches an omp-owned worktree by its branch. omp checks out pull request `<n>` on the branch `pr-<n>`, also for a pull request from the same repository, where `create --pr` targets the head branch. Thus, when no worktree has the head branch, `create` reuses the omp-owned worktree on `pr-<n>` when the git config key `branch.pr-<n>.ompPrHeadRef` that omp writes is not set or names the head branch.
+
+`omp worktree clear` deletes each worktree in the root that omp sees as orphaned, also without `--all`, and `--all` deletes each one, all with no check for uncommitted changes. omp sees a live managed worktree as orphaned when git has `worktree.useRelativePaths=true`, or when the main checkout moved. The plugin cannot stop that, so the docs tell the user to run `omp worktree clear --dry-run` first.
+
+In clone mode, `create` runs `omp worktree add`, and the new worktree starts with copies of the ignored files of the main checkout, for example `.env`. omp sets no upstream, so for a new branch `create` first runs `git branch`, which applies `branch.autoSetupMerge` as `git worktree add -b` does, then lets omp check out that branch. Thus `--new` gets the same upstream in the two modes. The teardown skips an ignored file with the bytes of the file at the same path in the main checkout: it compares the sizes, then the bytes in fixed-size chunks, and stops at the first difference, so a large artifact does not load into memory. A rebuilt relocation uses plain `git worktree add`, because it copies the ignored files of the first worktree, and a clone puts the copies of the main checkout there first.
+
 ### Worktree rows
 
 The window half knows each repository from the `cwd` of a pane. With `tern.command`, it registers one Tern command in the `Worktrees` group for each branch and each open pull request of that repository. A row runs `tern-wt create`, as the branch picker does. Its `available` hook only reads tables: the row shows when the `cwd` of the active pane belongs to its repository. A branch that goes away keeps its command, and `available` hides it. Tern ranks the rows, and the plugin sets only their titles.
@@ -98,7 +114,11 @@ While a dialog waits in the current session, the hotkey opens no second picker. 
 
 ### Close interception
 
-Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. Two paths catch the close of a worktree tab:
+Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. A pane is in a managed worktree when its working directory is in `<root>/<repo>/<slug>`, and the `.git` file of `<root>/<repo>/<slug>` names a main checkout with the name `<repo>`. This is the same test as the one in the CLI. Thus a pane in an omp-owned worktree, for example `<root>/12-abc1234/src` or a task sandbox at `<root>/t<hash>/m`, is not in a managed worktree. The window half does not add an omp-owned worktree that `create` opens to the map, so closing its tab opens no dialog.
+
+The window half reads the root from the `root` field of `tern-wt list`, removes a trailing `/`, and keeps the last root in `tern.kv`. At load it cannot wait for the CLI, so it starts from the kept root, else from `~/.tern-wt/worktrees`. `TERN_WT_HOME` wins over the two. When `list` fails, for example with `omp_failed`, the window half keeps the root that it has.
+
+Two paths catch the close of a worktree tab:
 
 - The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. The dialog has the title "Closing a worktree tab" and offers Keep worktree (Enter), Tear down (`⌫`) and Cancel (Escape). The tab closes after Keep worktree, or after the teardown succeeds, so Cancel keeps the tab and the worktree.
 - The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the dialog has the title "Worktree tab closed" and offers Keep worktree and Tear down only.

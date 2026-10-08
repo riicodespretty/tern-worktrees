@@ -22,6 +22,7 @@ const env = {
   TERN_DAEMON_SOCKET: path.join(tempRoot, 'tern.sock'),
   TERN_PLUGIN_DATA: path.join(tempRoot, 'plugin-data'),
   TERN_WT_HOME: path.join(tempRoot, 'home'),
+  TERN_WT_OMP: path.join(tempRoot, 'no-omp'),
 };
 Object.assign(process.env, env);
 

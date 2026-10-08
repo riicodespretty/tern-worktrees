@@ -14,9 +14,22 @@ local function env(name: string): string?
 	return if value == "" then nil else value
 end
 
+local ROOT_KEY = "worktreeRoot"
+
+local function without_trailing_slash(dir: string): string
+	return (string.gsub(dir, "/+$", ""))
+end
+
 local function initial_root(): string
-	local home = env("TERN_WT_HOME") or ((env("HOME") or "") .. "/.tern-wt")
-	return (string.gsub(home, "/+$", "")) .. "/worktrees"
+	local home = env("TERN_WT_HOME")
+	if home ~= nil then
+		return without_trailing_slash(home) .. "/worktrees"
+	end
+	local ok, remembered = pcall(tern.kv.get, ROOT_KEY)
+	if ok and type(remembered) == "string" and remembered ~= "" then
+		return without_trailing_slash(remembered)
+	end
+	return (env("HOME") or "") .. "/.tern-wt/worktrees"
 end
 
 local ROOT = initial_root()
@@ -191,6 +204,10 @@ local function is_under(cwd: string?, path: string): boolean
 	return cwd ~= nil and (cwd == path or string.sub(cwd, 1, #path + 1) == path .. "/")
 end
 
+local function basename(path: string): string
+	return string.match(path, "([^/]+)/*$") or path
+end
+
 local function managed_path(cwd: string?): string?
 	if cwd == nil or string.sub(cwd, 1, #ROOT + 1) ~= ROOT .. "/" then
 		return nil
@@ -199,11 +216,16 @@ local function managed_path(cwd: string?): string?
 	if repo == nil or slug == nil then
 		return nil
 	end
-	return ROOT .. "/" .. repo .. "/" .. slug
-end
-
-local function basename(path: string): string
-	return string.match(path, "([^/]+)/*$") or path
+	local path = ROOT .. "/" .. repo .. "/" .. slug
+	local ok, gitFile = pcall(tern.fs.read, path .. "/.git", 4096)
+	if not ok then
+		return nil
+	end
+	local mainCheckout = string.match(gitFile, "^gitdir:%s*(.-)/%.git/worktrees/")
+	if mainCheckout == nil or basename(mainCheckout) ~= repo then
+		return nil
+	end
+	return path
 end
 
 local function warn_config()
@@ -743,7 +765,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			cx.layout:name_tab(tab, res.branch)
 		end
 	end
-	if tab ~= nil then
+	if tab ~= nil and managed_path(path) == path then
 		local paths = managed[tab] or {}
 		managed[tab] = paths
 		if table.find(paths, path) == nil then
@@ -1299,8 +1321,12 @@ tern.on("window_start", function(cx: WindowCx)
 		end
 	end)
 	cli({ "list" }, function(res: RootResult, err, cx2)
-		if err == nil and type(res.root) == "string" and res.root ~= ROOT then
-			ROOT = res.root
+		local learned = if err == nil and type(res.root) == "string" then without_trailing_slash(res.root) else nil
+		if learned ~= nil and learned ~= "" and learned ~= ROOT then
+			ROOT = learned
+			if env("TERN_WT_HOME") == nil then
+				pcall(tern.kv.set, ROOT_KEY, ROOT)
+			end
 			table.clear(managed)
 			rebuild_managed(cx2)
 		end

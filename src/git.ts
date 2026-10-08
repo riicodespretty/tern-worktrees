@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { closeSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
@@ -163,4 +163,58 @@ export const hardToRebuild = async (dir: string): Promise<string[]> => {
     }),
   );
   return [...own, ...nested.flat()].filter(file => !file.split('/').some(segment => REBUILDABLE.includes(segment)));
+};
+
+/** The size of each chunk that {@link sameFile} compares. */
+const COMPARE_CHUNK = 64 * 1024;
+
+/** Reads into `buffer` from `fd` until it is full or the file ends. Returns the count of bytes read. */
+const readChunk = (fd: number, buffer: Buffer): number => {
+  let filled = 0;
+  while (filled < buffer.length) {
+    const count = readSync(fd, buffer, filled, buffer.length - filled, null);
+    if (count === 0) {
+      break;
+    }
+    filled += count;
+  }
+  return filled;
+};
+
+/** Tells if `left` and `right` are regular files with the same bytes. It compares them chunk by chunk and stops at the first difference. */
+const sameFile = (left: string, right: string): boolean => {
+  const [leftStat, rightStat] = [lstatSync(left, { throwIfNoEntry: false }), lstatSync(right, { throwIfNoEntry: false })];
+  if (leftStat?.isFile() !== true || rightStat?.isFile() !== true || leftStat.size !== rightStat.size) {
+    return false;
+  }
+  const leftFd = openSync(left, 'r');
+  try {
+    const rightFd = openSync(right, 'r');
+    try {
+      const [leftChunk, rightChunk] = [Buffer.alloc(COMPARE_CHUNK), Buffer.alloc(COMPARE_CHUNK)];
+      for (;;) {
+        const leftCount = readChunk(leftFd, leftChunk);
+        const rightCount = readChunk(rightFd, rightChunk);
+        if (!leftChunk.subarray(0, leftCount).equals(rightChunk.subarray(0, rightCount))) {
+          return false;
+        }
+        if (leftCount < COMPARE_CHUNK) {
+          return true;
+        }
+      }
+    } finally {
+      closeSync(rightFd);
+    }
+  } finally {
+    closeSync(leftFd);
+  }
+};
+
+/**
+ * The {@link hardToRebuild} files of the worktree at `dir` that a delete loses: each one that the main checkout at `mainCheckout` does not hold
+ * with the same bytes at the same relative path. A copy of a file of the main checkout, for example a `.env` that a clone carried, is not work to lose.
+ */
+export const hardToRebuildChanges = async (dir: string, mainCheckout: string): Promise<string[]> => {
+  const files = await hardToRebuild(dir);
+  return files.filter(file => !sameFile(path.join(dir, file), path.join(mainCheckout, file)));
 };

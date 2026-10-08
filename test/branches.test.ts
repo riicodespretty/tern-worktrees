@@ -2,9 +2,9 @@ import { existsSync, readFileSync, statSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
-import { worktreePath } from '../src/paths.ts';
+import { worktreePath, worktreeRoot } from '../src/paths.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
-import { ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
+import { ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 
 const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
 
@@ -38,7 +38,7 @@ describe('branches command', () => {
       await pushDatedBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
       await useGithubOrigin(GITHUB_ORIGIN);
       ghFixture(PR_LIST, JSON.stringify(PRS));
-      const managed = worktreePath('aoyama', 'feature/x');
+      const managed = worktreePath(await worktreeRoot(), 'aoyama', 'feature/x');
       await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'feature/x');
       const outside = path.join(tempDir('wt'), 'zzz');
       await git(repo.dir, 'worktree', 'add', '--quiet', outside, 'zzz');
@@ -53,11 +53,35 @@ describe('branches command', () => {
         repo: repo.dir,
         warnings: [],
         worktrees: [
-          { branch: 'main', managed: false, path: repo.dir },
-          { branch: 'feature/x', managed: true, path: managed },
-          { branch: 'zzz', managed: false, path: outside },
+          { branch: 'main', managed: false, owner: null, path: repo.dir },
+          { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
+          { branch: 'zzz', managed: false, owner: null, path: outside },
         ],
       });
+    });
+
+    it('tells tern-managed worktrees from omp-owned ones in the omp root', async () => {
+      const repo = await tmpRepo('aoyama');
+      const base = tempDir('omp-wt');
+      useOmp({ base, clone: false });
+      const managed = path.join(base, 'aoyama', 'feature-x');
+      const ompOwned = path.join(base, 'feature-y-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', managed);
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/y', ompOwned);
+      const result = await run(['--repo', repo.dir, '--offline']);
+      expect(result.worktrees).toStrictEqual([
+        { branch: 'main', managed: false, owner: null, path: repo.dir },
+        { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
+        { branch: 'feature/y', managed: false, owner: 'omp', path: ompOwned },
+      ]);
+      expect(result.warnings).toStrictEqual([]);
+    });
+
+    it('fails closed with omp_failed when omp fails', async () => {
+      const repo = await tmpRepo('aoyama');
+      useOmp({ clone: false });
+      vi.stubEnv('FAKE_OMP_FAIL', 'config');
+      await expect(run(['--repo', repo.dir, '--offline'])).rejects.toMatchObject({ code: 'omp_failed' });
     });
 
     it('lists local and origin branches once each, newest first', async () => {
@@ -105,7 +129,7 @@ describe('branches command', () => {
         prs: [],
         repo: repo.dir,
         warnings: [],
-        worktrees: [{ branch: 'main', managed: false, path: repo.dir }],
+        worktrees: [{ branch: 'main', managed: false, owner: null, path: repo.dir }],
       });
       expect(fetchHeadState()).toStrictEqual(before);
       const online = await run(['--repo', repo.dir]);

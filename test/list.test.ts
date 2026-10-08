@@ -1,8 +1,8 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/list.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { git, tempDir, tmpRepo, useOmp, useSandbox } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -51,14 +51,20 @@ describe('list command', () => {
     const other = await tmpRepo('maui');
     const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
     await addWorktree(other, 'feature-y', '-b', 'feature/y');
-    await expect(run(['--repo', mine])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+    await expect(run(['--repo', mine])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+    });
   });
 
   it('leaves out the worktrees of another repo with the same name under --repo', async () => {
     const twin = await tmpRepo('aoyama');
     const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
     await addWorktree(twin, 'feature-y', '-b', 'feature/y');
-    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+    });
   });
 
   it('lists the worktrees of --repo when a worktree of another repo cannot be read', async () => {
@@ -68,7 +74,26 @@ describe('list command', () => {
     const index = await git(broken, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
     writeFileSync(index.trim(), 'not an index');
     await expect(run([])).rejects.toMatchObject({ code: 'git_failed' });
-    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+    });
+  });
+
+  it('lists only the tern-managed worktrees in the omp root', async () => {
+    const base = tempDir('omp-wt');
+    useOmp({ base, clone: false });
+    const mine = path.join(base, 'aoyama', 'feature-x');
+    await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', mine, 'origin/main');
+    await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', path.join(base, '7-abc1234'), 'origin/main');
+    await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', path.join(base, 'sandbox', 'feature-z'), 'origin/main');
+    await expect(run([])).resolves.toStrictEqual({ root: base, worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+  });
+
+  it('fails closed with omp_failed when omp fails, and does not list ~/.tern-wt/worktrees', async () => {
+    useOmp({ clone: false });
+    vi.stubEnv('FAKE_OMP_FAIL', 'config');
+    await expect(run([])).rejects.toMatchObject({ code: 'omp_failed', message: 'omp config list failed: fake omp: config failed; the omp worktree root is unknown' });
   });
 
   it('rejects a --repo outside a repo', async () => {

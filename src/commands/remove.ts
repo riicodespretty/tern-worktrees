@@ -3,9 +3,9 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuild, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
+import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuildChanges, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
 import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
-import { isUnder, worktreeRoot } from '../paths.ts';
+import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
 
@@ -65,7 +65,7 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
     }
     return;
   }
-  const ignored = await hardToRebuild(ctx.target);
+  const ignored = await hardToRebuildChanges(ctx.target, ctx.root);
   if (ignored.length === 0) {
     const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
     if (removal.status === 0) {
@@ -135,21 +135,27 @@ const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Pr
 };
 
 /**
- * `remove <path> [--force] [--keep-tab]`: removes a managed worktree, closes the Tern blocks in the worktree,
+ * `remove <path> [--force] [--keep-tab]`: removes a tern-managed worktree, closes the Tern blocks in the worktree,
  * then deletes its branch if the teardown policy tells it to. Ignored files that are hard to rebuild stop it like uncommitted changes do.
- * `--force` discards the two.
+ * A copy with the bytes of the same file in the main checkout does not stop it. `--force` discards the two. It refuses omp-owned worktrees.
  */
 export const run = async (args: string[]): Promise<RemoveResult> => {
   const options = parse(args);
   const { target } = options;
   const { teardown } = loadConfig();
-  if (!isUnder(target, worktreeRoot())) {
-    throw new CliError('not_managed', `${target} is not under ${worktreeRoot()}`);
+  const wtRoot = await worktreeRoot();
+  if (!isUnder(target, wtRoot.dir)) {
+    throw new CliError('not_managed', `${target} is not under ${wtRoot.dir}`);
   }
   const root = await linkedWorktreeRoot(target);
   if (root === null) {
     const mainCheckout = await requireRepoRoot(target);
     throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${mainCheckout}`);
+  }
+  const owner = worktreeOwner(wtRoot, root, target);
+  if (owner !== 'tern') {
+    const layout = path.join(wtRoot.dir, path.basename(root), '<slug>');
+    throw new CliError('not_managed', owner === 'omp' ? `${target} is an omp-owned worktree, not ${layout}` : `${target} is not ${layout}`);
   }
   const branch = await currentBranch(target);
   const ctx: Context = { root, target, warnings: [] };

@@ -1,9 +1,26 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
 import { gitRun } from '../src/git.ts';
-import { FIXTURE_BIN, ghFixture, ghLog, git, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
+import {
+  FIXTURE_BIN,
+  ghFixture,
+  ghLog,
+  git,
+  ignoreGlobally,
+  ompConfigJson,
+  ompLog,
+  readLog,
+  tempDir,
+  ternLog,
+  tmpRepo,
+  useGithubOrigin,
+  useOmp,
+  useSandbox,
+  writeTernLs,
+  writeTernLsRaw,
+} from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -16,6 +33,8 @@ const currentBranch = async (dir: string): Promise<string> => {
   const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
   return out.trim();
 };
+
+const ompAdds = (): string[] => ompLog().filter(line => line.startsWith('worktree add'));
 
 const prView = (fork: boolean): void => {
   ghFixture(
@@ -229,6 +248,196 @@ describe('create command', () => {
           .join(':'),
       );
       await expect(run(['--repo', repo.dir, '--pr', '123', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: '--pr needs a GitHub origin' });
+    });
+  });
+
+  describe('with omp', () => {
+    let base: string;
+
+    beforeEach(async () => {
+      base = tempDir('omp-wt');
+      await ignoreGlobally('.env');
+      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
+    });
+
+    it('creates the worktree in the omp root through omp worktree add in clone mode', async () => {
+      useOmp({ base, clone: true });
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual({
+        branch: 'feature/x',
+        carried: [],
+        path: target,
+        repo: repo.dir,
+        status: 'created',
+        tab: null,
+        warnings: [],
+      });
+      expect(readFileSync(path.join(target, '.env'), 'utf-8')).toBe('SECRET=1\n');
+      expect(ompAdds()).toStrictEqual([`worktree add -q -C ${repo.dir} ${target} feature/x`]);
+      await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
+      await expect(git(target, 'status', '--porcelain')).resolves.toBe('');
+    });
+
+    it('adds a new branch, a local branch and a fork pull request through omp', async () => {
+      useOmp({ base, clone: true });
+      await git(repo.dir, 'branch', 'feature/local');
+      await useGithubOrigin();
+      prView(true);
+      ghFixture(['pr', 'checkout', '7', '--branch', 'pr-7'], '');
+      await run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab']);
+      await run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab']);
+      await run(['--repo', repo.dir, '--pr', '7', '--no-tab']);
+      const at = (slug: string): string => path.join(base, 'aoyama', slug);
+      expect(ompAdds()).toStrictEqual([
+        `worktree add -q -C ${repo.dir} ${at('feature-y')} feature/y`,
+        `worktree add -q -C ${repo.dir} ${at('feature-local')} feature/local`,
+        `worktree add -q -C ${repo.dir} --detach ${at('pr-7')} origin/main`,
+      ]);
+      await expect(currentBranch(at('feature-y'))).resolves.toBe('feature/y');
+      await expect(currentBranch(at('feature-local'))).resolves.toBe('feature/local');
+      expect(ghLog()).toContain('pr checkout 7 --branch pr-7');
+    });
+
+    it.each([
+      ['true', 'origin/main\n'],
+      ['false', null],
+    ])('gives --new the upstream that plain git gives with branch.autoSetupMerge=%s', async (setting, upstream) => {
+      await git(repo.dir, 'config', 'branch.autoSetupMerge', setting);
+      const upstreamOf = async (branch: string): Promise<string | null> => {
+        const result = await gitRun(repo.dir, 'rev-parse', '--abbrev-ref', `${branch}@{upstream}`);
+        return result.status === 0 ? result.stdout : null;
+      };
+      useOmp({ base, clone: false });
+      await run(['--repo', repo.dir, '--branch', 'feature/plain', '--new', '--no-tab']);
+      useOmp({ base, clone: true });
+      await run(['--repo', repo.dir, '--branch', 'feature/clone', '--new', '--no-tab']);
+      expect(ompAdds()).toStrictEqual([`worktree add -q -C ${repo.dir} ${path.join(base, 'aoyama', 'feature-clone')} feature/clone`]);
+      await expect(upstreamOf('feature/plain')).resolves.toBe(upstream);
+      await expect(upstreamOf('feature/clone')).resolves.toBe(upstream);
+    });
+
+    it('uses plain git in the omp root when clone mode is off', async () => {
+      useOmp({ base, clone: false });
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created', warnings: [] });
+      expect(existsSync(path.join(target, '.env'))).toBeFalsy();
+      expect(ompAdds()).toStrictEqual([]);
+    });
+
+    it('uses ~/.tern-wt/worktrees and plain git without omp', async () => {
+      const home = useOmp({ base, clone: true });
+      vi.stubEnv('TERN_WT_OMP', path.join(tempDir('none'), 'omp'));
+      const target = path.join(home, '.tern-wt', 'worktrees', 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created', warnings: [] });
+      expect(existsSync(path.join(target, '.env'))).toBeFalsy();
+      expect(ompLog()).toStrictEqual([]);
+    });
+
+    it('reads clone mode from the project config, and the root from the global config only', async () => {
+      useOmp({ base, clone: false });
+      writeFileSync(path.join(repo.dir, '.fake-omp.json'), ompConfigJson({ base: tempDir('project-base'), clone: true }));
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created' });
+      expect(readFileSync(path.join(target, '.env'), 'utf-8')).toBe('SECRET=1\n');
+    });
+
+    it('passes the warnings of omp on, and deletes the new branch when omp worktree add fails', async () => {
+      useOmp({ base, clone: true });
+      vi.stubEnv('FAKE_OMP_WARN', 'clone failed; checked out instead');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ warnings: ['omp: clone failed; checked out instead'] });
+      vi.stubEnv('FAKE_OMP_FAIL', 'worktree');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'git_failed', message: 'fake omp: worktree failed' });
+      await expect(gitRun(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/feature/y')).resolves.toMatchObject({ status: 1 });
+      await git(repo.dir, 'branch', 'feature/local');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab'])).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(gitRun(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/feature/local')).resolves.toMatchObject({ status: 0 });
+    });
+
+    it('fails closed with omp_failed and adds no worktree when omp fails in /', async () => {
+      const home = useOmp({ base, clone: true });
+      vi.stubEnv('FAKE_OMP_FAIL', 'config');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({
+        code: 'omp_failed',
+        message: 'omp config list failed: fake omp: config failed; the omp worktree root is unknown',
+      });
+      expect(existsSync(path.join(home, '.tern-wt'))).toBeFalsy();
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain('feature/x');
+    });
+
+    it('uses plain git in the omp root with a warning when omp fails in the repo only', async () => {
+      useOmp({ base, clone: true });
+      writeFileSync(path.join(repo.dir, '.fake-omp.json'), '{');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab'])).resolves.toMatchObject({
+        path: path.join(base, 'aoyama', 'feature-y'),
+        warnings: ['omp config list printed no JSON object'],
+      });
+      expect(ompAdds()).toStrictEqual([]);
+    });
+
+    it('opens an omp-owned worktree of the branch where it is, without --relocate', async () => {
+      useOmp({ base, clone: true });
+      const ompOwned = path.join(base, 'feature-x-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', ompOwned, 'origin/feature/x');
+      writeTernLs({ work: [repo.dir] });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toStrictEqual({
+        branch: 'feature/x',
+        carried: [],
+        path: ompOwned,
+        repo: repo.dir,
+        status: 'reused',
+        tab: { block: 42, opened: true, session: 'work' },
+        warnings: [],
+      });
+      expect(ternLog()).toContain(`new tab work --cwd ${ompOwned} --json`);
+      expect(existsSync(path.join(base, 'aoyama', 'feature-x'))).toBeFalsy();
+    });
+
+    describe('same-repo pull requests', () => {
+      const ompCheckout = (): string => path.join(base, '7-abc1234');
+
+      beforeEach(async () => {
+        useOmp({ base, clone: false });
+        await useGithubOrigin();
+        prView(false);
+        await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', ompCheckout(), 'origin/feature/x');
+      });
+
+      it('reuses the omp checkout on pr-<n> whose ompPrHeadRef is the head branch', async () => {
+        await git(repo.dir, 'config', 'branch.pr-7.ompPrHeadRef', 'feature/x');
+        writeTernLs({ work: [repo.dir] });
+        await expect(run(['--repo', repo.dir, '--pr', '7'])).resolves.toStrictEqual({
+          branch: 'pr-7',
+          carried: [],
+          path: ompCheckout(),
+          repo: repo.dir,
+          status: 'reused',
+          tab: { block: 42, opened: true, session: 'work' },
+          warnings: [],
+        });
+        expect(ternLog()).toContain('rename 42 pr-7 --json');
+        expect(existsSync(path.join(base, 'aoyama', 'feature-x'))).toBeFalsy();
+      });
+
+      it('reuses the omp checkout on pr-<n> without ompPrHeadRef', async () => {
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', path: ompCheckout(), status: 'reused' });
+      });
+
+      it('adds a worktree when ompPrHeadRef names another branch', async () => {
+        await git(repo.dir, 'config', 'branch.pr-7.ompPrHeadRef', 'feature/other');
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'created' });
+      });
+
+      it('prefers a worktree of the head branch to the omp checkout', async () => {
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', target, 'origin/feature/x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'reused' });
+      });
+
+      it('does not reuse a pr-<n> worktree outside the omp root', async () => {
+        await git(repo.dir, 'worktree', 'move', ompCheckout(), path.join(tempDir('elsewhere'), 'pr-7'));
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', status: 'created' });
+      });
     });
   });
 

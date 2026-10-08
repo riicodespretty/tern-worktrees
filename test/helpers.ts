@@ -11,7 +11,7 @@ import type { TernListing } from '../src/tern.ts';
 /** The checkout that the tests run in. */
 export const REPO_DIR = path.resolve(import.meta.dirname, '..');
 
-/** The directory that holds the fake `gh` and `tern`. */
+/** The directory that holds the fake `gh`, `omp` and `tern`. */
 export const FIXTURE_BIN = path.join(REPO_DIR, 'test', 'fixtures', 'bin');
 
 const created: string[] = [];
@@ -45,6 +45,8 @@ export interface Sandbox {
   ternLog: string;
   ghDir: string;
   ghLog: string;
+  ompDir: string;
+  ompLog: string;
   tmp: string;
 }
 
@@ -62,13 +64,15 @@ export const useSandbox = (): Sandbox => {
     configDir: path.join(root, 'tern-config'),
     ghDir: path.join(root, 'gh'),
     ghLog: path.join(root, 'gh.log'),
+    ompDir: path.join(root, 'omp'),
+    ompLog: path.join(root, 'omp.log'),
     pluginData: path.join(root, 'plugin-data'),
     ternDir: path.join(root, 'tern'),
     ternLog: path.join(root, 'tern.log'),
     tmp: path.join(root, 'tmp'),
     wtHome: path.join(root, 'tern-wt'),
   };
-  for (const dir of [sandbox.configDir, sandbox.ghDir, sandbox.pluginData, sandbox.ternDir, sandbox.tmp]) {
+  for (const dir of [sandbox.configDir, sandbox.ghDir, sandbox.ompDir, sandbox.pluginData, sandbox.ternDir, sandbox.tmp]) {
     mkdirSync(dir, { recursive: true });
   }
   const gitConfig = path.join(root, 'gitconfig');
@@ -82,6 +86,14 @@ export const useSandbox = (): Sandbox => {
   vi.stubEnv('FAKE_TERN_FAIL', '');
   vi.stubEnv('FAKE_GH_DIR', sandbox.ghDir);
   vi.stubEnv('FAKE_GH_LOG', sandbox.ghLog);
+  vi.stubEnv('TERN_WT_OMP', path.join(root, 'no-omp'));
+  vi.stubEnv('FAKE_OMP_DIR', sandbox.ompDir);
+  vi.stubEnv('FAKE_OMP_LOG', sandbox.ompLog);
+  vi.stubEnv('FAKE_OMP_FAIL', '');
+  vi.stubEnv('FAKE_OMP_WARN', '');
+  for (const name of ['OMP_WORKTREE_DIR', 'OMP_PROFILE', 'PI_PROFILE', 'PI_CONFIG_DIR', 'PI_CODING_AGENT_DIR', 'XDG_DATA_HOME']) {
+    vi.stubEnv(name, '');
+  }
   vi.stubEnv('GIT_AUTHOR_NAME', 'Test');
   vi.stubEnv('GIT_AUTHOR_EMAIL', 'test@example.com');
   vi.stubEnv('GIT_COMMITTER_NAME', 'Test');
@@ -130,6 +142,35 @@ export const ghLog = (): string[] => readLog(activeSandbox().ghLog);
 
 /** The lines that the fake `tern` logged, one for each call. */
 export const ternLog = (): string[] => readLog(activeSandbox().ternLog);
+
+/** The lines that the fake `omp` logged, one for each call. */
+export const ompLog = (): string[] => readLog(activeSandbox().ompLog);
+
+/** The omp settings that {@link useOmp} gives the fake `omp`. */
+export interface FakeOmpSettings {
+  clone: boolean;
+  base?: string;
+}
+
+/** The text that `omp config list --json` prints for `settings`. A setting without a value has no `value` key. */
+export const ompConfigJson = (settings: FakeOmpSettings): string =>
+  JSON.stringify({
+    'worktree.base': settings.base === undefined ? { type: 'string' } : { type: 'string', value: settings.base },
+    'worktree.clone': { type: 'boolean', value: settings.clone },
+  });
+
+/**
+ * Installs the fake `omp` with `settings`, clears `TERN_WT_HOME`, and sets `HOME` to a temporary directory, so the omp worktree root applies.
+ * Without `settings.base` the root is `<HOME>/.omp/wt`. Returns the home directory. Call it after {@link useSandbox}.
+ */
+export const useOmp = (settings: FakeOmpSettings): string => {
+  const userHome = tempDir('home');
+  writeFileSync(path.join(activeSandbox().ompDir, 'config.json'), ompConfigJson(settings));
+  vi.stubEnv('TERN_WT_OMP', path.join(FIXTURE_BIN, 'omp'));
+  vi.stubEnv('TERN_WT_HOME', '');
+  vi.stubEnv('HOME', userHome);
+  return userHome;
+};
 
 /** Makes the fake `gh` print `body` when it gets `args`. */
 export const ghFixture = (args: string[], body: string): void => {
