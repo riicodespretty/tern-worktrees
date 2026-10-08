@@ -1,6 +1,6 @@
 # tern-worktrees
 
-`tern-worktrees` shows git worktrees as Tern tabs. This page tells how the plugin works and why. Install and usage are in the [README](https://github.com/riicodespretty/tern-worktrees/blob/main/README.md), and the terms are in the [glossary](GLOSSARY.md).
+`tern-worktrees` shows git worktrees as Tern tabs. This page tells how the plugin works and why. Install and usage are in the [README](https://github.com/riicodespretty/tern-worktrees/blob/main/README.md), and the terms are in the [glossary](GLOSSARY.md). Agents read three more docs: the [issue tracker](agents/issue-tracker.md), the [domain docs](agents/domain.md) and the [triage labels](agents/triage-labels.md).
 
 ## Why worktrees move from Orca to Tern
 
@@ -60,6 +60,16 @@ A floating pane comes with a frame: a title bar, a border and a background. The 
 The sheet removes the frame from each floating pane. Thus a float that the user opened also shows with no frame until the last dialog ends. The rules use Tern-internal classes, for example `section.tn-pane.pip` and `tn-head`. When a Tern update renames them, the dialog shows with its frame again. When the plugin cannot read the file, it installs no sheet.
 
 The block gives its answer through its pane title. After the user answers, the title changes to `twt:<request id>:<answer as JSON>`. The window half listens for `title` events, decodes the answer of its pending request, closes the dialog and goes on. When the user closes the dialog, the window half reads that as Cancel.
+
+The title protocol has a fixed set of names:
+
+- The modes of a request are `pick`, `confirm` and `prompt`.
+- The actions of an answer are `select`, `new`, `button`, `text` and `cancel`.
+- The `kind` value `cancel` on a button changes only its key hint to `esc`, and the dialog then drops its own `esc` hint.
+
+A click or a digit on a button gives the `button` action with the id of that button. Escape or a close gives the `cancel` action.
+
+`window.luau` and `host.luau` each hold a copy of these names and the `twt:` prefix, so the copies must match. A changed action name reads as Cancel in `parse_answer`. A changed prefix makes the window half ignore the answer, so the dialog keeps waiting.
 
 ### Pickers and sessions
 

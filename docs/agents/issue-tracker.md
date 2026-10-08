@@ -29,7 +29,7 @@ Run `gh issue view <number> --comments`.
 
 The wayfinder skill uses these. The **map** is one issue. Its **children** are the tickets.
 
-- **Map**: issue #1, labelled `wayfinder:map`. Its body holds the Notes, Decisions so far and Fog sections.
+- **Map**: issue #1, labelled `wayfinder:map`. Its body has these headings: `Destination`, `Notes`, `Decisions so far`, `Not yet specified`, `Out of scope` and `Resolutions`.
 - **Child ticket**: a sub-issue of the map. Add it with `gh api` on the sub-issues endpoint. It has one label, `wayfinder:<type>`. The type is `research`, `prototype`, `grilling` or `task`. For example, #17 has `wayfinder:task`. After the claim, the driving dev is the assignee.
 - **Blocking**: GitHub native issue dependencies. Add an edge with `gh api --method POST repos/riicodespretty/tern-worktrees/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`. The `<blocker-db-id>` is the numeric database id of the blocker. Get it with `gh api repos/riicodespretty/tern-worktrees/issues/<n> --jq .id`. It is not the `#number` and not the `node_id`. GitHub reports `issue_dependencies_summary.blocked_by`. It counts open blockers only. A ticket is unblocked when all blockers are closed.
 - **Frontier query**: list the open children of the map. Drop each child that has an open blocker or an assignee. The first child in map order wins.

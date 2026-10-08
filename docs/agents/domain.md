@@ -4,7 +4,7 @@ How the engineering skills read the domain docs of this repo when they explore t
 
 ## Read these before you explore
 
-- **`docs/GLOSSARY.md`**: the glossary. The repo root has no `GLOSSARY.md`.
+- **`docs/GLOSSARY.md`**: the glossary.
 - **`docs/adr/`**: the architecture decision records. Read the ADRs that touch the area you will work in.
 
 A file in this list can be missing. Go on without it. Do not report that it is missing. Do not suggest that a person create it first. The `/domain-modeling` skill creates these files when a term or a decision is settled.
@@ -27,7 +27,10 @@ This repo has one context.
 
 Your output can name a domain concept. It can be an issue title, a refactor plan, a hypothesis or a test name. Use the term as `docs/GLOSSARY.md` defines it. Do not use a synonym that the glossary says to avoid.
 
-Sometimes the glossary has no term for the concept you need. Then you invent language that the project does not use, or the glossary has a gap. Think again, or note the gap for `/domain-modeling`.
+Sometimes the glossary has no term for the concept you need. Then one of two cases is true:
+
+- You invent language that the project does not use. Think again.
+- The glossary has a gap. Note the gap for `/domain-modeling`.
 
 ## Flag ADR conflicts
 
