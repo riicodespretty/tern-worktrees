@@ -91,7 +91,7 @@ describe('remove command', () => {
     it('rejects a main checkout under the root', async () => {
       const clone = managedPath('clone');
       await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
-      await expect(run([clone, '--force'])).rejects.toMatchObject({ code: 'not_managed' });
+      await expect(run([clone, '--force'])).rejects.toMatchObject({ code: 'not_managed', message: `${clone} is not the top directory of a linked worktree of ${clone}` });
       expect(existsSync(clone)).toBeTruthy();
     });
 

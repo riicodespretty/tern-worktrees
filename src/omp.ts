@@ -22,44 +22,39 @@ interface OmpListing {
 }
 
 const isExecutableFile = (file: string): boolean => {
-  if (statSync(file, { throwIfNoEntry: false })?.isFile() !== true) {
-    return false;
-  }
   try {
     accessSync(file, constants.X_OK);
-    return true;
   } catch {
     return false;
   }
+  return statSync(file).isFile();
 };
 
-/** The omp binary: `$TERN_WT_OMP` when it is set, else `omp` from `PATH`. Null when that file is not an executable file. */
+/** The omp binary: `$TERN_WT_OMP` when it is set, else `omp` from the absolute directories of `PATH`. Null when that file is not an executable file. */
 export const findOmp = (): string | null => {
   const configured = process.env.TERN_WT_OMP;
   const candidates =
     configured !== undefined && configured !== ''
       ? [configured]
-      : (process.env.PATH ?? '')
-          .split(path.delimiter)
-          .filter(dir => dir !== '')
+      : process.env.PATH?.split(path.delimiter)
+          .filter(dir => path.isAbsolute(dir))
           .map(dir => path.join(dir, 'omp'));
-  return candidates.find(isExecutableFile) ?? null;
+  return candidates?.find(isExecutableFile) ?? null;
 };
 
 const parseSettings = (stdout: string): OmpSettings | null => {
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout);
+    const parsed: unknown = JSON.parse(stdout);
+    if (!isJsonObject(parsed)) {
+      return null;
+    }
+    // SAFETY: each entry of a JSON object is a JSON value, and `?.value` reads a JSON value of each type without a throw.
+    const listing = parsed as OmpListing;
+    const base = listing['worktree.base']?.value;
+    return { base: isString(base) ? base : null, clone: listing['worktree.clone']?.value === true };
   } catch {
     return null;
   }
-  if (!isJsonObject(parsed)) {
-    return null;
-  }
-  // SAFETY: each entry of a JSON object is a JSON value, and `?.value` reads a JSON value of each type without a throw.
-  const listing = parsed as OmpListing;
-  const base = listing['worktree.base']?.value;
-  return { base: isString(base) ? base : null, clone: listing['worktree.clone']?.value === true };
 };
 
 /**

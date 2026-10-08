@@ -47,6 +47,13 @@ describe('list command', () => {
     });
   });
 
+  it('does not look inside a checkout one level below the root', async () => {
+    const clone = path.join(worktreeRootDir(), 'aoyama');
+    await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
+    await git(clone, 'worktree', 'add', '--quiet', '-b', 'feature/x', path.join(clone, 'feature-x'), 'origin/main');
+    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
+  });
+
   it('lists only the worktrees of --repo', async () => {
     const other = await tmpRepo('maui');
     const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');

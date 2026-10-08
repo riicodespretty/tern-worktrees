@@ -95,6 +95,14 @@ describe('paths', () => {
       writeFileSync(path.join(sandbox.ompDir, 'config.json'), 'not json');
       await expect(worktreeRoot()).rejects.toMatchObject({ code: 'omp_failed', message: 'omp config list printed no JSON object; the omp worktree root is unknown' });
     });
+
+    it('reads the omp settings in /, so the config of the current project does not change the root', async () => {
+      const omp = path.join(tempDir('omp-pwd'), 'omp');
+      writeFileSync(omp, `#!/bin/sh\nprintf '{"worktree.base":{"value":"%s/wt"}}' "$(pwd -P)"\n`, { mode: 0o755 });
+      vi.stubEnv('TERN_WT_OMP', omp);
+      vi.stubEnv('TERN_WT_HOME', '');
+      await expect(worktreeRoot()).resolves.toStrictEqual({ dir: '/wt', omp: true });
+    });
   });
 
   describe(ompRootDir, () => {
@@ -114,6 +122,7 @@ describe('paths', () => {
       ['~/', HOME],
       ['~/wt/', `${HOME}/wt`],
       ['~\\wt', `${HOME}\\wt`],
+      ['/srv/~/wt', '/srv/~/wt'],
       ['/', '/'],
     ])('reads the override %j as %j', (value, expected) => {
       expect(ompRootDir(null, at({ OMP_WORKTREE_DIR: value }))).toBe(expected);
@@ -146,6 +155,9 @@ describe('paths', () => {
       [{ OMP_PROFILE: 'work.' }, `${HOME}/.omp/wt`],
       [{ OMP_PROFILE: 'con' }, `${HOME}/.omp/wt`],
       [{ OMP_PROFILE: 'lpt1.txt' }, `${HOME}/.omp/wt`],
+      [{ OMP_PROFILE: 'com1' }, `${HOME}/.omp/wt`],
+      [{ OMP_PROFILE: 'console' }, `${HOME}/.omp/profiles/console/wt`],
+      [{ OMP_PROFILE: 'falcon' }, `${HOME}/.omp/profiles/falcon/wt`],
       [{ OMP_PROFILE: 'a'.repeat(65) }, `${HOME}/.omp/wt`],
       [{ OMP_PROFILE: 'work', PI_CONFIG_DIR: '.other' }, `${HOME}/.other/profiles/work/wt`],
     ])('resolves the profile of %j', (env, expected) => {

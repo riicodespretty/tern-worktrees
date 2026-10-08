@@ -84,14 +84,19 @@ const nonEmpty = (value: string | undefined): string | undefined => (value === '
 
 /** The omp profile that `value` names, or undefined for the default profile: an empty value, `default`, and a name that omp refuses. */
 const ompProfileName = (value: string | undefined): string | undefined => {
-  const name = value?.trim() ?? '';
-  const valid = OMP_PROFILE_NAME.test(name) && !name.endsWith('.') && !WINDOWS_RESERVED_NAME.test(name);
-  return valid && name !== 'default' ? name : undefined;
+  const name = value?.trim();
+  if (name === undefined || name === 'default') {
+    return undefined;
+  }
+  return OMP_PROFILE_NAME.test(name) && !name.endsWith('.') && !WINDOWS_RESERVED_NAME.test(name) ? name : undefined;
 };
 
 /** An omp worktree root override, without the spaces at its two ends, with a leading `~` expanded, normalized and without a trailing separator. Undefined when empty or relative. */
 const ompOverride = (value: string | null | undefined, home: string): string | undefined => {
-  const trimmed = value?.trim() ?? '';
+  const trimmed = value?.trim();
+  if (trimmed === undefined) {
+    return undefined;
+  }
   const expanded = /^~(?:$|[/\\])/u.test(trimmed) ? home + trimmed.slice(1) : trimmed;
   if (!path.isAbsolute(expanded)) {
     return undefined;

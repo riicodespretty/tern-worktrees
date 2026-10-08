@@ -171,20 +171,18 @@ const COMPARE_CHUNK = 64 * 1024;
 /** Reads into `buffer` from `fd` until it is full or the file ends. Returns the count of bytes read. */
 const readChunk = (fd: number, buffer: Buffer): number => {
   let filled = 0;
-  while (filled < buffer.length) {
+  for (;;) {
     const count = readSync(fd, buffer, filled, buffer.length - filled, null);
     if (count === 0) {
-      break;
+      return filled;
     }
     filled += count;
   }
-  return filled;
 };
 
 /** Tells if `left` and `right` are regular files with the same bytes. It compares them chunk by chunk and stops at the first difference. */
 const sameFile = (left: string, right: string): boolean => {
-  const [leftStat, rightStat] = [lstatSync(left, { throwIfNoEntry: false }), lstatSync(right, { throwIfNoEntry: false })];
-  if (leftStat?.isFile() !== true || rightStat?.isFile() !== true || leftStat.size !== rightStat.size) {
+  if (![left, right].every(file => lstatSync(file, { throwIfNoEntry: false })?.isFile() === true)) {
     return false;
   }
   const leftFd = openSync(left, 'r');

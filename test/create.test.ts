@@ -278,6 +278,13 @@ describe('create command', () => {
       await expect(git(target, 'status', '--porcelain')).resolves.toBe('');
     });
 
+    it.each([false, true])('gives a remote branch its upstream also with branch.autoSetupMerge=false, clone mode %s', async clone => {
+      useOmp({ base, clone });
+      await git(repo.dir, 'config', 'branch.autoSetupMerge', 'false');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      await expect(git(repo.dir, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
+    });
+
     it('adds a new branch, a local branch and a fork pull request through omp', async () => {
       useOmp({ base, clone: true });
       await git(repo.dir, 'branch', 'feature/local');
@@ -392,6 +399,12 @@ describe('create command', () => {
       expect(existsSync(path.join(base, 'aoyama', 'feature-x'))).toBeFalsy();
     });
 
+    it('adds a worktree for a branch next to a detached omp-owned worktree', async () => {
+      useOmp({ base, clone: false });
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--detach', path.join(base, 'detached-abc1234'), 'origin/main');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: path.join(base, 'aoyama', 'feature-x'), status: 'created' });
+    });
+
     describe('same-repo pull requests', () => {
       const ompCheckout = (): string => path.join(base, '7-abc1234');
 
@@ -437,6 +450,12 @@ describe('create command', () => {
       it('does not reuse a pr-<n> worktree outside the omp root', async () => {
         await git(repo.dir, 'worktree', 'move', ompCheckout(), path.join(tempDir('elsewhere'), 'pr-7'));
         await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', status: 'created' });
+      });
+
+      it('does not reuse an omp checkout of another branch', async () => {
+        await git(ompCheckout(), 'branch', '-m', 'pr-8');
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'created' });
       });
     });
   });

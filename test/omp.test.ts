@@ -32,7 +32,17 @@ describe('omp', () => {
       writeFileSync(path.join(dir, 'omp'), '#!/bin/sh\n', { mode: 0o755 });
       vi.stubEnv('PATH', `${path.delimiter}${dir}${path.delimiter}${FIXTURE_BIN}`);
       expect(findOmp()).toBe(path.join(dir, 'omp'));
+      vi.stubEnv('TERN_WT_OMP', undefined);
+      expect(findOmp()).toBe(path.join(dir, 'omp'));
       vi.stubEnv('PATH', undefined);
+      expect(findOmp()).toBeNull();
+    });
+
+    it('skips the relative dirs of PATH', () => {
+      const dir = tempDir('relative-path');
+      writeFileSync(path.join(dir, 'omp'), '#!/bin/sh\n', { mode: 0o755 });
+      vi.stubEnv('TERN_WT_OMP', '');
+      vi.stubEnv('PATH', path.relative(process.cwd(), dir));
       expect(findOmp()).toBeNull();
     });
 
@@ -60,6 +70,10 @@ describe('omp', () => {
       scriptOmp(`echo '{"worktree.base":{"value":3},"worktree.clone":"yes"}'`);
       await expect(ompSettings('/')).resolves.toMatchObject({ settings: { base: null, clone: false }, warning: null });
       scriptOmp(`echo '{"worktree.base":null,"worktree.clone":{"value":"true"}}'`);
+      await expect(ompSettings('/')).resolves.toMatchObject({ settings: { base: null, clone: false }, warning: null });
+      scriptOmp(`echo '{"worktree.base":{"value":"/b"},"worktree.clone":null}'`);
+      await expect(ompSettings('/')).resolves.toMatchObject({ settings: { base: '/b', clone: false }, warning: null });
+      scriptOmp(`echo '{}'`);
       await expect(ompSettings('/')).resolves.toMatchObject({ settings: { base: null, clone: false }, warning: null });
     });
 

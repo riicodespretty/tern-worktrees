@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import {
@@ -9,6 +9,7 @@ import {
   gitRun,
   gitSucceeds,
   hardToRebuild,
+  hardToRebuildChanges,
   hasOrigin,
   isAncestor,
   repoRoot,
@@ -296,6 +297,22 @@ describe('git helpers', () => {
 
     it('raises git_failed outside a repo', async () => {
       await expect(hardToRebuild(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(hardToRebuildChanges, () => {
+    it('closes each file it compares', async () => {
+      const repo = await tmpRepo();
+      const mainCheckout = tempDir('main');
+      await ignoreGlobally('*.env');
+      const names = Array.from({ length: 200 }, (_, index) => `${index}.env`);
+      for (const name of names) {
+        writeFileSync(path.join(repo.dir, name), `${name}\n`);
+        writeFileSync(path.join(mainCheckout, name), `${name}\n`);
+      }
+      const openBefore = readdirSync('/dev/fd').length;
+      await expect(hardToRebuildChanges(repo.dir, mainCheckout)).resolves.toStrictEqual([]);
+      expect(readdirSync('/dev/fd').length - openBefore).toBeLessThan(names.length / 2);
     });
   });
 });
