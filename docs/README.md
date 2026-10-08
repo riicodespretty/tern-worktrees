@@ -57,7 +57,7 @@ The Teardown failed dialog lists at most 10 files with work to lose. It gives th
 
 A floating pane comes with a frame: a title bar, a border and a background. The float has no attribute that names its pane, and the Tern CSS engine rejects `:has()`, so no static rule can pick out the dialog. The window half installs `dialog-float.css` with `tern.css` while a dialog waits for an answer, and clears the sheet when the last dialog ends. It also clears the sheet at load, so a reload removes a sheet that the previous plugin left.
 
-A reload of the window half loses the record of each dialog that waits for an answer, but the dialog block keeps running. When such a dialog gives an answer, the window half closes its pane and drops the answer.
+A reload of the window half loses the record of each dialog that waits for an answer, but the dialog block keeps running. When such a dialog gives an answer, the window half closes its pane and drops the answer. When the window half fails to load, for example when its `load` goes over the 50 ms budget of Tern, no handler of the plugin runs in that window until the next reload. A dialog that waits at that time stays open after its answer. The × of its pane closes it.
 
 The sheet removes the frame from each floating pane. Thus a float that the user opened also shows with no frame until the last dialog ends. The rules use Tern-internal classes, for example `section.tn-pane.pip` and `tn-head`. When a Tern update renames them, the dialog shows with its frame again. When the plugin cannot read the file, it installs no sheet.
 

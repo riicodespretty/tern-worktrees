@@ -61,12 +61,6 @@ const waitForBlock = async (dir: string): Promise<void> => {
   }, `no block under ${dir}`);
 };
 
-const startDaemon = async () => {
-  const daemon = spawn(ternBin(), ['daemon', '--socket', env.TERN_DAEMON_SOCKET], { stdio: 'ignore' });
-  await waitFor(() => existsSync(env.TERN_DAEMON_SOCKET), `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
-  return daemon;
-};
-
 const smoke = async (): Promise<void> => {
   const clone = await makeClone();
   const created = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
@@ -86,8 +80,9 @@ const smoke = async (): Promise<void> => {
 
 mkdirSync(env.TERN_PLUGIN_DATA, { recursive: true });
 mkdirSync(env.TERN_CONFIG_DIR, { recursive: true });
-const daemon = await startDaemon();
+const daemon = spawn(ternBin(), ['daemon', '--socket', env.TERN_DAEMON_SOCKET], { stdio: 'ignore' });
 try {
+  await waitFor(() => existsSync(env.TERN_DAEMON_SOCKET), `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
   await smoke();
   process.stdout.write('smoke ok\n');
 } catch (error) {
