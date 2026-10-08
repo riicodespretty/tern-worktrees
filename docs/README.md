@@ -47,11 +47,15 @@ One refresh for each repository runs at a time. A trigger during a refresh queue
 
 The window half opens the dialog block with a request: a pick, a confirmation or a prompt. The dialog floats over the layout. When it cannot float, it stays docked adjacent to the active pane, and it works the same.
 
-The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`), and the Tern classes `mdl`, `btn`, `kbd` and `ck-foot`. `styles.css` gets its colors, font families and easing from the Tern theme variables. Where Tern has no variable, it copies the value from the Tern theme rule on `body`, the palette rules, or the overlay rules (`.tn-pl-*`). Some values are the plugin's own: the focus ring, the gap of the key hints, and the size of the prompt input. Thus the dialog opens where the palette opens, and it uses the Tern theme colors, fonts, font size and interface style. Two differences stay. Picker rows keep the fixed pitch of the picker element, 36 pixels, where palette rows are 40 pixels. In the studio layout, the prompt input has no box, where the palette input is a pill. Each dialog shows paths in a short form:
+The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`), and the Tern classes `mdl`, `btn`, `kbd` and `ck-foot`. `styles.css` gets its colors, font families and easing from the Tern theme variables. Where Tern has no variable, it copies the value from the Tern theme rule on `body`, the palette rules, or the overlay rules (`.tn-pl-*`). Some values are the plugin's own: the focus ring and the gap of the key hints. The prompt head copies the size and the offsets of the picker head, so the card keeps its shape when a picker gives way to a prompt. Thus the dialog opens where the palette opens, and it uses the Tern theme colors, fonts, font size and interface style. Two differences stay. Picker rows keep the fixed pitch of the picker element, 36 pixels, where palette rows are 40 pixels. In the studio layout, the prompt input has no box, where the palette input is a pill. Each dialog shows paths in a short form:
 
 - `~` for the home folder.
 - `…/worktrees/…` for a worktree root that is not in the home folder.
 - A cut in the middle of a long path.
+
+Apart from those two differences, the dialog follows the palette where the picker element is not the same as it. A selected row has the accent edge of the palette. No row moves when the query changes or the selection moves, because these changes come at each key press. The clear button of an empty picker shows no key, because Escape cancels the dialog. A confirmation with a danger button gets the red glow of a Tern danger dialog. The key hint on an accent button has the color of its label: a Tern rule paints it white, and white is almost invisible on the light accent fill of the dark theme.
+
+A screen reader reads each confirmation button by its label alone: the key hint has `aria-hidden`, and `aria-keyshortcuts` on the button names the key.
 
 The Teardown failed dialog lists at most 10 files with work to lose. It gives the hard-to-rebuild files first claim on the 10 lines, and the changes use the lines that are left. The dialog shows the changes first, then a heading, then the hard-to-rebuild files. If the dialog cannot show all files, the last line gives the number of files that it does not show.
 

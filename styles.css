@@ -18,6 +18,14 @@
     pointer-events: auto;
   }
 
+  .twt-card.twt-danger {
+    box-shadow:
+      0 0 0 1px var(--l2),
+      inset 0 1px 0 var(--glass-hi),
+      0 40px 100px -24px rgba(0, 0, 0, 0.45),
+      0 0 120px -40px rgb(from var(--bad) r g b/35%);
+  }
+
   .twt-card .sf-picker {
     position: relative;
     height: auto;
@@ -49,15 +57,56 @@
     flex: 0 1 auto;
   }
 
+  /* The palette moves no row: filtering and the arrow keys repeat on each key press. */
+  .twt-card .sf-picker .pk-row {
+    animation: none;
+  }
+
+  .twt-card .sf-picker .pk-selbar {
+    transition: none;
+  }
+
+  .twt-card .sf-picker .pk-state.empty {
+    padding: 36px 16px;
+  }
+
+  /* Escape cancels the dialog, so the clear button shows no key. */
+  .twt-card .sf-picker .pk-empty .kbds {
+    display: none;
+  }
+
+  .twt-card .ck-top {
+    gap: 12px;
+    height: 56px;
+    padding: 0 14px 0 20px;
+  }
+
+  .twt-card .ck-top > .sf-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--t3);
+  }
+
+  .twt-card .ck-top > .sf-icon .ico {
+    width: 16px;
+    height: 16px;
+  }
+
   .twt-card .ck-top .sf-input,
   .twt-card .ck-top .sf-input.focused {
     flex: 1;
     min-width: 0;
+    padding: 0;
     border: 0;
     outline: none;
     background: none;
     box-shadow: none;
-    font-size: 1.15em;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+
+  .twt-card .ck-top .sf-ed-ph {
+    color: var(--t3);
   }
 
   .twt-card .sf-picker .pk-list {
@@ -73,6 +122,7 @@
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   .twt-detail {
@@ -101,11 +151,35 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+
+  /* Tern's empty-stage sheet paints every accent key white, which the dark gradient washes out. */
+  .twt-btn.accent .kbd {
+    color: inherit;
+    background: rgb(from var(--grad-ink) r g b/8%);
+    box-shadow: inset 0 0 0 1px rgb(from var(--grad-ink) r g b/22%);
+  }
+}
+
+[data-theme='dark'] .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card.twt-danger {
+  box-shadow:
+    0 0 0 1px var(--l3),
+    inset 0 1px 0 var(--glass-hi),
+    0 24px 60px -20px rgba(0, 0, 0, 0.65),
+    0 0 120px -40px rgb(from var(--bad) r g b/35%);
 }
 
 html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .pk-ic,
 html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .ck-top > .sf-icon {
   display: none;
+}
+
+html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .ck-top {
+  height: 52px;
+  padding-left: 34px;
+}
+
+html.lay-studio .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card .ck-top .sf-input {
+  font-size: 14px;
 }
 
 html:not(.lay-studio) .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card {
@@ -146,6 +220,12 @@ html:not(.lay-studio) .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .tw
   .pk-selbar {
     border-radius: 9px;
     background: var(--l1);
+  }
+
+  .pk-selbar::before {
+    display: block;
+    top: 8px;
+    bottom: 8px;
   }
 
   .pk-row:not(.grp) .pk-lead {

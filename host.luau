@@ -169,8 +169,8 @@ local function edit_text(s: string, key: Key): string?
 	return s .. text
 end
 
-local function kbd(key: string): Node
-	return ui.el("span", { class = "kbd", text = key })
+local function kbd(key: string, hidden: boolean?): Node
+	return ui.el("span", { class = "kbd", text = key, attrs = if hidden then { ["aria-hidden"] = "true" } else nil })
 end
 
 local function hint(keys: { string }, label: string, class: string?): Node
@@ -182,12 +182,12 @@ local function hint(keys: { string }, label: string, class: string?): Node
 	return ui.el("span", { class = class }, parts)
 end
 
-local function palette_card(node_key: string, aria: string, children: { Node }): Node
+local function palette_card(node_key: string, aria: string, children: { Node }, danger: boolean?): Node
 	return ui.col({
 		ui.el("div", { class = "twt-dim", actions = { click = "close" } }),
 		ui.el("div", {
 			key = node_key,
-			class = "cmdk tn-cmdk twt-card",
+			class = if danger then "cmdk tn-cmdk twt-card twt-danger" else "cmdk tn-cmdk twt-card",
 			attrs = { role = "dialog", ["aria-modal"] = "true", ["aria-label"] = aria },
 		}, children),
 	})
@@ -239,6 +239,8 @@ local function button_shortcut(button: Button, index: number): string
 	return tostring(index)
 end
 
+local ARIA_KEYS: { [string]: string } = { ["↵"] = "Enter", esc = "Escape" }
+
 local function confirm_view(state: State, _cx: BlockCx): Node
 	local req = state.req :: ConfirmRequest
 	local buttons = req.buttons or {}
@@ -259,17 +261,24 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 	end
 	local lead: { Node } = {}
 	local actions: { Node } = {}
+	local danger = false
 	for i = #buttons, 1, -1 do
 		local button = buttons[i]
 		local class = "btn mdl-go twt-btn"
 		if button.kind == "danger" then
 			class ..= " bad"
+			danger = true
 		elseif button.kind == "primary" then
 			class ..= " accent"
 		end
-		local node = ui.el("button", { class = class, actions = { click = "btn=" .. button.id } }, {
+		local shortcut = button_shortcut(button, i)
+		local node = ui.el("button", {
+			class = class,
+			attrs = { ["aria-keyshortcuts"] = ARIA_KEYS[shortcut] or shortcut },
+			actions = { click = "btn=" .. button.id },
+		}, {
 			ui.el("span", { text = button.label }),
-			kbd(button_shortcut(button, i)),
+			kbd(shortcut, true),
 		})
 		table.insert(if button.kind == KIND_CANCEL then lead else actions, node)
 	end
@@ -287,7 +296,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
 	end
 	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
-	return palette_card("confirm", req.title, children)
+	return palette_card("confirm", req.title, children, danger)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
