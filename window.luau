@@ -1133,7 +1133,11 @@ local function run_remove(
 			end)
 			return
 		end
-		cx2:toast("success", "deleted" .. NO_BREAK_SPACE .. "worktree", join_or_nil(res.warnings, "; "))
+		cx2:toast(
+			"success",
+			"deleted" .. NO_BREAK_SPACE .. "worktree",
+			join_or_nil(res.warnings, "; ") or short_path(path)
+		)
 		after_change(cx2)
 		done(cx2)
 	end)

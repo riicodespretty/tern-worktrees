@@ -33,7 +33,7 @@ _Avoid_: Secret file, precious file
 ### Teardown
 
 **Teardown**:
-The removal of a managed worktree and, as the teardown policy says, of its branch.
+The removal of a managed worktree and, as the teardown policy says, of its branch. The toast after a teardown says `deleted worktree`. That is the text the user sees, not a name for the step.
 _Avoid_: Cleanup, delete, close
 
 **Teardown policy**:
