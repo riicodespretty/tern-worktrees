@@ -65,7 +65,7 @@ The title protocol has a fixed set of names:
 
 - The modes of a request are `pick`, `confirm` and `prompt`.
 - The actions of an answer are `select`, `new`, `button`, `text` and `cancel`.
-- The `kind` value `cancel` on a button changes only its key hint to `esc`, and the dialog then drops its own `esc` hint.
+- The `kind` value `cancel` on a button changes its key hint to `esc` and moves the button to the left end of the footer. The dialog then drops its own `esc` hint.
 
 A click or a digit on a button gives the `button` action with the id of that button. Escape or a close gives the `cancel` action.
 

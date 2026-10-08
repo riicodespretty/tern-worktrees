@@ -258,14 +258,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		table.insert(body, ui.el("div", { class = "twt-detail twt-mono" }, lines))
 	end
 	local lead: { Node } = {}
-	local hasCancel = false
-	for _, button in ipairs(buttons) do
-		hasCancel = hasCancel or button.kind == KIND_CANCEL
-	end
-	if not hasCancel then
-		table.insert(lead, hint({ "esc" }, ESCAPE_LABEL, "twt-hint"))
-	end
-	local foot: { Node } = { ui.el("div", { class = "mdl-lead" }, lead) }
+	local actions: { Node } = {}
 	for i = #buttons, 1, -1 do
 		local button = buttons[i]
 		local class = "btn mdl-go twt-btn"
@@ -274,13 +267,18 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		elseif button.kind == "primary" then
 			class ..= " accent"
 		end
-		table.insert(
-			foot,
-			ui.el("button", { class = class, actions = { click = "btn=" .. button.id } }, {
-				ui.el("span", { text = button.label }),
-				kbd(button_shortcut(button, i)),
-			})
-		)
+		local node = ui.el("button", { class = class, actions = { click = "btn=" .. button.id } }, {
+			ui.el("span", { text = button.label }),
+			kbd(button_shortcut(button, i)),
+		})
+		table.insert(if button.kind == KIND_CANCEL then lead else actions, node)
+	end
+	if #lead == 0 then
+		table.insert(lead, hint({ "esc" }, ESCAPE_LABEL, "twt-hint"))
+	end
+	local foot: { Node } = { ui.el("div", { class = "mdl-lead" }, lead) }
+	for _, node in ipairs(actions) do
+		table.insert(foot, node)
 	end
 	local children: { Node } = {
 		ui.el("div", { class = "mdl-head" }, { ui.el("div", { class = "mdl-titles" }, titles) }),
@@ -298,7 +296,6 @@ local function prompt_view(state: State, cx: BlockCx): Node
 		ui.el("div", { class = "ck-top" }, {
 			ui.node("icon", { name = "pen" }),
 			ui.node("input", { key = TEXT_KEY, text = state.text, placeholder = req.placeholder or req.title }),
-			kbd("esc"),
 		}),
 	}
 	if req.message ~= nil and req.message ~= "" then

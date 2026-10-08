@@ -38,7 +38,8 @@
   }
 
   .twt-card .sf-picker .pk-sheet::after,
-  .twt-card .sf-picker .pk-count {
+  .twt-card .sf-picker .pk-count,
+  .twt-card .sf-picker .pk-esc {
     display: none;
   }
 
