@@ -2,7 +2,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.ts';
 import { gitMust, gitRun, isCheckoutTop, originUrl } from './git.ts';
-import { CliError, must } from './proc.ts';
+import { CliError, must, run } from './proc.ts';
+import type { RunOptions, RunResult } from './proc.ts';
 
 /** The GitHub owner and name of a repository. */
 export interface GithubRepoRef {
@@ -16,11 +17,10 @@ export interface GithubClone {
   cloned: boolean;
 }
 
-/** The clone path of a GitHub repository. `present` is true when the path holds a clone of the repository. `conflict` is true when the path holds something else. */
-export interface CloneSlot {
+/** The clone path of a GitHub repository. `state` is `'clone'` when the path holds a clone of the repository, `'conflict'` when the path holds something else, and null when nothing is at the path. */
+export interface ClonePath {
   root: string;
-  present: boolean;
-  conflict: boolean;
+  state: 'clone' | 'conflict' | null;
 }
 
 /** A pull request as `gh pr list --json` and `gh pr view --json` print it. Each command asks for some of the fields. */
@@ -39,6 +39,32 @@ const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)
 /** The `<owner>/<name>` form of `repoRef`, the name that `gh` uses for a repository. */
 export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owner}/${repoRef.name}`;
 
+/** Runs `gh <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when gh fails. */
+export const ghRun = async (...args: string[]): Promise<RunResult> => await run(['gh', ...args]);
+
+/** Like {@link ghMust}, but runs gh with `opts`: the working directory and the env vars that gh gets. Pass `undefined` for the defaults. */
+export const ghMustWith = async (opts: RunOptions | undefined, ...args: string[]): Promise<string> => await must(['gh', ...args], 'gh_failed', opts);
+
+/** Runs `gh <args>` and returns its standard output. Throws `gh_failed` when gh exits with a status other than 0. */
+export const ghMust = async (...args: string[]): Promise<string> => await ghMustWith(undefined, ...args);
+
+/**
+ * Lists the pull requests of `repoRef` that `filters` (`gh pr list` flags) select, with the `fields` of each.
+ * Gives the standard error of gh, without the white space around it, as `error`, and no pull requests, when gh fails. Otherwise `error` is null.
+ */
+export const listPullRequests = async <Field extends keyof GhPullRequest>(
+  repoRef: GithubRepoRef,
+  filters: string[],
+  fields: Field[],
+): Promise<{ error: string | null; prs: Pick<GhPullRequest, Field>[] }> => {
+  const result = await ghRun('pr', 'list', '--repo', nameWithOwner(repoRef), ...filters, '--json', fields.join(','));
+  if (result.status !== 0) {
+    return { error: result.stderr.trim(), prs: [] };
+  }
+  // SAFETY: `gh pr list --json` prints an array of objects with the fields that its `--json` flag names.
+  return { error: null, prs: JSON.parse(result.stdout) as Pick<GhPullRequest, Field>[] };
+};
+
 /** The GitHub owner and name from the `origin` URL, or null without a GitHub origin. */
 export const originRepo = async (root: string): Promise<GithubRepoRef | null> => {
   const groups = GITHUB_URL.exec(await originUrl(root))?.groups;
@@ -56,7 +82,7 @@ export const defaultBranch = async (root: string, { offline = false }: { offline
   }
   const repoRef = offline ? null : await originRepo(root);
   if (repoRef !== null) {
-    const name = await must(['gh', 'repo', 'view', nameWithOwner(repoRef), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], 'gh_failed');
+    const name = await ghMust('repo', 'view', nameWithOwner(repoRef), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name');
     return name.trim();
   }
   const current = await gitMust(root, 'branch', '--show-current');
@@ -79,17 +105,17 @@ export const parseNameWithOwner = (command: string, positionals: string[]): Gith
 };
 
 /**
- * Gives the clone path `<cloneRoot>/<owner>/<name>` of `repoRef` and its {@link CloneSlot} state.
+ * Gives the clone path `<cloneRoot>/<owner>/<name>` of `repoRef` and its {@link ClonePath} state.
  * The path is a clone when it holds a checkout with `repoRef` as its `origin`. Anything else at the path is a conflict.
  */
-export const cloneSlot = async (repoRef: GithubRepoRef, cloneRoot: string): Promise<CloneSlot> => {
+export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Promise<ClonePath> => {
   const root = path.join(cloneRoot, repoRef.owner, repoRef.name);
   if (!existsSync(root)) {
-    return { conflict: false, present: false, root };
+    return { root, state: null };
   }
   const origin = (await isCheckoutTop(root)) ? await originRepo(root) : null;
-  const present = origin?.owner === repoRef.owner && origin.name === repoRef.name;
-  return { conflict: !present, present, root };
+  const isClone = origin?.owner === repoRef.owner && origin.name === repoRef.name;
+  return { root, state: isClone ? 'clone' : 'conflict' };
 };
 
 /**
@@ -97,11 +123,11 @@ export const cloneSlot = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
  * Throws `path_conflict` when the path holds something else.
  */
 export const cloneDestination = async (repoRef: GithubRepoRef): Promise<{ root: string; present: boolean }> => {
-  const { conflict, present, root } = await cloneSlot(repoRef, loadConfig().cloneRoot);
-  if (conflict) {
+  const { root, state } = await clonePath(repoRef, loadConfig().cloneRoot);
+  if (state === 'conflict') {
     throw new CliError('path_conflict', `${root} exists and is not a clone of ${nameWithOwner(repoRef)}`, { path: root });
   }
-  return { present, root };
+  return { present: state === 'clone', root };
 };
 
 /** Clones `repoRef` to `<cloneRoot>/<owner>/<name>`, or reuses the clone at that path. Throws `path_conflict` when the path holds something else. */
@@ -111,6 +137,6 @@ export const cloneRepo = async (repoRef: GithubRepoRef): Promise<GithubClone> =>
     return { cloned: false, root };
   }
   mkdirSync(path.dirname(root), { recursive: true });
-  await must(['gh', 'repo', 'clone', nameWithOwner(repoRef), root], 'gh_failed');
+  await ghMust('repo', 'clone', nameWithOwner(repoRef), root);
   return { cloned: true, root };
 };

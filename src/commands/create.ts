@@ -4,10 +4,10 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fetchOrigin, gitMust, gitRun, gitSucceeds, hardToRebuild, hasOrigin, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
-import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
+import { defaultBranch, ghMust, ghMustWith, nameWithOwner, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
 import { isUnder, worktreePath } from '../paths.ts';
-import { CliError, must } from '../proc.ts';
+import { CliError } from '../proc.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo } from '../tern.ts';
 
 /** How `create` got the worktree. */
@@ -114,7 +114,7 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   if (repoRef === null) {
     throw badArgs('--pr needs a GitHub origin');
   }
-  const view = await must(['gh', 'pr', 'view', pr, '--repo', nameWithOwner(repoRef), '--json', 'number,headRefName,isCrossRepository'], 'gh_failed');
+  const view = await ghMust('pr', 'view', pr, '--repo', nameWithOwner(repoRef), '--json', 'number,headRefName,isCrossRepository');
   // SAFETY: `gh pr view --json` prints the fields that its `--json` flag names.
   const { headRefName, isCrossRepository } = JSON.parse(view) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository'>;
   if (isCrossRepository) {
@@ -174,7 +174,7 @@ const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promis
   }
   await gitMust(ctx.root, 'worktree', 'add', '--detach', '--', target.path, await startPoint(ctx));
   try {
-    await must(['gh', 'pr', 'checkout', target.forkPr, '--branch', target.branch], 'gh_failed', { cwd: target.path });
+    await ghMustWith({ cwd: target.path }, 'pr', 'checkout', target.forkPr, '--branch', target.branch);
   } catch (error) {
     await gitMust(ctx.root, 'worktree', 'remove', '--force', target.path);
     throw error;

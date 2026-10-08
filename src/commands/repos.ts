@@ -1,7 +1,6 @@
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { cloneSlot, parseRepoRef } from '../github.ts';
-import { must, run as runProcess } from '../proc.ts';
+import { clonePath, ghMust, ghRun, parseRepoRef } from '../github.ts';
 
 /** A GitHub repository. `local` is its clone in the clone root, or null when the clone path has no clone of this repository. */
 export interface GithubRepo {
@@ -30,7 +29,7 @@ interface OwnerRepos {
 }
 
 const listOrgs = async (warnings: string[]): Promise<string[]> => {
-  const result = await runProcess(['gh', 'org', 'list']);
+  const result = await ghRun('org', 'list');
   if (result.status !== 0) {
     warnings.push(`org list failed: ${result.stderr.trim()}`);
     return [];
@@ -39,7 +38,7 @@ const listOrgs = async (warnings: string[]): Promise<string[]> => {
 };
 
 const listRepos = async (owner: string, warnings: string[]): Promise<OwnerRepos | null> => {
-  const result = await runProcess(['gh', 'repo', 'list', owner, '--limit', '200', '--json', 'nameWithOwner,isPrivate,description']);
+  const result = await ghRun('repo', 'list', owner, '--limit', '200', '--json', 'nameWithOwner,isPrivate,description');
   if (result.status !== 0) {
     warnings.push(`repo list ${owner} failed: ${result.stderr.trim()}`);
     return null;
@@ -48,20 +47,20 @@ const listRepos = async (owner: string, warnings: string[]): Promise<OwnerRepos 
   return { owner, repos: JSON.parse(result.stdout) as GhRepo[] };
 };
 
-const localClone = async (cloneRoot: string, listedName: string): Promise<string | null> => {
-  const repoRef = parseRepoRef(listedName);
+const localClone = async (cloneRoot: string, text: string): Promise<string | null> => {
+  const repoRef = parseRepoRef(text);
   if (repoRef === null) {
     return null;
   }
-  const { present, root } = await cloneSlot(repoRef, cloneRoot);
-  return present ? root : null;
+  const { root, state } = await clonePath(repoRef, cloneRoot);
+  return state === 'clone' ? root : null;
 };
 
 /** `repos`: the GitHub repositories of the user and of each organization of the user, with the local clone of each. When the repository list of an organization fails, the result does not include that organization and has a warning. */
 export const run = async (args: string[]): Promise<ReposResult> => {
   parseArgs({ args, options: {} });
   const { cloneRoot } = loadConfig();
-  const loginOutput = await must(['gh', 'api', 'user', '--jq', '.login'], 'gh_failed');
+  const loginOutput = await ghMust('api', 'user', '--jq', '.login');
   const login = loginOutput.trim();
   const warnings: string[] = [];
   const orgs = await listOrgs(warnings);

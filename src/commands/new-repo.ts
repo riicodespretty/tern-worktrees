@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
-import { cloneDestination, cloneRepo, nameWithOwner, parseNameWithOwner } from '../github.ts';
-import { CliError, must } from '../proc.ts';
+import { cloneDestination, cloneRepo, ghMust, nameWithOwner, parseNameWithOwner } from '../github.ts';
+import { CliError } from '../proc.ts';
 
 /** The clone of a new GitHub repository. */
 export interface NewRepoResult {
@@ -17,8 +17,7 @@ export const run = async (args: string[]): Promise<NewRepoResult> => {
     throw new CliError('bad_args', 'new-repo needs --visibility private or public');
   }
   await cloneDestination(repoRef);
-  const ownerAndName = nameWithOwner(repoRef);
-  await must(['gh', 'repo', 'create', ownerAndName, `--${visibility}`, '--add-readme'], 'gh_failed');
+  await ghMust('repo', 'create', nameWithOwner(repoRef), `--${visibility}`, '--add-readme');
   const { root } = await cloneRepo(repoRef);
-  return { nameWithOwner: ownerAndName, root };
+  return { nameWithOwner: nameWithOwner(repoRef), root };
 };

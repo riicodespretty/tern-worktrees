@@ -1,10 +1,10 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
-import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
-import type { GhPullRequest, GithubRepoRef } from '../github.ts';
+import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
+import type { GithubRepoRef } from '../github.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, run as runProcess } from '../proc.ts';
+import { CliError } from '../proc.ts';
 
 /** An open pull request of the repository. */
 export interface PullRequest {
@@ -46,15 +46,11 @@ const listBranches = async (root: string, withOrigin: boolean): Promise<string[]
   return [...new Set(names)];
 };
 
-const listPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<PullRequest[]> => {
-  const argv = ['gh', 'pr', 'list', '--repo', nameWithOwner(repoRef), '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
-  const result = await runProcess(argv);
-  if (result.status !== 0) {
-    warnings.push(`pr list failed: ${result.stderr.trim()}`);
-    return [];
+const openPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<PullRequest[]> => {
+  const { error, prs } = await listPullRequests(repoRef, ['--state', 'open', '--limit', '200'], ['number', 'title', 'headRefName', 'isCrossRepository']);
+  if (error !== null) {
+    warnings.push(`pr list failed: ${error}`);
   }
-  // SAFETY: `gh pr list --json` prints an array with the fields it names.
-  const prs = JSON.parse(result.stdout) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository' | 'number' | 'title'>[];
   return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
 };
 
@@ -77,7 +73,7 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
   const repoRef = offline ? null : await originRepo(root);
   const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
     listBranches(root, withOrigin),
-    repoRef === null ? [] : listPullRequests(repoRef, warnings),
+    repoRef === null ? [] : openPullRequests(repoRef, warnings),
     worktrees(root),
     defaultBranch(root, { offline }),
   ]);

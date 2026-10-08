@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { defaultBranch, nameWithOwner, originRepo } from '../src/github.ts';
+import { defaultBranch, ghMust, ghRun, listPullRequests, nameWithOwner, originRepo } from '../src/github.ts';
 import type { Sandbox } from './helpers.ts';
-import { ghDefaultBranchFixture, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { ghDefaultBranchFixture, ghFixture, ghLog, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
 
@@ -42,6 +42,42 @@ describe('github helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'remove', 'origin');
       await expect(originRepo(repo.dir)).resolves.toBeNull();
+    });
+  });
+
+  describe(ghRun, () => {
+    it('gives the output of gh', async () => {
+      ghFixture(['api', 'user'], 'me\n');
+      await expect(ghRun('api', 'user')).resolves.toStrictEqual({ status: 0, stderr: '', stdout: 'me\n' });
+      expect(ghLog()).toStrictEqual(['api user']);
+    });
+
+    it('gives the status and error of gh when it fails', async () => {
+      await expect(ghRun('api', 'user')).resolves.toMatchObject({ status: 1, stderr: 'fake gh: no fixture\n' });
+    });
+  });
+
+  describe(ghMust, () => {
+    it('gives the output of gh', async () => {
+      ghFixture(['api', 'user'], 'me\n');
+      await expect(ghMust('api', 'user')).resolves.toBe('me\n');
+    });
+
+    it('raises gh_failed when gh fails', async () => {
+      await expect(ghMust('api', 'user')).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
+    });
+  });
+
+  describe(listPullRequests, () => {
+    const repoRef = { name: 'name', owner: 'owner' };
+
+    it('lists the pull requests that the filters select, with the fields', async () => {
+      ghFixture(['pr', 'list', '--repo', 'owner/name', '--state', 'open', '--json', 'number,title'], '[{"number":3,"title":"Fix"}]');
+      await expect(listPullRequests(repoRef, ['--state', 'open'], ['number', 'title'])).resolves.toStrictEqual({ error: null, prs: [{ number: 3, title: 'Fix' }] });
+    });
+
+    it('gives the error of gh and no pull requests when gh fails', async () => {
+      await expect(listPullRequests(repoRef, ['--state', 'open'], ['number'])).resolves.toStrictEqual({ error: 'fake gh: no fixture', prs: [] });
     });
   });
 

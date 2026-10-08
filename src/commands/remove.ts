@@ -4,10 +4,9 @@ import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
 import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuild, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
-import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
-import type { GhPullRequest } from '../github.ts';
+import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, run as runProcess } from '../proc.ts';
+import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
 
 /** The output of `remove`. */
@@ -101,14 +100,12 @@ const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boole
   if (repoRef === null) {
     return false;
   }
-  const result = await runProcess(['gh', 'pr', 'list', '--repo', nameWithOwner(repoRef), `--head=${branch}`, '--state', 'merged', '--json', 'headRefOid']);
-  if (result.status !== 0) {
-    ctx.warnings.push(`merged PR check failed: ${result.stderr.trim()}`);
+  const { error, prs } = await listPullRequests(repoRef, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
+  if (error !== null) {
+    ctx.warnings.push(`merged PR check failed: ${error}`);
     return false;
   }
-  // SAFETY: `gh pr list --json` prints an array of objects with the fields that its `--json` flag names.
-  const merged = JSON.parse(result.stdout) as Pick<GhPullRequest, 'headRefOid'>[];
-  const held = await Promise.all(merged.map(async pr => await isAncestor(ctx.root, `refs/heads/${branch}`, pr.headRefOid)));
+  const held = await Promise.all(prs.map(async pr => await isAncestor(ctx.root, `refs/heads/${branch}`, pr.headRefOid)));
   return held.includes(true);
 };
 
