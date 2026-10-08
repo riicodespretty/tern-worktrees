@@ -3,6 +3,7 @@
 local CLI = tern.plugin.dir .. "/bin/tern-wt"
 local DIALOG = "tern-worktrees.dialog"
 local FLOAT_SHEET = "dialog-float"
+local NO_BREAK_SPACE = "\u{A0}"
 
 local floatOk, floatSource = pcall(tern.fs.read, tern.plugin.dir .. "/dialog-float.css")
 local floatRules: string? = if floatOk then floatSource else nil
@@ -752,7 +753,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 		if type(res.carried) == "table" and #res.carried > 0 then
 			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
 		end
-		cx2:toast("success", tostring(res.status) .. " worktree", table.concat(parts, " · "))
+		cx2:toast("success", tostring(res.status) .. NO_BREAK_SPACE .. "worktree", table.concat(parts, " · "))
 	end)
 end
 
@@ -1132,7 +1133,12 @@ local function run_remove(
 			end)
 			return
 		end
-		cx2:toast("success", "Removed " .. tostring(res.branch or path), join_or_nil(res.warnings, "; "))
+		local parts: { string } = { short_path(path) }
+		local warnings = join_or_nil(res.warnings, "; ")
+		if warnings then
+			table.insert(parts, warnings)
+		end
+		cx2:toast("success", "deleted" .. NO_BREAK_SPACE .. "worktree", table.concat(parts, " · "))
 		after_change(cx2)
 		done(cx2)
 	end)
