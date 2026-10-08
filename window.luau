@@ -27,6 +27,7 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
+-- NOTE: The dialog protocol constants below twin the block at the top of host.luau. Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
@@ -46,14 +47,51 @@ type Answer =
 	| { action: typeof(ACTION_TEXT), text: string }
 type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
+type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
+type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
+type PickRequest = {
+	title: string,
+	items: { Item },
+	allowNew: boolean?,
+	newLabel: string?,
+	placeholder: string?,
+	verb: string?,
+}
 type ConfirmRequest = {
 	title: string,
 	path: string,
 	message: string,
 	listing: { string }?,
-	buttons: { any },
+	buttons: { Button },
 	reveal: boolean?,
 }
+type PickDialog = {
+	mode: typeof(MODE_PICK),
+	title: string,
+	items: { Item },
+	allowNew: boolean?,
+	newLabel: string?,
+	placeholder: string?,
+	verb: string?,
+	reveal: boolean?,
+}
+type ConfirmDialog = {
+	mode: typeof(MODE_CONFIRM),
+	title: string,
+	path: string,
+	message: string,
+	listing: { string }?,
+	buttons: { Button },
+	reveal: boolean?,
+}
+type PromptDialog = {
+	mode: typeof(MODE_PROMPT),
+	title: string,
+	placeholder: string?,
+	verb: string?,
+	reveal: boolean?,
+}
+type DialogRequest = PickDialog | ConfirmDialog | PromptDialog
 type PullRequest = { number: number, title: string, branch: string }
 type BranchWorktree = { branch: string?, path: string }
 type BranchesResult = {
@@ -77,6 +115,7 @@ type ReposResult = { owners: { string }, repos: { GithubRepo } }
 type ResolvedDir = { dir: string, root: string?, name: string? }
 type ResolveResult = { repos: { ResolvedDir } }
 type RemoveResult = { branch: string?, warnings: { string } }
+type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
 type Pending = { reqid: string, cb: AnswerCb }
 type RootState = {
@@ -264,9 +303,13 @@ local function session_of_tab(index: SessionIndex, tab: number?): number?
 	return if session ~= nil then session.id else nil
 end
 
-local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number)
+local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number, requireCurrent: boolean)
 	local current = index.current
-	if current == nil or current.id ~= sid then
+	if current == nil then
+		if not requireCurrent then
+			cx.sessions:switch(sid)
+		end
+	elseif current.id ~= sid then
 		cx.sessions:switch(sid)
 	end
 end
@@ -298,7 +341,7 @@ local function close_tab(cx: WindowCx, tab: number)
 	local index = session_index(cx)
 	local sid = session_of_tab(index, tab)
 	if sid ~= nil then
-		switch_to_session(cx, index, sid)
+		switch_to_session(cx, index, sid, true)
 	end
 	cx.layout:focus(target)
 	local focused = cx.session:focused()
@@ -372,15 +415,17 @@ local function parse_answer(decoded: any): Answer
 	return { action = ACTION_CANCEL }
 end
 
-local function ask(cx: WindowCx, req: { [string]: any }, cb: AnswerCb, reveal: boolean?): boolean
+local function ask(cx: WindowCx, req: DialogRequest, cb: AnswerCb): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
-	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(req) }, "beside", { focus = false })
+	local wire = table.clone(req)
+	wire.reveal = nil
+	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(wire) }, "beside", { focus = false })
 	if pane == nil then
 		cx:toast("error", "Worktree dialog unavailable")
 		return false
 	end
-	if reveal == false then
+	if req.reveal == false then
 		cx.layout:float(pane, nil, nil, { focus = false })
 	else
 		cx.layout:float(pane)
@@ -421,14 +466,20 @@ local function confirm(cx: WindowCx, req: ConfirmRequest, cb: AnswerCb): boolean
 		message = req.message,
 		listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil,
 		buttons = tern.json.array(req.buttons),
-	}, cb, req.reveal)
+		reveal = req.reveal,
+	}, cb)
 end
 
-local function pick(cx: WindowCx, req: { [string]: any }, cb: AnswerCb)
-	local picked = table.clone(req)
-	picked.mode = MODE_PICK
-	picked.items = tern.json.array(req.items)
-	ask(cx, picked, cb)
+local function pick(cx: WindowCx, req: PickRequest, cb: AnswerCb)
+	ask(cx, {
+		mode = MODE_PICK,
+		title = req.title,
+		items = tern.json.array(req.items),
+		allowNew = req.allowNew,
+		newLabel = req.newLabel,
+		placeholder = req.placeholder,
+		verb = req.verb,
+	}, cb)
 end
 
 local MAX_LISTED_FILES = 10
@@ -477,32 +528,61 @@ local function replace_plain(text: string, old: string, new: string): string
 	return table.concat(parts)
 end
 
+type DirtyFiles = { changes: { string }, ignored: { string }, omitted: number }
+
+local function dirty_files(files: any): DirtyFiles
+	local shown: DirtyFiles = { changes = {}, ignored = {}, omitted = 0 }
+	if type(files) ~= "table" then
+		return shown
+	end
+	local changes: { string } = {}
+	local ignored: { string } = {}
+	for i = 1, #files do
+		local entry = tostring(files[i])
+		if string.sub(entry, 1, 3) == "!! " then
+			table.insert(ignored, string.sub(entry, 4))
+		else
+			table.insert(changes, entry)
+		end
+	end
+	local ignoredShown = math.min(#ignored, MAX_LISTED_FILES)
+	local changesShown = math.min(#changes, MAX_LISTED_FILES - ignoredShown)
+	table.move(changes, 1, changesShown, 1, shown.changes)
+	table.move(ignored, 1, ignoredShown, 1, shown.ignored)
+	shown.omitted = #changes + #ignored - changesShown - ignoredShown
+	return shown
+end
+
+local function dirty_lines(shown: DirtyFiles): { string }
+	local listing: { string } = table.clone(shown.changes)
+	if #shown.ignored > 0 then
+		table.insert(listing, "Ignored files that are hard to rebuild:")
+		table.move(shown.ignored, 1, #shown.ignored, #listing + 1, listing)
+	end
+	if shown.omitted > 0 then
+		table.insert(listing, "and " .. shown.omitted .. " more")
+	end
+	return listing
+end
+
+local function dirty_summary(shown: DirtyFiles): string
+	local parts: { string } = {}
+	if #shown.changes > 0 then
+		table.insert(parts, table.concat(shown.changes, ", "))
+	end
+	if #shown.ignored > 0 then
+		table.insert(parts, "hard to rebuild: " .. table.concat(shown.ignored, ", "))
+	end
+	if shown.omitted > 0 then
+		table.insert(parts, "and " .. shown.omitted .. " more")
+	end
+	return table.concat(parts, "; ")
+end
+
 local function failure_message(err: any, path: string): (string, { string })
 	local lines: { string } = {}
-	local listing: { string } = {}
-	local files = err.files
-	if err.code == "dirty_worktree" and type(files) == "table" and #files > 0 then
-		local changes: { string } = {}
-		local ignored: { string } = {}
-		for i = 1, #files do
-			local entry = tostring(files[i])
-			if string.sub(entry, 1, 3) == "!! " then
-				table.insert(ignored, string.sub(entry, 4))
-			else
-				table.insert(changes, entry)
-			end
-		end
-		local ignoredShown = math.min(#ignored, MAX_LISTED_FILES)
-		local changesShown = math.min(#changes, MAX_LISTED_FILES - ignoredShown)
-		table.move(changes, 1, changesShown, 1, listing)
-		if ignoredShown > 0 then
-			table.insert(listing, "Ignored files that are hard to rebuild:")
-			table.move(ignored, 1, ignoredShown, #listing + 1, listing)
-		end
-		local omitted = #changes + #ignored - changesShown - ignoredShown
-		if omitted > 0 then
-			table.insert(listing, "and " .. omitted .. " more")
-		end
+	local listing = if err.code == "dirty_worktree" then dirty_lines(dirty_files(err.files)) else {}
+	if #listing > 0 then
 		table.insert(lines, "Removing this worktree loses these changes:")
 	else
 		table.insert(lines, replace_plain(tostring(err.message), path, short_path(path)))
@@ -594,7 +674,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 		if is_under(pane.cwd, path) and not pending[pane.pane] then
 			local sid = session_of_tab(index, pane.tab)
 			if sid ~= nil then
-				switch_to_session(cx, index, sid)
+				switch_to_session(cx, index, sid, true)
 			end
 			cx.layout:focus(pane.pane)
 			tab = pane.tab
@@ -610,7 +690,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			end
 		end
 		if sid ~= nil then
-			switch_to_session(cx, index, sid)
+			switch_to_session(cx, index, sid, false)
 			local pane = cx.layout:new_tab({ cwd = path })
 			tab = if pane ~= nil then cx.session:tab_of(pane) else nil
 		else
@@ -658,8 +738,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 					end
 				end)
 			elseif err.code == "dirty_worktree" then
-				local files: { string } = table.move(err.files or {}, 1, 5, 1, {})
-				cx2:toast("error", "Cannot relocate: uncommitted changes", table.concat(files, ", "))
+				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(dirty_files(err.files)))
 			elseif err.code == "branch_in_main_checkout" then
 				cx2:toast("error", "Branch is checked out in the main checkout", err.existing)
 			else
@@ -833,7 +912,7 @@ local repo_picker: (cx: WindowCx) -> ()
 local function branch_picker(cx: WindowCx, root: string)
 	cli_or_toast({ "branches", "--repo", root }, function(res: BranchesResult, cx2)
 		local hasWorktree = branches_with_worktree(res)
-		local items: { any } = { { id = "other", label = "Other repo…", icon = "folder" } }
+		local items: { Item } = { { id = "other", label = "Other repo…", icon = "folder" } }
 		for _, pr in ipairs(res.prs or {}) do
 			table.insert(items, {
 				id = "pr:" .. tostring(pr.number),
@@ -880,7 +959,7 @@ end
 local function github_picker(cx: WindowCx)
 	cx:toast("info", "Loading GitHub repos…")
 	cli_or_toast({ "repos" }, function(res: ReposResult, reposCx)
-		local items: { any } = {}
+		local items: { Item } = {}
 		for _, r in ipairs(res.repos or {}) do
 			local nameWithOwner = r.nameWithOwner
 			table.insert(items, {
@@ -947,7 +1026,7 @@ local function ask_name(cx: WindowCx, owner: string)
 end
 
 local function ask_owner(cx: WindowCx, ownerNames: { string })
-	local owners: { any } = {}
+	local owners: { Item } = {}
 	for _, o in ipairs(ownerNames) do
 		table.insert(owners, { id = o, label = o, icon = "user" })
 	end
@@ -969,7 +1048,7 @@ local function new_repo(cx: WindowCx)
 end
 
 repo_picker = function(cx: WindowCx)
-	local items: { any } = {}
+	local items: { Item } = {}
 	for _, r in ipairs(localRepos) do
 		table.insert(items, {
 			id = "local:" .. r.root,
@@ -1068,9 +1147,9 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		end
 	end
 	local policy = config().teardown
-	local teardown = { id = "teardown", label = "Tear down", kind = "danger" }
-	local keep = { id = "keep", label = "Keep worktree" }
-	local buttons: { any } = if tab ~= nil
+	local teardown: Button = { id = "teardown", label = "Tear down", kind = "danger" }
+	local keep: Button = { id = "keep", label = "Keep worktree" }
+	local buttons: { Button } = if tab ~= nil
 		then { teardown, keep, { id = "cancel", label = "Cancel", kind = KIND_CANCEL } }
 		else { keep, teardown }
 	return confirm(cx, {
@@ -1255,7 +1334,7 @@ local function err_text(err: any): string
 	return tostring(err.code) .. ": " .. tostring(err.message)
 end
 
-local function reply_to(call: any): CliCb<any>
+local function reply_to<T>(call: any): CliCb<T>
 	return function(res, err, _cx)
 		if err ~= nil then
 			call:fail(err_text(err))
@@ -1303,7 +1382,8 @@ tern.carly.export("list", {
 	doc = "List the managed worktrees under the worktree root.",
 }, function(...: any): ...any
 	local _args, _cx, call = export_args(...)
-	cli({ "list" }, reply_to(call))
+	local reply: CliCb<ListResult> = reply_to(call)
+	cli({ "list" }, reply)
 	return call:wait(120000)
 end)
 
@@ -1320,7 +1400,7 @@ tern.carly.export("remove", {
 	if force == true then
 		table.insert(argv, "--force")
 	end
-	cli(argv, function(res: any, err, cx2)
+	cli(argv, function(res: RemoveResult, err, cx2)
 		if err == nil then
 			after_change(cx2)
 		end

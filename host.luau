@@ -4,6 +4,7 @@ local ui = tern.ui
 
 local NEW_ID = "__new__"
 local UNGROUPED = "__ungrouped__"
+-- NOTE: The dialog protocol constants below twin the block at the top of window.luau. Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
