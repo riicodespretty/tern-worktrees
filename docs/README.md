@@ -71,9 +71,13 @@ A click or a digit on a button gives the `button` action with the id of that but
 
 `window.luau` and `host.luau` each hold a copy of these names and the `twt:` prefix, so the copies must match. A changed action name reads as Cancel in `parse_answer`. A changed prefix makes the window half ignore the answer, so the dialog keeps waiting.
 
+The request types follow the same rule. `host.luau` holds the full request types (`PickRequest`, `ConfirmRequest` and `PromptRequest`). The payload that the window half sends is a subset of these types. `window.luau` holds the types of that payload (`PickDialog`, `ConfirmDialog` and `PromptDialog`), and it does not add the fields that only the host uses. A field can be mandatory in the window half and optional in the host. The field names and their base value types (`string`, `{ Item }` and `{ Button }`) must match in the two files. `ConfirmDialog` also has the window-only field `reveal`, because it comes from `ConfirmOptions`. The `confirm` function gives `reveal` to `ask` and removes it before it sends the request, so the payload has no `reveal`.
+
 ### Pickers and sessions
 
 When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The current session gets the branch picker of its repository, else the repo picker opens. A new worktree tab opens in the session of its repository, else in a new session. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
+
+While a dialog waits in the current session, the hotkey opens no second picker. It focuses that dialog. A dialog in a different session does not block the hotkey. When the user presses the hotkey again before a picker opens, the newest press wins: the `resolve` and `branches` calls of the older presses end with no picker, so one picker opens, and no picker opens after the user closes it.
 
 ### Close interception
 

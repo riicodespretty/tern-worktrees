@@ -27,7 +27,7 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
--- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of host.luau. PickDialog, ConfirmDialog and PromptDialog here are the sender-side subset of PickRequest, ConfirmRequest and PromptRequest there, plus the window-only `reveal` on ConfirmOptions, which `confirm` hands to `ask` and never sends. The sender may require a field that the receiver keeps optional. The shared field names and their base value types (string, { Item }, { Button }) must match. Do not add the host-only fields here. Change both files together.
+-- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of host.luau. Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
@@ -117,6 +117,7 @@ type Repo = { root: string, name: string }
 
 local pending: { [number]: Pending } = {}
 local counter = 0
+local startCount = 0
 local managed: { [number]: { string } } = {}
 local handled: { [string]: boolean } = {}
 local rootOfSession: { [number]: string } = {}
@@ -285,7 +286,7 @@ local function session_of_tab(index: SessionIndex, tab: number?): number?
 	return if session ~= nil then session.id else nil
 end
 
-local function focus_session_if_current_known(cx: WindowCx, index: SessionIndex, sid: number)
+local function switch_to_session_if_current_known(cx: WindowCx, index: SessionIndex, sid: number)
 	local current = index.current
 	if current ~= nil and current.id ~= sid then
 		cx.sessions:switch(sid)
@@ -326,7 +327,7 @@ local function close_tab(cx: WindowCx, tab: number)
 	local index = session_index(cx)
 	local sid = session_of_tab(index, tab)
 	if sid ~= nil then
-		focus_session_if_current_known(cx, index, sid)
+		switch_to_session_if_current_known(cx, index, sid)
 	end
 	cx.layout:focus(target)
 	local focused = cx.session:focused()
@@ -381,6 +382,21 @@ local function begin_wait(pane: number, entry: Pending)
 		tern.css(FLOAT_SHEET, floatRules)
 	end
 	pending[pane] = entry
+end
+
+local function focus_flow_dialog(cx: WindowCx): boolean
+	local index = session_index(cx)
+	local current = index.current
+	if current == nil then
+		return false
+	end
+	for pane in pairs(pending) do
+		if session_of_tab(index, cx.session:tab_of(pane)) == current.id then
+			cx.layout:focus(pane)
+			return true
+		end
+	end
+	return false
 end
 
 local function parse_answer(decoded: any): Answer
@@ -654,7 +670,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 		if is_under(pane.cwd, path) and not pending[pane.pane] then
 			local sid = session_of_tab(index, pane.tab)
 			if sid ~= nil then
-				focus_session_if_current_known(cx, index, sid)
+				switch_to_session_if_current_known(cx, index, sid)
 			end
 			cx.layout:focus(pane.pane)
 			tab = pane.tab
@@ -890,7 +906,11 @@ end
 local repo_picker: (cx: WindowCx) -> ()
 
 local function branch_picker(cx: WindowCx, root: string)
+	local started = startCount
 	cli_or_toast({ "branches", "--repo", root }, function(res: BranchesResult, cx2)
+		if startCount ~= started then
+			return
+		end
 		local hasWorktree = branches_with_worktree(res)
 		local items: { Item } = { { id = "other", label = "Other repo…", icon = "folder" } }
 		for _, pr in ipairs(res.prs or {}) do
@@ -1057,8 +1077,16 @@ repo_picker = function(cx: WindowCx)
 end
 
 local function start(cx: WindowCx)
+	if focus_flow_dialog(cx) then
+		return
+	end
+	startCount += 1
+	local started = startCount
 	flush(cx)
 	resolve_sessions(cx, function(cx2)
+		if startCount ~= started then
+			return
+		end
 		local cur = session_index(cx2).current
 		local root = if cur ~= nil then rootOfSession[cur.id] else nil
 		if root ~= nil then
