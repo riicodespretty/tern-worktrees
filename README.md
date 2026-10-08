@@ -2,7 +2,7 @@
 
 Git worktrees as [Tern](https://docs.stencil.so/tern) tabs, in three parts:
 
-- The `tern-worktrees` Tern plugin. `cmd+option+t` opens the branch picker, and the branch you pick opens as a worktree tab. The command palette also lists the branches and pull requests of the current repository as worktree rows. When you close a worktree tab, the plugin offers a teardown.
+- The `tern-worktrees` Tern plugin. `cmd+shift+w` (W for worktree) opens the branch picker, and the branch you pick opens as a worktree tab. The command palette also lists the branches and pull requests of the current repository as worktree rows. When you close a worktree tab, the plugin offers a teardown.
 - The `tern-wt` CLI, the one implementation of each git and GitHub step. The plugin runs it, and agents run it directly.
 - The `tern-worktrees` omp skill, the contract that agents follow.
 
@@ -46,7 +46,7 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 
 ### Open a worktree tab
 
-1. Press `cmd+option+t`. The branch picker opens for the repository of the current session. When the current session has no repository, the repo picker opens first.
+1. Press `cmd+shift+w`. The branch picker opens for the repository of the current session. When the current session has no repository, the repo picker opens first.
 2. Type to filter the open pull requests and the branches. A branch with a worktree shows `worktree` adjacent to its name.
 3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, type its name and press Enter on `Create branch “<name>” from <default>`.
 
@@ -65,7 +65,7 @@ Press Enter on a row to open its worktree tab, as the branch picker does. The ro
 
 The rows refresh from local refs, with no network traffic. This refresh runs when a shell command ends in a pane of the repository and when one of its panes gets focus. It also runs after the plugin makes or removes a worktree. The fetch from `origin` and the list of open pull requests run at most one time in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
 
-`cmd+option+t` still opens the dialog. Use it to make a new branch or to select `Other repo…`.
+`cmd+shift+w` still opens the dialog. Use it to make a new branch or to select `Other repo…`.
 
 ### Select a different repository
 
@@ -113,7 +113,7 @@ Each key in the file replaces its default:
 | ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch. |
 | `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                       |
-| `hotkeys.new` | `["cmd+alt+t"]`            | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                |
+| `hotkeys.new` | `["cmd+shift+w"]`          | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                |
 
 A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 
@@ -121,19 +121,19 @@ A branch is merged when it is an ancestor of `origin/<default>`, or when its tip
 {
   "teardown": "worktree",
   "cloneRoot": "~/src",
-  "hotkeys": { "new": ["cmd+alt+t", "ctrl+shift+w"] }
+  "hotkeys": { "new": ["cmd+shift+w", "ctrl+b>w"] }
 }
 ```
 
 An invalid file, an unknown key or an incorrect value makes each `tern-wt` command fail with `config_invalid`.
 
-### Bind `cmd+option+t` in Tern settings
+### Bind `cmd+shift+w` in Tern settings
 
-A Tern key preset or a different plugin can bind the chord first. When `cmd+option+t` opens no picker, add the binding to the Tern `settings.json`:
+A Tern key preset or a different plugin can bind the chord first. When `cmd+shift+w` opens no picker, add the binding to the Tern `settings.json`:
 
 ```json
 {
-  "keybinds": { "cmd+alt+t": "plugin.tern-worktrees.new" }
+  "keybinds": { "cmd+shift+w": "plugin.tern-worktrees.new" }
 }
 ```
 
