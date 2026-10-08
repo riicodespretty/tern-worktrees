@@ -385,6 +385,23 @@ local function begin_wait(pane: number, entry: Pending)
 	pending[pane] = entry
 end
 
+local staleSwept = false
+
+local function close_stale_dialogs(cx: WindowCx, focused: number?): boolean
+	if staleSwept then
+		return false
+	end
+	staleSwept = true
+	local closedFocused = false
+	for _, pane in ipairs(cx.session:panes()) do
+		if pane.block == DIALOG and pending[pane.pane] == nil then
+			cx.layout:close(pane.pane)
+			closedFocused = closedFocused or pane.pane == focused
+		end
+	end
+	return closedFocused
+end
+
 local function focus_flow_dialog(cx: WindowCx): boolean
 	local index = session_index(cx)
 	local current = index.current
@@ -1078,6 +1095,7 @@ repo_picker = function(cx: WindowCx)
 end
 
 local function start(cx: WindowCx)
+	close_stale_dialogs(cx)
 	if focus_flow_dialog(cx) then
 		return
 	end
@@ -1216,6 +1234,9 @@ tern.command({
 
 tern.override("close_tab", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()
+	if close_stale_dialogs(cx, focused) then
+		return true
+	end
 	if focused == nil or pending[focused] then
 		return false
 	end
@@ -1224,6 +1245,9 @@ end)
 
 tern.override("close_pane", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()
+	if close_stale_dialogs(cx, focused) then
+		return true
+	end
 	if focused == nil or pending[focused] then
 		return false
 	end
@@ -1237,6 +1261,7 @@ tern.override("close_pane", function(cx: WindowCx): boolean?
 end)
 
 tern.on("window_start", function(cx: WindowCx)
+	close_stale_dialogs(cx)
 	rebuild_managed(cx)
 	for _, pane in ipairs(cx.session:panes()) do
 		remember_cwd(pane.pane, pane.cwd)
@@ -1257,11 +1282,13 @@ end)
 
 for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
+		close_stale_dialogs(cx)
 		rebuild_managed(cx)
 	end)
 end
 
 tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
+	close_stale_dialogs(cx)
 	rebuild_managed(cx)
 	remember_cwd(ev.pane, ev.path)
 	if ev.pane == cx.session:focused() then
@@ -1270,6 +1297,7 @@ tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
 end)
 
 tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
+	close_stale_dialogs(cx)
 	local pane = cx.session:pane(ev.pane)
 	if pane ~= nil then
 		remember_cwd(ev.pane, pane.cwd)
@@ -1280,6 +1308,7 @@ tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
 end)
 
 tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
+	close_stale_dialogs(cx)
 	local cwd: string? = cwdOfPane[ev.pane]
 	if cwd == nil then
 		local pane = cx.session:pane(ev.pane)
