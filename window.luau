@@ -27,7 +27,7 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
--- NOTE: The dialog protocol constants and the Item, Button and dialog wire types below must match the block at the top of host.luau (PickDialog, ConfirmDialog and PromptDialog here are PickRequest, ConfirmRequest and PromptRequest there). Change both files together.
+-- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of host.luau. PickDialog, ConfirmDialog and PromptDialog here are the sender-side subset of PickRequest, ConfirmRequest and PromptRequest there, plus the window-only `reveal` on ConfirmOptions, which `confirm` hands to `ask` and never sends. The sender may require a field that the receiver keeps optional. The shared field names and their base value types (string, { Item }, { Button }) must match. Do not add the host-only fields here. Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
@@ -65,14 +65,13 @@ type ConfirmOptions = {
 	buttons: { Button },
 	reveal: boolean?,
 }
-type PickDialog = PickOptions & { mode: typeof(MODE_PICK), reveal: boolean? }
+type PickDialog = PickOptions & { mode: typeof(MODE_PICK) }
 type ConfirmDialog = ConfirmOptions & { mode: typeof(MODE_CONFIRM) }
 type PromptDialog = {
 	mode: typeof(MODE_PROMPT),
 	title: string,
 	placeholder: string?,
 	verb: string?,
-	reveal: boolean?,
 }
 type DialogRequest = PickDialog | ConfirmDialog | PromptDialog
 type PullRequest = { number: number, title: string, branch: string }
@@ -286,13 +285,16 @@ local function session_of_tab(index: SessionIndex, tab: number?): number?
 	return if session ~= nil then session.id else nil
 end
 
-local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number, requireCurrent: boolean)
+local function focus_session_if_current_known(cx: WindowCx, index: SessionIndex, sid: number)
 	local current = index.current
-	if current == nil then
-		if not requireCurrent then
-			cx.sessions:switch(sid)
-		end
-	elseif current.id ~= sid then
+	if current ~= nil and current.id ~= sid then
+		cx.sessions:switch(sid)
+	end
+end
+
+local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number)
+	local current = index.current
+	if current == nil or current.id ~= sid then
 		cx.sessions:switch(sid)
 	end
 end
@@ -324,7 +326,7 @@ local function close_tab(cx: WindowCx, tab: number)
 	local index = session_index(cx)
 	local sid = session_of_tab(index, tab)
 	if sid ~= nil then
-		switch_to_session(cx, index, sid, true)
+		focus_session_if_current_known(cx, index, sid)
 	end
 	cx.layout:focus(target)
 	local focused = cx.session:focused()
@@ -398,17 +400,15 @@ local function parse_answer(decoded: any): Answer
 	return { action = ACTION_CANCEL }
 end
 
-local function ask(cx: WindowCx, req: DialogRequest, cb: AnswerCb): boolean
+local function ask(cx: WindowCx, req: DialogRequest, cb: AnswerCb, reveal: boolean?): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
-	local wire = table.clone(req)
-	wire.reveal = nil
-	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(wire) }, "beside", { focus = false })
+	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(req) }, "beside", { focus = false })
 	if pane == nil then
 		cx:toast("error", "Worktree dialog unavailable")
 		return false
 	end
-	if req.reveal == false then
+	if reveal == false then
 		cx.layout:float(pane, nil, nil, { focus = false })
 	else
 		cx.layout:float(pane)
@@ -443,10 +443,11 @@ end
 local function confirm(cx: WindowCx, req: ConfirmOptions, cb: AnswerCb): boolean
 	local dialog = table.clone(req) :: ConfirmDialog
 	dialog.mode = MODE_CONFIRM
+	dialog.reveal = nil
 	local listing = req.listing
 	dialog.listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil
 	dialog.buttons = tern.json.array(req.buttons)
-	return ask(cx, dialog, cb)
+	return ask(cx, dialog, cb, req.reveal)
 end
 
 local function pick(cx: WindowCx, req: PickOptions, cb: AnswerCb)
@@ -550,7 +551,12 @@ local function dirty_summary(shown: DirtyListing): string
 	if shown.omitted > 0 then
 		table.insert(parts, "and " .. shown.omitted .. " more")
 	end
-	return table.concat(parts, "; ")
+	local total = #shown.changes + #shown.ignored + shown.omitted
+	if total == 0 then
+		return ""
+	end
+	local noun = if total == 1 then " file" else " files"
+	return total .. noun .. " with work to lose: " .. table.concat(parts, "; ")
 end
 
 local function failure_message(err: any, path: string): (string, { string })
@@ -648,7 +654,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 		if is_under(pane.cwd, path) and not pending[pane.pane] then
 			local sid = session_of_tab(index, pane.tab)
 			if sid ~= nil then
-				switch_to_session(cx, index, sid, true)
+				focus_session_if_current_known(cx, index, sid)
 			end
 			cx.layout:focus(pane.pane)
 			tab = pane.tab
@@ -664,7 +670,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			end
 		end
 		if sid ~= nil then
-			switch_to_session(cx, index, sid, false)
+			switch_to_session(cx, index, sid)
 			local pane = cx.layout:new_tab({ cwd = path })
 			tab = if pane ~= nil then cx.session:tab_of(pane) else nil
 		else

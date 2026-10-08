@@ -4,7 +4,7 @@ local ui = tern.ui
 
 local NEW_ID = "__new__"
 local UNGROUPED = "__ungrouped__"
--- NOTE: The dialog protocol constants and the Item, Button and request wire types below must match the block at the top of window.luau (PickRequest, ConfirmRequest and PromptRequest here are PickDialog, ConfirmDialog and PromptDialog there). Change both files together.
+-- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of window.luau. PickRequest, ConfirmRequest and PromptRequest here are the full receiver-side shapes of window's PickDialog, ConfirmDialog and PromptDialog, which send only a subset of these fields. The window-only `reveal` never reaches this file. The sender may require a field that this side keeps optional. The shared field names and their base value types (string, { Item }, { Button }) must match. Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
