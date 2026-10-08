@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { defaultBranch, ghMust, ghRun, listPullRequests, nameWithOwner, originRepo } from '../src/github.ts';
+import { cloneDestination, defaultBranch, ghMust, ghRun, ghTry, listPullRequests, nameWithOwner, originRepo } from '../src/github.ts';
 import type { Sandbox } from './helpers.ts';
 import { ghDefaultBranchFixture, ghFixture, ghLog, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
@@ -57,6 +58,18 @@ describe('github helpers', () => {
     });
   });
 
+  describe(ghTry, () => {
+    it('gives the output of gh and no error', async () => {
+      ghFixture(['api', 'user'], 'me\n');
+      await expect(ghTry('api', 'user')).resolves.toStrictEqual({ error: null, stdout: 'me\n' });
+      expect(ghLog()).toStrictEqual(['api user']);
+    });
+
+    it('gives the error of gh, without the white space around it, when gh fails', async () => {
+      await expect(ghTry('api', 'user')).resolves.toStrictEqual({ error: 'fake gh: no fixture', stdout: '' });
+    });
+  });
+
   describe(ghMust, () => {
     it('gives the output of gh', async () => {
       ghFixture(['api', 'user'], 'me\n');
@@ -78,6 +91,34 @@ describe('github helpers', () => {
 
     it('gives the error of gh and no pull requests when gh fails', async () => {
       await expect(listPullRequests(repoRef, ['--state', 'open'], ['number'])).resolves.toStrictEqual({ error: 'fake gh: no fixture', prs: [] });
+    });
+  });
+
+  describe(cloneDestination, () => {
+    const repoRef = { name: 'x', owner: 'me' };
+    let cloneRoot: string;
+    let dest: string;
+
+    beforeEach(() => {
+      cloneRoot = tempDir('clones');
+      dest = path.join(cloneRoot, 'me', 'x');
+      writeFileSync(path.join(sandbox.pluginData, 'config.json'), JSON.stringify({ cloneRoot }));
+    });
+
+    it('gives the clone path and a null state when nothing is at the path', async () => {
+      await expect(cloneDestination(repoRef)).resolves.toStrictEqual({ root: dest, state: null });
+    });
+
+    it('gives the clone path and the clone state when the path holds a clone of the repository', async () => {
+      mkdirSync(dest, { recursive: true });
+      await git(dest, 'init', '--quiet');
+      await git(dest, 'remote', 'add', 'origin', 'git@github.com:me/x.git');
+      await expect(cloneDestination(repoRef)).resolves.toStrictEqual({ root: dest, state: 'clone' });
+    });
+
+    it('raises path_conflict when the path holds something else', async () => {
+      mkdirSync(dest, { recursive: true });
+      await expect(cloneDestination(repoRef)).rejects.toMatchObject({ code: 'path_conflict', extra: { path: dest } });
     });
   });
 

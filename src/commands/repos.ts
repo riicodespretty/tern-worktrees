@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { clonePath, ghMust, ghRun, parseRepoRef } from '../github.ts';
+import { clonePath, ghMust, ghTry, parseRepoRef } from '../github.ts';
 
 /** A GitHub repository. `local` is its clone in the clone root, or null when the clone path has no clone of this repository. */
 export interface GithubRepo {
@@ -29,22 +29,22 @@ interface OwnerRepos {
 }
 
 const listOrgs = async (warnings: string[]): Promise<string[]> => {
-  const result = await ghRun('org', 'list');
-  if (result.status !== 0) {
-    warnings.push(`org list failed: ${result.stderr.trim()}`);
+  const { error, stdout } = await ghTry('org', 'list');
+  if (error !== null) {
+    warnings.push(`org list failed: ${error}`);
     return [];
   }
-  return result.stdout.split('\n').filter(org => org !== '');
+  return stdout.split('\n').filter(org => org !== '');
 };
 
 const listRepos = async (owner: string, warnings: string[]): Promise<OwnerRepos | null> => {
-  const result = await ghRun('repo', 'list', owner, '--limit', '200', '--json', 'nameWithOwner,isPrivate,description');
-  if (result.status !== 0) {
-    warnings.push(`repo list ${owner} failed: ${result.stderr.trim()}`);
+  const { error, stdout } = await ghTry('repo', 'list', owner, '--limit', '200', '--json', 'nameWithOwner,isPrivate,description');
+  if (error !== null) {
+    warnings.push(`repo list ${owner} failed: ${error}`);
     return null;
   }
   // SAFETY: `gh repo list --json` prints an array with the fields it names.
-  return { owner, repos: JSON.parse(result.stdout) as GhRepo[] };
+  return { owner, repos: JSON.parse(stdout) as GhRepo[] };
 };
 
 const localClone = async (cloneRoot: string, text: string): Promise<string | null> => {

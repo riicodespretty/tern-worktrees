@@ -42,6 +42,15 @@ export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owne
 /** Runs `gh <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when gh fails. */
 export const ghRun = async (...args: string[]): Promise<RunResult> => await run(['gh', ...args]);
 
+/**
+ * Runs `gh <args>` and gives its standard output as `stdout`.
+ * Gives the standard error of gh, without the white space around it, as `error` when gh exits with a status other than 0. Otherwise `error` is null. It does not throw when gh fails.
+ */
+export const ghTry = async (...args: string[]): Promise<{ error: string | null; stdout: string }> => {
+  const result = await ghRun(...args);
+  return { error: result.status === 0 ? null : result.stderr.trim(), stdout: result.stdout };
+};
+
 /** Like {@link ghMust}, but runs gh with `opts`: the working directory and the env vars that gh gets. Pass `undefined` for the defaults. */
 export const ghMustWith = async (opts: RunOptions | undefined, ...args: string[]): Promise<string> => await must(['gh', ...args], 'gh_failed', opts);
 
@@ -50,19 +59,19 @@ export const ghMust = async (...args: string[]): Promise<string> => await ghMust
 
 /**
  * Lists the pull requests of `repoRef` that `filters` (`gh pr list` flags) select, with the `fields` of each.
- * Gives the standard error of gh, without the white space around it, as `error`, and no pull requests, when gh fails. Otherwise `error` is null.
+ * Gives the error of {@link ghTry}, and no pull requests, when gh fails. Otherwise `error` is null.
  */
 export const listPullRequests = async <Field extends keyof GhPullRequest>(
   repoRef: GithubRepoRef,
   filters: string[],
   fields: Field[],
 ): Promise<{ error: string | null; prs: Pick<GhPullRequest, Field>[] }> => {
-  const result = await ghRun('pr', 'list', '--repo', nameWithOwner(repoRef), ...filters, '--json', fields.join(','));
-  if (result.status !== 0) {
-    return { error: result.stderr.trim(), prs: [] };
+  const { error, stdout } = await ghTry('pr', 'list', '--repo', nameWithOwner(repoRef), ...filters, '--json', fields.join(','));
+  if (error !== null) {
+    return { error, prs: [] };
   }
   // SAFETY: `gh pr list --json` prints an array of objects with the fields that its `--json` flag names.
-  return { error: null, prs: JSON.parse(result.stdout) as Pick<GhPullRequest, Field>[] };
+  return { error: null, prs: JSON.parse(stdout) as Pick<GhPullRequest, Field>[] };
 };
 
 /** The GitHub owner and name from the `origin` URL, or null without a GitHub origin. */
@@ -119,21 +128,21 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
 };
 
 /**
- * Gives the clone path `<cloneRoot>/<owner>/<name>` of `repoRef`, and if that path holds a clone of `repoRef`.
- * Throws `path_conflict` when the path holds something else.
+ * Like {@link clonePath} with the clone root of the options file, but throws `path_conflict` when the path holds something else.
+ * Its `state` is `'clone'` when the path holds a clone of `repoRef`, and null when nothing is at the path.
  */
-export const cloneDestination = async (repoRef: GithubRepoRef): Promise<{ root: string; present: boolean }> => {
-  const { root, state } = await clonePath(repoRef, loadConfig().cloneRoot);
-  if (state === 'conflict') {
-    throw new CliError('path_conflict', `${root} exists and is not a clone of ${nameWithOwner(repoRef)}`, { path: root });
+export const cloneDestination = async (repoRef: GithubRepoRef): Promise<ClonePath & { state: 'clone' | null }> => {
+  const found = await clonePath(repoRef, loadConfig().cloneRoot);
+  if (found.state === 'conflict') {
+    throw new CliError('path_conflict', `${found.root} exists and is not a clone of ${nameWithOwner(repoRef)}`, { path: found.root });
   }
-  return { present: state === 'clone', root };
+  return { root: found.root, state: found.state };
 };
 
 /** Clones `repoRef` to `<cloneRoot>/<owner>/<name>`, or reuses the clone at that path. Throws `path_conflict` when the path holds something else. */
 export const cloneRepo = async (repoRef: GithubRepoRef): Promise<GithubClone> => {
-  const { present, root } = await cloneDestination(repoRef);
-  if (present) {
+  const { root, state } = await cloneDestination(repoRef);
+  if (state === 'clone') {
     return { cloned: false, root };
   }
   mkdirSync(path.dirname(root), { recursive: true });
