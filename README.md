@@ -85,19 +85,19 @@ Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not st
 
 ### Close a worktree tab
 
-When you close a worktree tab, a dialog shows the path and the teardown policy:
+When you close a worktree tab, a dialog titled "Closing a worktree tab" shows the path and what Tear down does with your teardown policy:
 
-- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do.
-- Keep worktree: closes the tab and keeps the worktree.
-- Cancel: keeps the tab and the worktree.
+- Keep worktree (Enter): closes the tab and keeps the worktree.
+- Tear down (`⌫`): removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do.
+- Cancel (Escape): keeps the tab and the worktree.
 
-When the tab closes before the dialog opens, the dialog offers Keep worktree first, then Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
+When the tab closes before the dialog opens, for example from the tab bar, the dialog is titled "Worktree tab closed" and offers Keep worktree and Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
 
 When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, a second dialog shows the error and lists the files:
 
-- Retry: runs the teardown again.
-- Force delete: removes the worktree and discards its uncommitted work.
-- Cancel: keeps the tab and the worktree.
+- Retry (Enter): runs the teardown again.
+- Force delete (`⌘⌫`): removes the worktree and discards its uncommitted work.
+- Cancel (Escape): keeps the tab and the worktree.
 
 ## Options file
 

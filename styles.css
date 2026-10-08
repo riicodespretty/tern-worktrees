@@ -163,6 +163,10 @@
     background: rgb(from var(--grad-ink) r g b/8%);
     box-shadow: inset 0 0 0 1px rgb(from var(--grad-ink) r g b/22%);
   }
+
+  .twt-btn .kbd.twt-key-symbol {
+    font: 400 15px/1 var(--sans);
+  }
 }
 
 [data-theme='dark'] .sf-layer[data-surface='plugin.tern-worktrees.dialog'] .twt-card.twt-danger {

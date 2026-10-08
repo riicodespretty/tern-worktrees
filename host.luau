@@ -26,7 +26,13 @@ local DOUBLE_CLICK_MS = 500
 local PAGE_ROWS = 8
 
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
-type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
+type ButtonKey = "backspace" | "cmd+backspace"
+type Button = {
+	id: string,
+	label: string,
+	kind: ("primary" | "danger" | typeof(KIND_CANCEL))?,
+	key: ButtonKey?,
+}
 type PickRequest = {
 	mode: typeof(MODE_PICK),
 	title: string,
@@ -227,8 +233,12 @@ local function edit_text(s: string, key: Key): string?
 	return s .. text
 end
 
-local function kbd(key: string, hidden: boolean?): Node
-	return ui.el("span", { class = "kbd", text = key, attrs = if hidden then { ["aria-hidden"] = "true" } else nil })
+local function kbd(key: string, hidden: boolean?, class: string?): Node
+	return ui.el("span", {
+		class = if class then "kbd " .. class else "kbd",
+		text = key,
+		attrs = if hidden then { ["aria-hidden"] = "true" } else nil,
+	})
 end
 
 local function hint(keys: { string }, label: string, class: string?): Node
@@ -288,16 +298,23 @@ local function pick_view(state: State, _cx: BlockCx): Node
 	}, if state.keyed then "twt-keyed" else nil)
 end
 
-local function button_shortcut(button: Button, index: number): string
-	if index == 1 then
-		return "↵"
-	elseif button.kind == KIND_CANCEL then
-		return "esc"
-	end
-	return tostring(index)
-end
+type Shortcut = { glyph: string, aria: string, class: string? }
 
-local ARIA_KEYS: { [string]: string } = { ["↵"] = "Enter", esc = "Escape" }
+local BUTTON_KEYS: { [string]: Shortcut } = {
+	backspace = { glyph = "⌫", aria = "Backspace", class = "twt-key-symbol" },
+	["cmd+backspace"] = { glyph = "⌘⌫", aria = "Meta+Backspace", class = "twt-key-symbol" },
+}
+
+local function button_shortcut(button: Button, index: number): Shortcut?
+	if index == 1 then
+		return { glyph = "↵", aria = "Enter" }
+	elseif button.kind == KIND_CANCEL then
+		return { glyph = "esc", aria = "Escape" }
+	elseif button.key ~= nil then
+		return BUTTON_KEYS[button.key]
+	end
+	return nil
+end
 
 local function confirm_view(state: State, _cx: BlockCx): Node
 	local req = state.req :: ConfirmRequest
@@ -330,14 +347,15 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 			class ..= " accent"
 		end
 		local shortcut = button_shortcut(button, i)
+		local parts: { Node } = { ui.el("span", { text = button.label }) }
+		if shortcut ~= nil then
+			table.insert(parts, kbd(shortcut.glyph, true, shortcut.class))
+		end
 		local node = ui.el("button", {
 			class = class,
-			attrs = { ["aria-keyshortcuts"] = ARIA_KEYS[shortcut] or shortcut },
+			attrs = if shortcut ~= nil then { ["aria-keyshortcuts"] = shortcut.aria } else nil,
 			actions = { click = "btn=" .. button.id },
-		}, {
-			ui.el("span", { text = button.label }),
-			kbd(shortcut, true),
-		})
+		}, parts)
 		table.insert(if button.kind == KIND_CANCEL then lead else actions, node)
 	end
 	if #lead == 0 then
@@ -417,6 +435,17 @@ local function pick_key(state: State, key: Key): boolean
 	return true
 end
 
+local function button_key(key: Key): ButtonKey?
+	if key.alt or key.shift then
+		return nil
+	elseif key.name == "backspace" and not key.ctrl then
+		return if key.meta then "cmd+backspace" else "backspace"
+	elseif key.name == "u" and key.ctrl and not key.meta then
+		return "cmd+backspace"
+	end
+	return nil
+end
+
 local function confirm_key(state: State, key: Key): boolean
 	local buttons = (state.req :: ConfirmRequest).buttons or {}
 	if key.name == "enter" then
@@ -426,10 +455,15 @@ local function confirm_key(state: State, key: Key): boolean
 		state.answer = { action = ACTION_BUTTON, id = buttons[1].id }
 		return true
 	end
-	local digit = if key.ctrl or key.meta then nil else tonumber(key.name)
-	if digit ~= nil and buttons[digit] ~= nil then
-		state.answer = { action = ACTION_BUTTON, id = buttons[digit].id }
-		return true
+	local chord = button_key(key)
+	if chord == nil then
+		return false
+	end
+	for _, button in ipairs(buttons) do
+		if button.key == chord then
+			state.answer = { action = ACTION_BUTTON, id = button.id }
+			return true
+		end
 	end
 	return false
 end

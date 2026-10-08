@@ -23,9 +23,9 @@ local ROOT = initial_root()
 local DEFAULT_KEYS = { "cmd+shift+w" }
 local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
-	worktree = "Removes the worktree and keeps the branch.",
-	["worktree+merged-branch"] = "Removes the worktree, and deletes the branch if it is merged.",
-	["worktree+branch"] = "Removes the worktree and deletes the branch.",
+	worktree = "Tear down removes the worktree and keeps the branch.",
+	["worktree+merged-branch"] = "Tear down removes the worktree, and deletes the branch if it is merged.",
+	["worktree+branch"] = "Tear down removes the worktree and deletes the branch.",
 }
 
 -- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of host.luau. Change both files together.
@@ -49,7 +49,13 @@ type Answer =
 type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
-type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
+type ButtonKey = "backspace" | "cmd+backspace"
+type Button = {
+	id: string,
+	label: string,
+	kind: ("primary" | "danger" | typeof(KIND_CANCEL))?,
+	key: ButtonKey?,
+}
 type PickOptions = {
 	title: string,
 	items: { Item },
@@ -1137,7 +1143,7 @@ local function run_remove(
 				listing = listing,
 				buttons = {
 					{ id = "retry", label = "Retry", kind = "primary" },
-					{ id = "force", label = "Force delete", kind = "danger" },
+					{ id = "force", label = "Force delete", kind = "danger", key = "cmd+backspace" },
 					{ id = "cancel", label = "Cancel", kind = KIND_CANCEL },
 				},
 			}, function(answer, cx3)
@@ -1178,15 +1184,18 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		end
 	end
 	local policy = config().teardown
-	local teardown: Button = { id = "teardown", label = "Tear down", kind = "danger" }
+	local teardown: Button = { id = "teardown", label = "Tear down", kind = "danger", key = "backspace" }
 	local keep: Button = { id = "keep", label = "Keep worktree" }
 	local buttons: { Button } = if tab ~= nil
-		then { teardown, keep, { id = "cancel", label = "Cancel", kind = KIND_CANCEL } }
+		then { keep, teardown, { id = "cancel", label = "Cancel", kind = KIND_CANCEL } }
 		else { keep, teardown }
+	local where = if tab ~= nil
+		then "The worktree stays on disk when the tab closes."
+		else "The worktree is still on disk."
 	return confirm(cx, {
-		title = "Tear down worktree?",
+		title = if tab ~= nil then "Closing a worktree tab" else "Worktree tab closed",
 		path = short_path(path),
-		message = POLICY[policy] or ("Policy: " .. policy),
+		message = where .. " " .. (POLICY[policy] or ("Teardown policy: " .. policy)),
 		buttons = buttons,
 		reveal = tab ~= nil,
 	}, function(answer, cx2)

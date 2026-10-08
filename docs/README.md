@@ -80,8 +80,11 @@ The title protocol has a fixed set of names:
 - The modes of a request are `pick`, `confirm` and `prompt`.
 - The actions of an answer are `select`, `new`, `button`, `text` and `cancel`.
 - The `kind` value `cancel` on a button changes its key hint to `esc` and moves the button to the left end of the footer. The dialog then drops its own `esc` hint.
+- The `key` value of a button is `backspace` or `cmd+backspace`. It gives the button the key hint `⌫` or `⌘⌫`, and that key presses the button.
 
-A click or a digit on a button gives the `button` action with the id of that button. Escape or a close gives the `cancel` action.
+A click on a button, Enter for the first button, or the `key` of a button gives the `button` action with the id of that button. A button after the first, with no `kind` of `cancel` and no `key`, has no key hint. Escape or a close gives the `cancel` action.
+
+Tern binds `cmd+backspace` to the delete-line code of the terminal (`text:\x15`), and the bindings of the window get each key before a block does. Thus the dialog gets `ctrl+u` when the user presses `cmd+backspace` (seen on Tern 0.5.3). A plugin cannot change a default binding, so the dialog reads `ctrl+u` as `cmd+backspace`. A `ctrl+u` that the user presses also presses that button.
 
 `window.luau` and `host.luau` each hold a copy of these names and the `twt:` prefix, so the copies must match. A changed action name reads as Cancel in `parse_answer`. A changed prefix makes the window half ignore the answer, so the dialog keeps waiting.
 
@@ -97,14 +100,14 @@ While a dialog waits in the current session, the hotkey opens no second picker. 
 
 Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. Two paths catch the close of a worktree tab:
 
-- The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. The dialog offers Tear down, Keep worktree and Cancel. The tab closes only after the teardown succeeds, so Cancel keeps the tab and the worktree.
-- The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the dialog offers Tear down and Keep worktree only.
+- The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. The dialog has the title "Closing a worktree tab" and offers Keep worktree (Enter), Tear down (`⌫`) and Cancel (Escape). The tab closes after Keep worktree, or after the teardown succeeds, so Cancel keeps the tab and the worktree.
+- The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the dialog has the title "Worktree tab closed" and offers Keep worktree and Tear down only.
 
 A close through the CLI, for example `tern close <block>`, sends no event to the window half: no `pane_closed` and no `tab_closed` (seen on Tern 0.5.3). That tab closes with no dialog, and the worktree stays on disk until `tern-wt remove` tears it down.
 
 A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
 
-When a teardown fails, the dialog offers Retry, Force delete and Cancel.
+When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) and Cancel (Escape). Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
 
 ## Development
 
