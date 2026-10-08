@@ -90,7 +90,9 @@ While a dialog waits in the current session, the hotkey opens no second picker. 
 Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. Two paths catch the close of a worktree tab:
 
 - The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. The dialog offers Tear down, Keep worktree and Cancel. The tab closes only after the teardown succeeds, so Cancel keeps the tab and the worktree.
-- The `tab_closed` event catches the other closes, for example the × on the tab bar or `tern close`. At that time the tab is closed, so the dialog offers Tear down and Keep worktree only.
+- The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the dialog offers Tear down and Keep worktree only.
+
+A close through the CLI, for example `tern close <block>`, sends no event to the window half: no `pane_closed` and no `tab_closed` (seen on Tern 0.5.3). That tab closes with no dialog, and the worktree stays on disk until `tern-wt remove` tears it down.
 
 A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
 
