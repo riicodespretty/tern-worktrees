@@ -16,8 +16,11 @@ export const FIXTURE_BIN = path.join(REPO_DIR, 'test', 'fixtures', 'bin');
 
 const created: string[] = [];
 
+let current: Sandbox | null = null;
+
 afterEach(() => {
   vi.unstubAllEnvs();
+  current = null;
   for (const dir of created.splice(0)) {
     rmSync(dir, { force: true, recursive: true });
   }
@@ -44,8 +47,6 @@ export interface Sandbox {
   ghLog: string;
   tmp: string;
 }
-
-let current: Sandbox | undefined;
 
 const activeSandbox = (): Sandbox => {
   if (!current) {
@@ -93,11 +94,10 @@ export const useSandbox = (): Sandbox => {
   return sandbox;
 };
 
-/** A temporary clone of a temporary bare `origin`, with one commit on `main` and `origin/HEAD` set. */
-export type TmpRepo = RepoFixture;
+export type { RepoFixture } from '../scripts/repo-fixture.ts';
 
-/** Builds a {@link TmpRepo} whose clone directory has the name `name`. Call it after {@link useSandbox}. */
-export const tmpRepo = async (name = 'repo'): Promise<TmpRepo> => await buildRepo(git, tempDir('repo'), name, 'test\n');
+/** Builds a {@link RepoFixture} whose clone directory has the name `name`. Call it after {@link useSandbox}. */
+export const tmpRepo = async (name = 'repo'): Promise<RepoFixture> => await buildRepo(git, tempDir('repo'), name, 'test\n');
 
 /**
  * Puts a fake `git` first on `PATH`. It runs the shell `script`, and then passes the call to the git that was on `PATH` before the shim.
@@ -135,6 +135,11 @@ export const ternLog = (): string[] => readLog(activeSandbox().ternLog);
 export const ghFixture = (args: string[], body: string): void => {
   const key = args.join('_').replaceAll(/[/ ]/gu, '_');
   writeFileSync(path.join(activeSandbox().ghDir, `${key}.json`), body);
+};
+
+/** Makes the fake `gh` answer the default-branch query for `nameWithOwner` with `branch`. */
+export const ghDefaultBranch = (nameWithOwner: string, branch: string): void => {
+  ghFixture(['repo', 'view', nameWithOwner, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], `${branch}\n`);
 };
 
 /** Makes the fake `tern ls` print the text `content`, so a test can give it bad JSON. */

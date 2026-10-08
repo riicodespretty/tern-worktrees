@@ -3,14 +3,12 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
 import { worktreePath } from '../src/paths.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
-import { ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
+import { ghDefaultBranch, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
 
 const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
 
 const PR_LIST = ['pr', 'list', '--repo', 'me/aoyama', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
-
-const VIEW_DEFAULT_BRANCH = ['repo', 'view', 'me/aoyama', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'];
 
 const PRS = [
   { headRefName: 'feature/x', isCrossRepository: false, number: 7, title: 'Add x' },
@@ -19,7 +17,7 @@ const PRS = [
 
 let sandbox: Sandbox;
 
-const pushDatedBranch = async (repo: TmpRepo, branch: string, date: string): Promise<void> => {
+const pushDatedBranch = async (repo: RepoFixture, branch: string, date: string): Promise<void> => {
   vi.stubEnv('GIT_COMMITTER_DATE', date);
   await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', branch);
   await git(repo.dir, 'push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`);
@@ -133,7 +131,7 @@ describe('branches command', () => {
       const repo = await tmpRepo('aoyama');
       await useGithubOrigin(GITHUB_ORIGIN);
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
+      ghDefaultBranch('me/aoyama', 'develop');
       await git(repo.dir, 'switch', '--quiet', '-c', 'work');
       const offline = await run(['--repo', repo.dir, '--offline']);
       expect(offline.default).toBe('work');

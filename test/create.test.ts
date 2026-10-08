@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
 import { gitRun } from '../src/git.ts';
 import { FIXTURE_BIN, ghFixture, ghLog, git, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
-let repo: TmpRepo;
+let repo: RepoFixture;
 let originShimDir: string;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);

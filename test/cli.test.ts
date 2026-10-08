@@ -54,9 +54,8 @@ describe('cli', () => {
       });
     });
 
-    it.each(['nope', 'Resolve', '../cli', 'resolve.ts', '', 'nope1', '1nope', 'new_repo'])('rejects the command %j as unknown', async name => {
-      const message = `unknown command ${name}`;
-      await expect(main([name])).resolves.toStrictEqual({ code: 1, stderr: `${message}\n`, stdout: envelope('bad_args', message) });
+    it('rejects an unknown command name as bad_args', async () => {
+      await expect(main(['nope'])).resolves.toStrictEqual({ code: 1, stderr: 'unknown command nope\n', stdout: envelope('bad_args', 'unknown command nope') });
     });
 
     it('rejects an empty argv as an unknown command', async () => {

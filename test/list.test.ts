@@ -3,14 +3,14 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/list.ts';
 import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
-let repo: TmpRepo;
+let repo: RepoFixture;
 
 const worktreeRootDir = (): string => path.join(sandbox.wtHome, 'worktrees');
 
-const addWorktree = async (target: TmpRepo, dirName: string, ...flags: string[]): Promise<string> => {
+const addWorktree = async (target: RepoFixture, dirName: string, ...flags: string[]): Promise<string> => {
   const dir = path.join(worktreeRootDir(), path.basename(target.dir), dirName);
   await git(target.dir, 'worktree', 'add', '--quiet', ...flags, dir, 'origin/main');
   return dir;

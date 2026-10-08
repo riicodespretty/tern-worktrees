@@ -2,9 +2,7 @@ import { existsSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { defaultBranch, nameWithOwner, originRepo } from '../src/github.ts';
 import type { Sandbox } from './helpers.ts';
-import { ghFixture, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
-
-const VIEW_DEFAULT_BRANCH = ['repo', 'view', 'owner/name', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'];
+import { ghDefaultBranch, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
 
@@ -59,7 +57,7 @@ describe('github helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
+      ghDefaultBranch('owner/name', 'develop');
       await expect(defaultBranch(repo.dir)).resolves.toBe('develop');
     });
 
@@ -74,7 +72,7 @@ describe('github helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
+      ghDefaultBranch('owner/name', 'develop');
       await git(repo.dir, 'switch', '--quiet', '-c', 'work');
       await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('work');
       expect(existsSync(sandbox.ghLog)).toBeFalsy();

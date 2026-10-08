@@ -3,12 +3,12 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
 import { ghFixture, git, ignoreGlobally, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
 
 let sandbox: Sandbox;
-let repo: TmpRepo;
+let repo: RepoFixture;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
