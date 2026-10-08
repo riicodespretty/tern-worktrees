@@ -1133,12 +1133,7 @@ local function run_remove(
 			end)
 			return
 		end
-		local parts: { string } = { short_path(path) }
-		local warnings = join_or_nil(res.warnings, "; ")
-		if warnings then
-			table.insert(parts, warnings)
-		end
-		cx2:toast("success", "deleted" .. NO_BREAK_SPACE .. "worktree", table.concat(parts, " · "))
+		cx2:toast("success", "deleted" .. NO_BREAK_SPACE .. "worktree", join_or_nil(res.warnings, "; "))
 		after_change(cx2)
 		done(cx2)
 	end)

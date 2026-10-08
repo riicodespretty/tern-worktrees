@@ -115,7 +115,7 @@ describe('remove command', () => {
 
     it('keeps an unmerged branch', async () => {
       const dir = await addUnmerged();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
@@ -153,7 +153,7 @@ describe('remove command', () => {
       const merged = await git(dir, 'rev-parse', 'HEAD');
       fakeMergedPrs([merged.trim()]);
       await git(dir, 'commit', '--quiet', '--allow-empty', '-m', 'follow-up after the merge');
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
@@ -161,7 +161,7 @@ describe('remove command', () => {
       await useGithubOrigin();
       fakeMergedPrs([]);
       const dir = await addUnmerged();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
     });
 
     it('deletes a branch that shares its name with a tag', async () => {
@@ -178,7 +178,7 @@ describe('remove command', () => {
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({
         branchDeleted: false,
-        warnings: ['merged PR check failed: fake gh: no fixture', 'kept branch feature/x: not merged'],
+        warnings: ['merged PR check failed: fake gh: no fixture', 'kept local branch feature/x: not merged'],
       });
     });
 
@@ -189,7 +189,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       await expect(run([dir])).resolves.toMatchObject({
         branchDeleted: false,
-        warnings: ['merge check failed: fake gh: no fixture', 'kept branch feature/x: not merged'],
+        warnings: ['merge check failed: fake gh: no fixture', 'kept local branch feature/x: not merged'],
       });
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });

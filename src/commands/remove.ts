@@ -123,7 +123,7 @@ const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Pr
     return false;
   }
   if (teardown === 'worktree+merged-branch' && !(await warnOnCliError(ctx, 'merge check failed', false, async () => await isMerged(ctx, branch)))) {
-    ctx.warnings.push(`kept branch ${branch}: not merged`);
+    ctx.warnings.push(`kept local branch ${branch}: not merged`);
     return false;
   }
   const deletion = await gitRun(ctx.root, 'branch', '-D', '--', branch);

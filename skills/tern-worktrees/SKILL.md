@@ -48,7 +48,7 @@ Output: `{"path", "branch", "repo", "status", "carried", "tab", "warnings"}`.
 
 Removes the managed worktree at `<path>`, closes its tabs, then applies the teardown policy to its branch. `--keep-tab` keeps the tabs open. A worktree with a changed file, a new file that git does not track, a submodule commit that no remote holds, or an ignored file that is hard to rebuild gives `dirty_worktree` and stays. An ignored file is build or install output when a part of its path is `node_modules`, `dist`, `build`, `coverage`, `.DS_Store`, `.cache`, `.next`, `.nuxt`, `.output` or `.turbo`. That output goes with the worktree. Each other ignored file, for example `.env`, is hard to rebuild. `--force` deletes all of them.
 
-Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `branch` is null for a detached `HEAD`. A branch that the policy keeps adds the warning `kept branch <branch>: not merged`.
+Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `branch` is null for a detached `HEAD`. A branch that the policy keeps adds the warning `kept local branch <branch>: not merged`.
 
 ### `list`
 
