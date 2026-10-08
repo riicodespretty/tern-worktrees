@@ -21,7 +21,7 @@ This repo has one context.
 └── src/
 ```
 
-`docs/` is the source of truth. CI publishes it to the GitHub wiki. The workflow is `.github/workflows/wiki.yml` and it watches the path `docs/**`. The wiki has a flat structure, so each file name in `docs/` must be unique.
+`docs/` is the source of truth, and `docs/README.md` is its index and the wiki home page. `.github/workflows/wiki.yml` publishes `docs/` to the GitHub wiki on each push to `main`. A wiki edit on the web stops that publish. `.github/workflows/wiki-pull.yml` then opens the `wiki-sync` pull request with the edit. Merge it, and the publish runs again. The wiki has a flat structure, so each file name in `docs/` must be unique.
 
 ## Use the vocabulary of the glossary
 

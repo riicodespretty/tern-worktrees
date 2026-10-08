@@ -1,0 +1,38 @@
+name: Wiki pull
+
+on:
+  gollum:
+  workflow_dispatch:
+
+concurrency:
+  group: wiki-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # NOTE: an unreleased master commit. v5.0.6 has no pull mode. Repin to the first release that has it.
+      - uses: Andrew-Chen-Wang/github-wiki-action@93c86ef70e8354bbd677185b355ba164cb29288f
+        with:
+          direction: pull
+          path: docs/
+      - uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
+        with:
+          node-version: 22
+          cache: true
+      - run: vp fmt docs
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          branch: wiki-sync
+          delete-branch: true
+          add-paths: docs
+          title: 'docs(wiki): :memo: sync wiki edits into docs/'
+          commit-message: 'docs(wiki): :memo: sync wiki edits into docs/'
+          body: A page was edited in the GitHub wiki. This pull request brings the edit into `docs/`, the wiki source. The workflow token opened it, so no check has run. Push a commit to this branch to start them. `wiki.yml` refuses to publish until this merges.

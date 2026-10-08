@@ -157,7 +157,7 @@ The plugin also gives Carly the exports `create`, `list` and `remove`, which run
 
 ## Design and glossary
 
-[`docs/`](docs/Home.md) holds the design and the glossary. CI publishes it to the [wiki](https://github.com/riicodespretty/tern-worktrees/wiki).
+[`docs/`](docs/README.md) holds the design and the glossary. CI publishes it to the [wiki](https://github.com/riicodespretty/tern-worktrees/wiki).
 
 ## License
 
