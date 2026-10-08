@@ -149,7 +149,7 @@ export const worktreeRoot = async (): Promise<WorktreeRoot> => {
   if (probe.settings === null) {
     throw new CliError('omp_failed', `${probe.warning}; the omp worktree root is unknown`);
   }
-  return { dir: ompRootDir(probe.settings.base, { env: process.env, exists: existsSync, home: homedir(), platform: process.platform }), omp: true };
+  return { dir: ompRootDir(probe.settings.base, { env: process.env, exists: existsSync, home: userHome(), platform: process.platform }), omp: true };
 };
 
 /** The directory name of the worktree of a branch: the branch with each `/` made `-`. */
