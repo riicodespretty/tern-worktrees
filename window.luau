@@ -36,7 +36,7 @@ local ACTION_NEW: "new" = "new"
 local ACTION_BUTTON: "button" = "button"
 local ACTION_TEXT: "text" = "text"
 local ACTION_CANCEL: "cancel" = "cancel"
-local KIND_CANCEL = "cancel"
+local KIND_CANCEL: "cancel" = "cancel"
 
 type Answer =
 	{ action: typeof(ACTION_CANCEL) }
@@ -103,7 +103,7 @@ local localRepos: { Repo } = {}
 local queuedErrors: { string } = {}
 local configWarned = false
 local rootOfDir: { [string]: string | false } = {}
-local cwdOfPane: { [number]: string } = {}
+local cwdOfPane: { [number]: string? } = {}
 local resolving: { [string]: boolean } = {}
 local rootOfLiveRow: { [string]: string } = {}
 local stateOfRoot: { [string]: RootState } = {}
@@ -796,12 +796,7 @@ refresh = function(cx: WindowCx, root: string)
 end
 
 local function remember_cwd(pane: number, cwd: string?)
-	local known = known_cwd(cwd)
-	if known == nil then
-		cwdOfPane[pane] = nil
-	else
-		cwdOfPane[pane] = known
-	end
+	cwdOfPane[pane] = known_cwd(cwd)
 end
 
 local function refresh_dir(cx: WindowCx, cwd: string?)

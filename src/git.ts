@@ -22,7 +22,7 @@ export interface GithubRepoRef {
 /** The `<owner>/<name>` form of `repoRef`, the name that `gh` uses for a repository. */
 export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owner}/${repoRef.name}`;
 
-/** Runs `git -C <dir> <args>`, waits for it to exit, and returns its output. */
+/** Runs `git -C <dir> <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when git fails. */
 export const gitRun = async (dir: string, ...args: string[]): Promise<RunResult> => await run(['git', '-C', dir, ...args]);
 
 /** The main checkout of the repository that holds `dir`, or null when `dir` is not in a repository with a checkout. */
@@ -61,7 +61,7 @@ export const currentBranch = async (dir: string): Promise<string | null> => {
   return ref === '' ? null : ref.slice('refs/heads/'.length);
 };
 
-/** Tells if the directory `dir`, which must be on disk, is the top of a checkout and not a dir in one. It compares real paths, because git gives them. */
+/** Tells if `dir`, which must be on disk, is the top directory of a checkout and not a subdirectory of one. It compares real paths, because git reports real paths. */
 export const isCheckoutTop = async (dir: string): Promise<boolean> => (await repoRoot(dir)) === realpathSync(dir);
 
 const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)\/(?<name>[^/]+?)(?:\.git)?$/u;
@@ -75,8 +75,8 @@ const originUrl = async (root: string): Promise<string> => {
 export const hasOrigin = async (root: string): Promise<boolean> => (await originUrl(root)) !== '';
 
 /**
- * Fetches `origin` in the repository at `root`, and prunes its deleted branches when `prune` is true.
- * Gives a warning that starts with `fetch failed:` when the fetch fails, else null.
+ * Fetches `origin` in the repository at `root`. When `prune` is true, it also removes the tracking branches of the branches that `origin` deleted.
+ * Returns a warning that starts with `fetch failed:` when the fetch fails, else null.
  */
 export const fetchOrigin = async (root: string, prune: boolean): Promise<string | null> => {
   const result = await gitRun(root, 'fetch', ...(prune ? ['--prune'] : []), 'origin');

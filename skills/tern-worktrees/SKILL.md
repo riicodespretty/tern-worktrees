@@ -62,7 +62,7 @@ Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}]}`. With `--
 
 - `--offline`: read only local refs. It does not run `git fetch --prune origin`, does not list the open pull requests, and does not ask GitHub for the default branch. `prs` is `[]`, and `branches` has the branches on `origin` as of the last fetch. When `origin/HEAD` is unset, `default` is the current branch.
 
-Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once. When `gh pr list` fails, `prs` is `[]` and `warnings` has an entry that starts with `pr list failed:`. The Tern window relies on that prefix.
+Output: `{"repo", "name", "default", "branches", "prs": [{"number", "title", "branch", "fork"}], "worktrees": [{"branch", "path", "managed"}], "warnings"}`. `branches` is sorted by the date of the last commit on each branch, newest first. It has the local branches and the branches on `origin`, each once. When `gh pr list` fails, `prs` is `[]` and `warnings` has an entry that starts with `pr list failed:`. The Tern window uses that prefix to find a failed pull request list.
 
 ### `resolve`
 
@@ -78,7 +78,7 @@ Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "loc
 
 ### `clone`
 
-`tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. Each other name with owner gives `bad_args`.
+`tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. A name with owner that breaks these rules gives `bad_args`.
 
 Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. Output: `{"root", "cloned"}`.
 
@@ -86,7 +86,7 @@ Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clon
 
 `tern-wt new-repo <owner/name> --visibility private|public`
 
-Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The rule of `clone` for a name with owner applies. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
+Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The name with owner follows the rule of `clone`. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
 
 ### `setup`
 

@@ -40,8 +40,8 @@ GitHub issues in `riicodespretty/tern-worktrees`, used through `gh`. See `docs/a
 
 ### Triage labels
 
-The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human` and `wontfix`. See `docs/agents/triage-labels.md`.
+The five default triage labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-One context. The glossary is `docs/GLOSSARY.md` and the ADRs go in `docs/adr/`. See `docs/agents/domain.md`.
+One context. See `docs/agents/domain.md`.

@@ -33,7 +33,7 @@ describe('cli', () => {
   });
 
   describe(commandLoader, () => {
-    it.each(['Resolve', '../cli', 'resolve.ts'])('never imports the name %j', async name => {
+    it.each(['Resolve', '../cli', 'resolve.ts', 'nope1', '1nope', 'new_repo', ''])('never imports the name %j', async name => {
       const imported: string[] = [];
       const load = commandLoader(async moduleName => {
         imported.push(moduleName);
@@ -57,16 +57,6 @@ describe('cli', () => {
     it.each(['nope', 'Resolve', '../cli', 'resolve.ts', '', 'nope1', '1nope', 'new_repo'])('rejects the command %j as unknown', async name => {
       const message = `unknown command ${name}`;
       await expect(main([name])).resolves.toStrictEqual({ code: 1, stderr: `${message}\n`, stdout: envelope('bad_args', message) });
-    });
-
-    it.each(['nope1', '1nope', 'new_repo', ''])('rejects the command %j before importing it', async name => {
-      const imported: string[] = [];
-      const load = commandLoader(async moduleName => {
-        imported.push(moduleName);
-        return await fixtures('throw-error');
-      });
-      await expect(main([name], load)).resolves.toStrictEqual({ code: 1, stderr: `unknown command ${name}\n`, stdout: envelope('bad_args', `unknown command ${name}`) });
-      expect(imported).toStrictEqual([]);
     });
 
     it('rejects an empty argv as an unknown command', async () => {

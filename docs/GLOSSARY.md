@@ -51,7 +51,7 @@ The directory that holds the clones of GitHub repositories, one folder for each 
 _Avoid_: Projects dir, code root
 
 **Name with owner**:
-The form `<owner>/<name>` that names a GitHub repository, for example in `clone` and `new-repo`.
+The form `<owner>/<name>` that identifies a GitHub repository, for example in `clone` and `new-repo`.
 _Avoid_: Full name, repo path
 
 **Options file**:

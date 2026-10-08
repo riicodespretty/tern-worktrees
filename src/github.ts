@@ -5,7 +5,7 @@ import { isCheckoutTop, nameWithOwner, originRepo } from './git.ts';
 import type { GithubRepoRef } from './git.ts';
 import { CliError, must } from './proc.ts';
 
-/** The path of the clone of a GitHub repository, and if a clone call made it. */
+/** The path of the clone of a GitHub repository. `cloned` is true when this call ran `gh repo clone`, and false when it reused a clone that was there before. */
 export interface GithubClone {
   root: string;
   cloned: boolean;

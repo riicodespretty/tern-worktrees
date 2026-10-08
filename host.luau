@@ -15,10 +15,9 @@ local ACTION_TEXT: "text" = "text"
 local ACTION_CANCEL: "cancel" = "cancel"
 local KIND_CANCEL: "cancel" = "cancel"
 local CARD_KEY = "card"
-local PICK_KEY = MODE_PICK
-local CONFIRM_KEY = MODE_CONFIRM
-local PROMPT_KEY = MODE_PROMPT
-local TEXT_KEY = ACTION_TEXT
+local PICK_KEY = "pick"
+local PROMPT_KEY = "prompt"
+local TEXT_KEY = "text"
 local PICK_ID = "layer." .. CARD_KEY .. "." .. PICK_KEY
 local PROMPT_INPUT_ID = "layer." .. PROMPT_KEY .. "." .. TEXT_KEY
 local ESCAPE_LABEL = "cancel"
@@ -140,9 +139,6 @@ local function answer_pick(state: State, id: string?)
 end
 
 local function drop_last_char(s: string): string
-	if s == "" then
-		return s
-	end
 	local last = utf8.offset(s, -1) or #s
 	return string.sub(s, 1, last - 1)
 end
@@ -292,7 +288,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
 	end
 	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
-	return palette_card(CONFIRM_KEY, req.title, children)
+	return palette_card("confirm", req.title, children)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node

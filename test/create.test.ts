@@ -8,7 +8,7 @@ import type { Sandbox, TmpRepo } from './helpers.ts';
 
 let sandbox: Sandbox;
 let repo: TmpRepo;
-let originShim: string;
+let originShimDir: string;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
@@ -183,7 +183,7 @@ describe('create command', () => {
 
   describe('pull requests', () => {
     beforeEach(async () => {
-      originShim = await useGithubOrigin();
+      originShimDir = await useGithubOrigin();
     });
 
     it('creates the worktree of a same-repo pull request', async () => {
@@ -225,7 +225,7 @@ describe('create command', () => {
       vi.stubEnv(
         'PATH',
         process.env.PATH?.split(':')
-          .filter(dir => dir !== originShim)
+          .filter(dir => dir !== originShimDir)
           .join(':'),
       );
       await expect(run(['--repo', repo.dir, '--pr', '123', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: '--pr needs a GitHub origin' });

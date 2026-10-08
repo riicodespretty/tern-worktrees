@@ -7,7 +7,7 @@ How the engineering skills read the domain docs of this repo when they explore t
 - **`docs/GLOSSARY.md`**: the glossary. The repo root has no `GLOSSARY.md`.
 - **`docs/adr/`**: the architecture decision records. Read the ADRs that touch the area you will work in.
 
-A file in this list can be missing. Go on without it. Do not report that it is missing. Do not suggest that a person create it first. The `/domain-modeling` skill creates these files when a term or a decision is settled. This repo has no ADR at this time.
+A file in this list can be missing. Go on without it. Do not report that it is missing. Do not suggest that a person create it first. The `/domain-modeling` skill creates these files when a term or a decision is settled.
 
 ## File structure
 

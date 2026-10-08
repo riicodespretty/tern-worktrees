@@ -53,7 +53,7 @@ The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`),
 - `…/worktrees/…` for a worktree root that is not in the home folder.
 - A cut in the middle of a long path.
 
-The Teardown failed dialog lists at most 10 files with work to lose. It gives the hard-to-rebuild files first claim on the 10 lines, and the changes use the lines that are left. The dialog shows the changes first, then a heading, then the hard-to-rebuild files. If the dialog cannot show all files, the last line says how many it left out.
+The Teardown failed dialog lists at most 10 files with work to lose. It gives the hard-to-rebuild files first claim on the 10 lines, and the changes use the lines that are left. The dialog shows the changes first, then a heading, then the hard-to-rebuild files. If the dialog cannot show all files, the last line gives the number of files that it does not show.
 
 A floating pane comes with a frame: a title bar, a border and a background. The float has no attribute that names its pane, and the Tern CSS engine rejects `:has()`, so no static rule can pick out the dialog. The window half installs `dialog-float.css` with `tern.css` while a dialog waits for an answer, and clears the sheet when the last dialog ends. It also clears the sheet at load, so a reload removes a sheet that the previous plugin left.
 

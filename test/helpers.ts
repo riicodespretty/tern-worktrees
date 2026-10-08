@@ -47,7 +47,7 @@ export interface Sandbox {
 
 let current: Sandbox | undefined;
 
-const active = (): Sandbox => {
+const activeSandbox = (): Sandbox => {
   if (!current) {
     throw new Error('call useSandbox before the fake gh and tern helpers');
   }
@@ -100,13 +100,13 @@ export type TmpRepo = RepoFixture;
 export const tmpRepo = async (name = 'repo'): Promise<TmpRepo> => await buildRepo(git, tempDir('repo'), name, 'test\n');
 
 /**
- * Puts a fake `git` first on `PATH`. It runs the shell `script` and then hands the call to the real git.
- * The script sees the arguments as `$1` and up, and `exit` in the script ends the call. Returns the directory of the fake.
+ * Puts a fake `git` first on `PATH`. It runs the shell `script`, and then passes the call to the git that was on `PATH` before the shim.
+ * The script sees the arguments as `$1` and up, and `exit` in the script stops the call. Returns the directory of the fake.
  */
 export const gitShim = async (script: string): Promise<string> => {
   const dir = tempDir('git-shim');
-  const found = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  writeFileSync(path.join(dir, 'git'), `#!/bin/sh\n${script}\nexec '${found.trim()}' "$@"\n`, { mode: 0o755 });
+  const realGitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
+  writeFileSync(path.join(dir, 'git'), `#!/bin/sh\n${script}\nexec '${realGitPath.trim()}' "$@"\n`, { mode: 0o755 });
   vi.stubEnv('PATH', `${dir}:${process.env.PATH ?? ''}`);
   return dir;
 };
@@ -122,24 +122,24 @@ export const logGitCalls = async (): Promise<string> => {
   return log;
 };
 
-/** Reads the lines of a log file, or none when the file is not there. */
+/** Reads the lines of a log file. Returns an empty list when the file is not there. */
 export const readLog = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
 
 /** The lines that the fake `gh` logged, one for each call. */
-export const ghLog = (): string[] => readLog(active().ghLog);
+export const ghLog = (): string[] => readLog(activeSandbox().ghLog);
 
 /** The lines that the fake `tern` logged, one for each call. */
-export const ternLog = (): string[] => readLog(active().ternLog);
+export const ternLog = (): string[] => readLog(activeSandbox().ternLog);
 
 /** Makes the fake `gh` print `body` when it gets `args`. */
 export const ghFixture = (args: string[], body: string): void => {
   const key = args.join('_').replaceAll(/[/ ]/gu, '_');
-  writeFileSync(path.join(active().ghDir, `${key}.json`), body);
+  writeFileSync(path.join(activeSandbox().ghDir, `${key}.json`), body);
 };
 
 /** Makes the fake `tern ls` print the text `content`, so a test can give it bad JSON. */
 export const writeTernLsRaw = (content: string): void => {
-  writeFileSync(path.join(active().ternDir, 'ls.json'), content);
+  writeFileSync(path.join(activeSandbox().ternDir, 'ls.json'), content);
 };
 
 /** Makes the fake `tern ls` print `listing`. */
@@ -147,14 +147,14 @@ export const writeTernListing = (listing: TernListing): void => {
   writeTernLsRaw(JSON.stringify(listing));
 };
 
-/** Makes the fake `tern ls` list one session for each key of `cwds`. Each directory gets one tab with one block. */
-export const writeTernLs = (cwds: Record<string, string[]>): void => {
-  const blocks = Object.values(cwds).flat();
-  const sessions = Object.entries(cwds).map(([name, dirs], index) => ({
+/** Makes the fake `tern ls` list one session for each key of `dirsBySession`. Each directory gets one tab with one block. */
+export const writeTernLs = (dirsBySession: Record<string, string[]>): void => {
+  const allDirs = Object.values(dirsBySession).flat();
+  const sessions = Object.entries(dirsBySession).map(([name, dirs], index) => ({
     id: index + 1,
     name,
     tabs: dirs.map(cwd => {
-      const id = blocks.indexOf(cwd) + 1;
+      const id = allDirs.indexOf(cwd) + 1;
       return { blocks: [{ cwd, id, title: 'sh' }], id, name: 'tab' };
     }),
   }));
