@@ -1,11 +1,12 @@
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { CreateResult } from '../src/commands/create.ts';
 import type { ListResult } from '../src/commands/list.ts';
-import { must, run } from '../src/proc.ts';
-import { blocksUnder, ls, ternBin } from '../src/tern.ts';
+import { run } from '../src/proc.ts';
+import { blocksUnder, ternBin } from '../src/tern.ts';
 import { buildRepo, gitWith } from './repo-fixture.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
@@ -16,9 +17,12 @@ const env = {
   GIT_AUTHOR_NAME: 'Smoke',
   GIT_COMMITTER_EMAIL: 'smoke@example.com',
   GIT_COMMITTER_NAME: 'Smoke',
+  TERN_CONFIG_DIR: path.join(tempRoot, 'tern-config'),
+  TERN_DAEMON_SOCKET: path.join(tempRoot, 'tern.sock'),
   TERN_PLUGIN_DATA: path.join(tempRoot, 'plugin-data'),
   TERN_WT_HOME: path.join(tempRoot, 'home'),
 };
+Object.assign(process.env, env);
 
 const check = (ok: boolean, message: string): void => {
   if (!ok) {
@@ -41,14 +45,26 @@ const makeClone = async (): Promise<string> => {
   return repo.dir;
 };
 
-const waitForBlock = async (dir: string, attempts = 50): Promise<void> => {
-  const blocks = await blocksUnder(dir);
-  if (blocks.length > 0) {
+const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, attempts = 50): Promise<void> => {
+  if (await ready()) {
     return;
   }
-  check(attempts > 1, `no block under ${dir} after 5s`);
+  check(attempts > 1, `${what} after 5s`);
   await sleep(100);
-  await waitForBlock(dir, attempts - 1);
+  await waitFor(ready, what, attempts - 1);
+};
+
+const waitForBlock = async (dir: string): Promise<void> => {
+  await waitFor(async () => {
+    const blocks = await blocksUnder(dir);
+    return blocks.length > 0;
+  }, `no block under ${dir}`);
+};
+
+const startDaemon = async () => {
+  const daemon = spawn(ternBin(), ['daemon', '--socket', env.TERN_DAEMON_SOCKET], { stdio: 'ignore' });
+  await waitFor(() => existsSync(env.TERN_DAEMON_SOCKET), `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
+  return daemon;
 };
 
 const smoke = async (): Promise<void> => {
@@ -68,21 +84,16 @@ const smoke = async (): Promise<void> => {
   check(blocksLeft.length === 0, `remove: ${blocksLeft.length} blocks left under ${created.path}`);
 };
 
-const cleanUp = async (): Promise<void> => {
-  const listing = await ls();
-  if (listing.sessions.some(session => session.name === smokeName)) {
-    await must([ternBin(), 'kill', 'session', smokeName, '--json'], 'tern_failed');
-  }
-  rmSync(tempRoot, { force: true, recursive: true });
-};
-
 mkdirSync(env.TERN_PLUGIN_DATA, { recursive: true });
+mkdirSync(env.TERN_CONFIG_DIR, { recursive: true });
+const daemon = await startDaemon();
 try {
   await smoke();
-  await cleanUp();
   process.stdout.write('smoke ok\n');
 } catch (error) {
   process.stderr.write(`smoke failed: ${error instanceof Error ? error.message : String(error)}\n`);
-  await cleanUp();
   process.exitCode = 1;
+} finally {
+  daemon.kill();
+  rmSync(tempRoot, { force: true, recursive: true });
 }
