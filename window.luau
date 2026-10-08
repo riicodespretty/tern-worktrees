@@ -1287,6 +1287,10 @@ end)
 tern.on("title", function(ev: TitleEvent, cx: WindowCx)
 	local entry = pending[ev.pane]
 	if entry == nil then
+		local pane = cx.session:pane(ev.pane)
+		if pane ~= nil and pane.block == DIALOG and string.sub(ev.title, 1, #TITLE_PREFIX) == TITLE_PREFIX then
+			cx.layout:close(ev.pane)
+		end
 		return
 	end
 	local prefix = TITLE_PREFIX .. entry.reqid .. ":"
