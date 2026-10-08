@@ -27,7 +27,7 @@ local POLICY = {
 	["worktree+branch"] = "Removes the worktree and deletes the branch.",
 }
 
--- NOTE: The dialog protocol constants below twin the block at the top of host.luau. Change both files together.
+-- NOTE: The dialog protocol constants and the Item, Button and dialog wire types below must match the block at the top of host.luau (PickDialog, ConfirmDialog and PromptDialog here are PickRequest, ConfirmRequest and PromptRequest there). Change both files together.
 local TITLE_PREFIX = "twt:"
 local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
@@ -49,7 +49,7 @@ type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
 type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
-type PickRequest = {
+type PickOptions = {
 	title: string,
 	items: { Item },
 	allowNew: boolean?,
@@ -57,7 +57,7 @@ type PickRequest = {
 	placeholder: string?,
 	verb: string?,
 }
-type ConfirmRequest = {
+type ConfirmOptions = {
 	title: string,
 	path: string,
 	message: string,
@@ -65,25 +65,8 @@ type ConfirmRequest = {
 	buttons: { Button },
 	reveal: boolean?,
 }
-type PickDialog = {
-	mode: typeof(MODE_PICK),
-	title: string,
-	items: { Item },
-	allowNew: boolean?,
-	newLabel: string?,
-	placeholder: string?,
-	verb: string?,
-	reveal: boolean?,
-}
-type ConfirmDialog = {
-	mode: typeof(MODE_CONFIRM),
-	title: string,
-	path: string,
-	message: string,
-	listing: { string }?,
-	buttons: { Button },
-	reveal: boolean?,
-}
+type PickDialog = PickOptions & { mode: typeof(MODE_PICK), reveal: boolean? }
+type ConfirmDialog = ConfirmOptions & { mode: typeof(MODE_CONFIRM) }
 type PromptDialog = {
 	mode: typeof(MODE_PROMPT),
 	title: string,
@@ -457,29 +440,20 @@ local function short_path(path: string): string
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
-local function confirm(cx: WindowCx, req: ConfirmRequest, cb: AnswerCb): boolean
+local function confirm(cx: WindowCx, req: ConfirmOptions, cb: AnswerCb): boolean
+	local dialog = table.clone(req) :: ConfirmDialog
+	dialog.mode = MODE_CONFIRM
 	local listing = req.listing
-	return ask(cx, {
-		mode = MODE_CONFIRM,
-		title = req.title,
-		path = req.path,
-		message = req.message,
-		listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil,
-		buttons = tern.json.array(req.buttons),
-		reveal = req.reveal,
-	}, cb)
+	dialog.listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil
+	dialog.buttons = tern.json.array(req.buttons)
+	return ask(cx, dialog, cb)
 end
 
-local function pick(cx: WindowCx, req: PickRequest, cb: AnswerCb)
-	ask(cx, {
-		mode = MODE_PICK,
-		title = req.title,
-		items = tern.json.array(req.items),
-		allowNew = req.allowNew,
-		newLabel = req.newLabel,
-		placeholder = req.placeholder,
-		verb = req.verb,
-	}, cb)
+local function pick(cx: WindowCx, req: PickOptions, cb: AnswerCb)
+	local dialog = table.clone(req) :: PickDialog
+	dialog.mode = MODE_PICK
+	dialog.items = tern.json.array(req.items)
+	ask(cx, dialog, cb)
 end
 
 local MAX_LISTED_FILES = 10
@@ -528,10 +502,10 @@ local function replace_plain(text: string, old: string, new: string): string
 	return table.concat(parts)
 end
 
-type DirtyFiles = { changes: { string }, ignored: { string }, omitted: number }
+type DirtyListing = { changes: { string }, ignored: { string }, omitted: number }
 
-local function dirty_files(files: any): DirtyFiles
-	local shown: DirtyFiles = { changes = {}, ignored = {}, omitted = 0 }
+local function list_dirty_files(files: any): DirtyListing
+	local shown: DirtyListing = { changes = {}, ignored = {}, omitted = 0 }
 	if type(files) ~= "table" then
 		return shown
 	end
@@ -553,7 +527,7 @@ local function dirty_files(files: any): DirtyFiles
 	return shown
 end
 
-local function dirty_lines(shown: DirtyFiles): { string }
+local function dirty_lines(shown: DirtyListing): { string }
 	local listing: { string } = table.clone(shown.changes)
 	if #shown.ignored > 0 then
 		table.insert(listing, "Ignored files that are hard to rebuild:")
@@ -565,13 +539,13 @@ local function dirty_lines(shown: DirtyFiles): { string }
 	return listing
 end
 
-local function dirty_summary(shown: DirtyFiles): string
+local function dirty_summary(shown: DirtyListing): string
 	local parts: { string } = {}
 	if #shown.changes > 0 then
 		table.insert(parts, table.concat(shown.changes, ", "))
 	end
 	if #shown.ignored > 0 then
-		table.insert(parts, "hard to rebuild: " .. table.concat(shown.ignored, ", "))
+		table.insert(parts, "ignored, hard to rebuild: " .. table.concat(shown.ignored, ", "))
 	end
 	if shown.omitted > 0 then
 		table.insert(parts, "and " .. shown.omitted .. " more")
@@ -581,7 +555,7 @@ end
 
 local function failure_message(err: any, path: string): (string, { string })
 	local lines: { string } = {}
-	local listing = if err.code == "dirty_worktree" then dirty_lines(dirty_files(err.files)) else {}
+	local listing = if err.code == "dirty_worktree" then dirty_lines(list_dirty_files(err.files)) else {}
 	if #listing > 0 then
 		table.insert(lines, "Removing this worktree loses these changes:")
 	else
@@ -738,7 +712,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 					end
 				end)
 			elseif err.code == "dirty_worktree" then
-				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(dirty_files(err.files)))
+				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(list_dirty_files(err.files)))
 			elseif err.code == "branch_in_main_checkout" then
 				cx2:toast("error", "Branch is checked out in the main checkout", err.existing)
 			else

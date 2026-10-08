@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
 import { worktreePath } from '../src/paths.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
-import { ghDefaultBranch, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
+import { ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useSandbox } from './helpers.ts';
 
 const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
 
@@ -131,7 +131,7 @@ describe('branches command', () => {
       const repo = await tmpRepo('aoyama');
       await useGithubOrigin(GITHUB_ORIGIN);
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      ghDefaultBranch('me/aoyama', 'develop');
+      ghDefaultBranchFixture('me/aoyama', 'develop');
       await git(repo.dir, 'switch', '--quiet', '-c', 'work');
       const offline = await run(['--repo', repo.dir, '--offline']);
       expect(offline.default).toBe('work');

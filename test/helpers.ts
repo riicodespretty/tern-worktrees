@@ -138,7 +138,7 @@ export const ghFixture = (args: string[], body: string): void => {
 };
 
 /** Makes the fake `gh` answer the default-branch query for `nameWithOwner` with `branch`. */
-export const ghDefaultBranch = (nameWithOwner: string, branch: string): void => {
+export const ghDefaultBranchFixture = (nameWithOwner: string, branch: string): void => {
   ghFixture(['repo', 'view', nameWithOwner, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], `${branch}\n`);
 };
 
