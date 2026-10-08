@@ -8,6 +8,7 @@ import type { Sandbox } from './helpers.ts';
 import { ghFixture, ghLog, git, logGitCalls, readLog, tempDir, useSandbox } from './helpers.ts';
 
 const LIST_ARGS = ['--limit', '200', '--json', 'nameWithOwner,isPrivate,description'];
+const AOYAMA_ORIGIN = 'git@github.com:me/aoyama.git';
 
 let sandbox: Sandbox;
 let cloneRoot: string;
@@ -49,7 +50,7 @@ describe('GitHub repo commands', () => {
 
     it('lists the repos of the user and each org, and marks local clones', async () => {
       ghFixture(['repo', 'list', 'acme', ...LIST_ARGS], JSON.stringify(acmeRepos));
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
       await initRepo(path.join(cloneRoot, 'acme'));
       mkdirSync(path.join(cloneRoot, 'acme', 'tool'));
       await expect(repos([])).resolves.toStrictEqual({
@@ -65,7 +66,7 @@ describe('GitHub repo commands', () => {
 
     it('marks a local clone when the clone root is a symbolic link', async () => {
       const linked = useLinkedCloneRoot();
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
       const result = await repos([]);
       expect(result.repos.map(repo => repo.local)).toStrictEqual([path.join(linked, 'me', 'aoyama'), null]);
     });
@@ -101,11 +102,30 @@ describe('GitHub repo commands', () => {
       await expect(repos([])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
 
+    it.each([
+      ['another repository', 'git@github.com:me/other.git'],
+      ['no origin', undefined],
+    ])('gives no local clone for a checkout with %s, where clone raises path_conflict', async (_label, origin) => {
+      const dest = path.join(cloneRoot, 'me', 'aoyama');
+      await initRepo(dest, origin);
+      const result = await repos([]);
+      expect(result.repos.map(repo => repo.local)).toStrictEqual([null, null]);
+      await expect(clone(['me/aoyama'])).rejects.toMatchObject({ code: 'path_conflict', extra: { path: dest } });
+    });
+
+    it('gives no local clone and runs no git for a listed name that is not a valid owner and name', async () => {
+      ghFixture(['repo', 'list', 'me', ...LIST_ARGS], JSON.stringify([{ description: '', isPrivate: false, nameWithOwner: 'me/..' }]));
+      const log = await logGitCalls();
+      const result = await repos([]);
+      expect(result.repos.map(repo => repo.local)).toStrictEqual([null]);
+      expect(readLog(log)).toHaveLength(0);
+    });
+
     it('runs git only for dirs present under the clone root', async () => {
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
       const log = await logGitCalls();
       await repos([]);
-      expect(readLog(log)).toHaveLength(1);
+      expect(readLog(log)).toHaveLength(2);
     });
 
     it('rejects positional arguments', async () => {

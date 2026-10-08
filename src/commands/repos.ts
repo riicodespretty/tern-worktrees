@@ -1,11 +1,9 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { isCheckoutTop } from '../git.ts';
+import { cloneSlot, parseRepoRef } from '../github.ts';
 import { must, run as runProcess } from '../proc.ts';
 
-/** A GitHub repository. `local` is its clone in the clone root, or null when no clone is there. */
+/** A GitHub repository. `local` is its clone in the clone root, or null when the clone path has no clone of this repository. */
 export interface GithubRepo {
   nameWithOwner: string;
   isPrivate: boolean;
@@ -50,9 +48,13 @@ const listRepos = async (owner: string, warnings: string[]): Promise<OwnerRepos 
   return { owner, repos: JSON.parse(result.stdout) as GhRepo[] };
 };
 
-const localClone = async (cloneRoot: string, nameWithOwner: string): Promise<string | null> => {
-  const dir = path.join(cloneRoot, nameWithOwner);
-  return existsSync(dir) && (await isCheckoutTop(dir)) ? dir : null;
+const localClone = async (cloneRoot: string, listedName: string): Promise<string | null> => {
+  const repoRef = parseRepoRef(listedName);
+  if (repoRef === null) {
+    return null;
+  }
+  const { present, root } = await cloneSlot(repoRef, cloneRoot);
+  return present ? root : null;
 };
 
 /** `repos`: the GitHub repositories of the user and of each organization of the user, with the local clone of each. When the repository list of an organization fails, the result does not include that organization and has a warning. */

@@ -1,26 +1,23 @@
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import {
-  defaultBranch,
   dirtyFiles,
   fetchOrigin,
+  gitMust,
+  gitMustWith,
   gitRun,
+  gitSucceeds,
   hardToRebuild,
   hasOrigin,
-  nameWithOwner,
-  originRepo,
+  isAncestor,
   repoRoot,
   requireRepoRoot,
   worktreeLosses,
   worktrees,
 } from '../src/git.ts';
-import type { Sandbox } from './helpers.ts';
-import { ghFixture, git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { git, ignoreGlobally, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
-const VIEW_DEFAULT_BRANCH = ['repo', 'view', 'owner/name', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'];
-
-let sandbox: Sandbox;
 const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
 const nestedSubmodules = async (): Promise<string> => {
   const inner = await tmpRepo('inner');
@@ -37,7 +34,7 @@ const nestedSubmodules = async (): Promise<string> => {
 
 describe('git helpers', () => {
   beforeEach(() => {
-    sandbox = useSandbox();
+    useSandbox();
   });
 
   describe(repoRoot, () => {
@@ -55,17 +52,45 @@ describe('git helpers', () => {
     });
   });
 
-  describe(nameWithOwner, () => {
-    it('joins the owner and the name', () => {
-      expect(nameWithOwner({ name: 'name', owner: 'owner' })).toBe('owner/name');
-    });
-  });
-
   describe(gitRun, () => {
     it('runs git in the directory and gives its status and output', async () => {
       const repo = await tmpRepo();
       await expect(gitRun(repo.dir, 'branch', '--show-current')).resolves.toStrictEqual({ status: 0, stderr: '', stdout: 'main\n' });
       await expect(gitRun(tempDir('plain'), 'rev-parse', '--git-dir')).resolves.toMatchObject({ status: 128 });
+    });
+  });
+
+  describe(gitMust, () => {
+    it('gives the output of git and raises git_failed when git fails', async () => {
+      const repo = await tmpRepo();
+      await expect(gitMust(repo.dir, 'branch', '--show-current')).resolves.toBe('main\n');
+      await expect(gitMust(tempDir('plain'), 'rev-parse', '--git-dir')).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(gitMustWith, () => {
+    it('runs git with the env vars of the options and raises git_failed when git fails', async () => {
+      const repo = await tmpRepo();
+      await expect(gitMustWith({ env: { GIT_AUTHOR_NAME: 'Fixture Author' } }, repo.dir, 'var', 'GIT_AUTHOR_IDENT')).resolves.toMatch(/^Fixture Author </u);
+      await expect(gitMustWith(undefined, tempDir('plain'), 'rev-parse', '--git-dir')).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(gitSucceeds, () => {
+    it('tells if git exits with status 0', async () => {
+      const repo = await tmpRepo();
+      await expect(gitSucceeds(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/main')).resolves.toBeTruthy();
+      await expect(gitSucceeds(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/missing')).resolves.toBeFalsy();
+    });
+  });
+
+  describe(isAncestor, () => {
+    it('tells if a commit is an ancestor of another commit', async () => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
+      await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'work');
+      await expect(isAncestor(repo.dir, 'main', 'work')).resolves.toBeTruthy();
+      await expect(isAncestor(repo.dir, 'work', 'main')).resolves.toBeFalsy();
     });
   });
 
@@ -106,85 +131,6 @@ describe('git helpers', () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'set-url', 'origin', path.join(tempDir('missing'), 'nope.git'));
       await expect(fetchOrigin(repo.dir, prune)).resolves.toMatch(/^fetch failed: .+/u);
-    });
-  });
-
-  describe(originRepo, () => {
-    it.each([
-      ['git@github.com:riicodespretty/tern-worktrees.git', 'riicodespretty', 'tern-worktrees'],
-      ['git@github.com:owner/name', 'owner', 'name'],
-      ['https://github.com/owner/name.git', 'owner', 'name'],
-      ['https://github.com/owner/some.repo', 'owner', 'some.repo'],
-    ])('parses %s', async (url, owner, name) => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'set-url', 'origin', url);
-      await expect(originRepo(repo.dir)).resolves.toStrictEqual({ name, owner });
-    });
-
-    it.each(['https://gitlab.com/owner/name.git', 'https://github.com/owner/name/extra', 'xgit@github.com:owner/name', 'git@github.com:owner/name.git.bak/x'])(
-      'gives null for %s',
-      async url => {
-        const repo = await tmpRepo();
-        await git(repo.dir, 'remote', 'set-url', 'origin', url);
-        await expect(originRepo(repo.dir)).resolves.toBeNull();
-      },
-    );
-
-    it('gives null without an origin', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'remove', 'origin');
-      await expect(originRepo(repo.dir)).resolves.toBeNull();
-    });
-  });
-
-  describe(defaultBranch, () => {
-    it('reads origin/HEAD', async () => {
-      const repo = await tmpRepo();
-      await repo.pushBranch('trunk/next');
-      await git(repo.dir, 'remote', 'set-head', 'origin', 'trunk/next');
-      await expect(defaultBranch(repo.dir)).resolves.toBe('trunk/next');
-    });
-
-    it('asks GitHub when origin/HEAD is unset', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
-      await expect(defaultBranch(repo.dir)).resolves.toBe('develop');
-    });
-
-    it('raises gh_failed when GitHub does not answer', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      await expect(defaultBranch(repo.dir)).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
-    });
-
-    it('skips GitHub offline and gives the current branch when origin/HEAD is unset', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
-      await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
-      ghFixture(VIEW_DEFAULT_BRANCH, 'develop\n');
-      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
-      await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('work');
-      expect(existsSync(sandbox.ghLog)).toBeFalsy();
-    });
-
-    it('reads origin/HEAD offline', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
-      await expect(defaultBranch(repo.dir, { offline: true })).resolves.toBe('main');
-    });
-
-    it('falls back to the current branch without a GitHub origin', async () => {
-      const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'remove', 'origin');
-      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
-      await expect(defaultBranch(repo.dir)).resolves.toBe('work');
-    });
-
-    it('raises git_failed outside a repo', async () => {
-      await expect(defaultBranch(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
     });
   });
 

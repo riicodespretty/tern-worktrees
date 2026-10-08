@@ -74,7 +74,7 @@ Output: `{"repos": [{"dir", "root", "name", "owner"}]}`. `root`, `name` and `own
 
 `tern-wt repos`
 
-Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` is the GitHub user, then each GitHub organization of that user. `local` is the clone in the clone root, or null.
+Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` is the GitHub user, then each GitHub organization of that user. `local` is the clone of the repository in the clone root. It is null when nothing is at the clone path, and also when the path holds something else, an empty folder included. In that case, `clone` gives `path_conflict`.
 
 ### `clone`
 

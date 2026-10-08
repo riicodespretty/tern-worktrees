@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { must } from '../src/proc.ts';
+import { gitMustWith } from '../src/git.ts';
 import type { RunOptions } from '../src/proc.ts';
 
 /** Runs git in `cwd` and returns its `stdout`. */
@@ -17,7 +17,7 @@ export interface RepoFixture {
 export const gitWith =
   (opts: RunOptions = {}): Git =>
   async (cwd, ...args) =>
-    await must(['git', '-C', cwd, ...args], 'git_failed', opts);
+    await gitMustWith(opts, cwd, ...args);
 
 /** Builds a {@link RepoFixture} with `origin.git` and the clone `name` in `base`. The commit holds a `README.md` with `readme`. */
 export const buildRepo = async (git: Git, base: string, name: string, readme: string): Promise<RepoFixture> => {

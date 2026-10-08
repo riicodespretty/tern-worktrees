@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { run as runProcess } from '../src/proc.ts';
+import { gitRun } from '../src/git.ts';
 import { FIXTURE_BIN, ghFixture, ghLog, git, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
@@ -77,7 +77,7 @@ describe('create command', () => {
       await git(repo.dir, 'branch', 'feature/local');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
       await expect(currentBranch(managedPath('feature-local'))).resolves.toBe('feature/local');
-      const merge = await runProcess(['git', '-C', repo.dir, 'config', '--get', 'branch.feature/local.merge']);
+      const merge = await gitRun(repo.dir, 'config', '--get', 'branch.feature/local.merge');
       expect(merge).toStrictEqual({ status: 1, stderr: '', stdout: '' });
     });
 

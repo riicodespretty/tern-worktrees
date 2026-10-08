@@ -2,8 +2,10 @@ import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, fetchOrigin, gitRun, hardToRebuild, hasOrigin, nameWithOwner, originRepo, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
+import { fetchOrigin, gitMust, gitRun, gitSucceeds, hardToRebuild, hasOrigin, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
+import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
+import type { GhPullRequest } from '../github.ts';
 import { isUnder, worktreePath } from '../paths.ts';
 import { CliError, must } from '../proc.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo } from '../tern.ts';
@@ -45,21 +47,16 @@ interface Carry {
 
 interface Context {
   carry: Carry | null;
-  hasOrigin: boolean;
   repoName: string;
   root: string;
   warnings: string[];
+  withOrigin: boolean;
 }
 
 interface Target {
   branch: string;
   forkPr: string | null;
   path: string;
-}
-
-interface GhPullRequest {
-  headRefName: string;
-  isCrossRepository: boolean;
 }
 
 interface Placement {
@@ -112,13 +109,6 @@ const checkOptions = (options: Options): CheckedOptions => {
   return { repo, source: { pr } };
 };
 
-const git = async (root: string, ...args: string[]): Promise<string> => await must(['git', '-C', root, ...args], 'git_failed');
-
-const gitSucceeds = async (root: string, ...args: string[]): Promise<boolean> => {
-  const result = await gitRun(root, ...args);
-  return result.status === 0;
-};
-
 const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   const repoRef = await originRepo(ctx.root);
   if (repoRef === null) {
@@ -126,7 +116,7 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   }
   const view = await must(['gh', 'pr', 'view', pr, '--repo', nameWithOwner(repoRef), '--json', 'number,headRefName,isCrossRepository'], 'gh_failed');
   // SAFETY: `gh pr view --json` prints the fields that its `--json` flag names.
-  const { headRefName, isCrossRepository } = JSON.parse(view) as GhPullRequest;
+  const { headRefName, isCrossRepository } = JSON.parse(view) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository'>;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
     return { branch, forkPr: pr, path: worktreePath(ctx.repoName, branch) };
@@ -143,7 +133,7 @@ const sourceTarget = async (ctx: Context, source: Source): Promise<{ isNew: bool
 
 const startPoint = async (ctx: Context): Promise<string> => {
   const name = await defaultBranch(ctx.root);
-  return ctx.hasOrigin ? `origin/${name}` : name;
+  return ctx.withOrigin ? `origin/${name}` : name;
 };
 
 const hasRef = async (ctx: Context, ref: string): Promise<boolean> => await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', ref);
@@ -179,14 +169,14 @@ const assertPathFree = (target: Target): void => {
 const addWorktree = async (ctx: Context, target: Target, isNew: boolean): Promise<void> => {
   assertPathFree(target);
   if (target.forkPr === null) {
-    await git(ctx.root, 'worktree', 'add', ...(await worktreeAddArgs(ctx, target, isNew)));
+    await gitMust(ctx.root, 'worktree', 'add', ...(await worktreeAddArgs(ctx, target, isNew)));
     return;
   }
-  await git(ctx.root, 'worktree', 'add', '--detach', '--', target.path, await startPoint(ctx));
+  await gitMust(ctx.root, 'worktree', 'add', '--detach', '--', target.path, await startPoint(ctx));
   try {
     await must(['gh', 'pr', 'checkout', target.forkPr, '--branch', target.branch], 'gh_failed', { cwd: target.path });
   } catch (error) {
-    await git(ctx.root, 'worktree', 'remove', '--force', target.path);
+    await gitMust(ctx.root, 'worktree', 'remove', '--force', target.path);
     throw error;
   }
 };
@@ -240,7 +230,7 @@ const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Pr
     throw new CliError('dirty_worktree', `${existing.path} has work that recreating it would lose`, { existing: existing.path, files });
   }
   stage(ctx, existing.path, await hardToRebuild(existing.path));
-  await git(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);
+  await gitMust(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);
   const [reason] = moved.stderr.split('\n');
   return reason;
 };
@@ -250,14 +240,14 @@ const relocate = async (ctx: Context, target: Target, existing: Worktree): Promi
   mkdirSync(path.dirname(target.path), { recursive: true });
   const lockReason = existing.locked;
   if (lockReason !== null) {
-    await git(ctx.root, 'worktree', 'unlock', existing.path);
+    await gitMust(ctx.root, 'worktree', 'unlock', existing.path);
   }
   let refusal: string | null;
   try {
     refusal = await moveOrClear(ctx, target, existing);
   } catch (error) {
     if (lockReason !== null) {
-      await git(ctx.root, 'worktree', 'lock', '--reason', lockReason, existing.path);
+      await gitMust(ctx.root, 'worktree', 'lock', '--reason', lockReason, existing.path);
     }
     throw error;
   }
@@ -272,7 +262,7 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
   if (existing?.prunable === true) {
-    await git(ctx.root, 'worktree', 'remove', existing.path);
+    await gitMust(ctx.root, 'worktree', 'remove', existing.path);
   }
   if (!existing || existing.prunable) {
     await addWorktree(ctx, target, placement.isNew);
@@ -335,8 +325,8 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   const options = parse(args);
   const { repo, source } = checkOptions(options);
   const root = await requireRepoRoot(repo);
-  const ctx: Context = { carry: null, hasOrigin: await hasOrigin(root), repoName: path.basename(root), root, warnings: [] };
-  if (ctx.hasOrigin) {
+  const ctx: Context = { carry: null, repoName: path.basename(root), root, warnings: [], withOrigin: await hasOrigin(root) };
+  if (ctx.withOrigin) {
     const fetchWarning = await fetchOrigin(root, true);
     if (fetchWarning !== null) {
       ctx.warnings.push(fetchWarning);

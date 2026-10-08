@@ -1,9 +1,10 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, fetchOrigin, hasOrigin, nameWithOwner, originRepo, requireRepoRoot, worktrees } from '../git.ts';
-import type { GithubRepoRef } from '../git.ts';
+import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
+import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
+import type { GhPullRequest, GithubRepoRef } from '../github.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, must, run as runProcess } from '../proc.ts';
+import { CliError, run as runProcess } from '../proc.ts';
 
 /** An open pull request of the repository. */
 export interface PullRequest {
@@ -31,19 +32,12 @@ export interface BranchesResult {
   warnings: string[];
 }
 
-interface GhPullRequest {
-  number: number;
-  title: string;
-  headRefName: string;
-  isCrossRepository: boolean;
-}
-
 const REMOTE_PREFIX = 'refs/remotes/origin/';
 const LOCAL_PREFIX = 'refs/heads/';
 
 const listBranches = async (root: string, withOrigin: boolean): Promise<string[]> => {
   const patterns = withOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
-  const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns], 'git_failed');
+  const output = await gitMust(root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns);
   const names = output
     .split('\n')
     .filter(ref => ref !== '')
@@ -60,7 +54,7 @@ const listPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Pro
     return [];
   }
   // SAFETY: `gh pr list --json` prints an array with the fields it names.
-  const prs = JSON.parse(result.stdout) as GhPullRequest[];
+  const prs = JSON.parse(result.stdout) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository' | 'number' | 'title'>[];
   return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
 };
 

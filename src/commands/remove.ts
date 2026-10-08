@@ -3,9 +3,11 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { currentBranch, defaultBranch, fetchOrigin, hardToRebuild, linkedWorktreeRoot, nameWithOwner, originRepo, requireRepoRoot, worktreeLosses } from '../git.ts';
+import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuild, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
+import { defaultBranch, nameWithOwner, originRepo } from '../github.ts';
+import type { GhPullRequest } from '../github.ts';
 import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, must, run as runProcess } from '../proc.ts';
+import { CliError, run as runProcess } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
 
 /** The output of `remove`. */
@@ -57,16 +59,16 @@ const warnOnCliError = async <T>(ctx: Context, label: string, fallback: T, actio
 
 const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
   if (force) {
-    const forcedRemoval = await runProcess(['git', '-C', ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target]);
+    const forcedRemoval = await gitRun(ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target);
     if (forcedRemoval.status !== 0 || existsSync(ctx.target)) {
       rmSync(ctx.target, { force: true, recursive: true });
-      await runProcess(['git', '-C', ctx.root, 'worktree', 'prune']);
+      await gitRun(ctx.root, 'worktree', 'prune');
     }
     return;
   }
   const ignored = await hardToRebuild(ctx.target);
   if (ignored.length === 0) {
-    const removal = await runProcess(['git', '-c', 'status.showUntrackedFiles=all', '-C', ctx.root, 'worktree', 'remove', ctx.target]);
+    const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
     if (removal.status === 0) {
       return;
     }
@@ -78,7 +80,7 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
   if (files.length > 0) {
     throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
   }
-  await must(['git', '-C', ctx.root, 'worktree', 'remove', '--force', ctx.target], 'git_failed');
+  await gitMust(ctx.root, 'worktree', 'remove', '--force', ctx.target);
 };
 
 const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> => {
@@ -94,15 +96,6 @@ const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> =>
   return closed.filter(block => block !== null);
 };
 
-interface MergedPullRequest {
-  headRefOid: string;
-}
-
-const isAncestor = async (ctx: Context, commit: string, of: string): Promise<boolean> => {
-  const result = await runProcess(['git', '-C', ctx.root, 'merge-base', '--is-ancestor', commit, of]);
-  return result.status === 0;
-};
-
 const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boolean> => {
   const repoRef = await originRepo(ctx.root);
   if (repoRef === null) {
@@ -114,8 +107,8 @@ const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boole
     return false;
   }
   // SAFETY: `gh pr list --json` prints an array of objects with the fields that its `--json` flag names.
-  const merged = JSON.parse(result.stdout) as MergedPullRequest[];
-  const held = await Promise.all(merged.map(async pr => await isAncestor(ctx, `refs/heads/${branch}`, pr.headRefOid)));
+  const merged = JSON.parse(result.stdout) as Pick<GhPullRequest, 'headRefOid'>[];
+  const held = await Promise.all(merged.map(async pr => await isAncestor(ctx.root, `refs/heads/${branch}`, pr.headRefOid)));
   return held.includes(true);
 };
 
@@ -125,7 +118,7 @@ const isMerged = async (ctx: Context, branch: string): Promise<boolean> => {
     ctx.warnings.push(fetchWarning);
   }
   const base = await defaultBranch(ctx.root);
-  return (await isAncestor(ctx, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
+  return (await isAncestor(ctx.root, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
 };
 
 const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Promise<boolean> => {
@@ -136,7 +129,7 @@ const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Pr
     ctx.warnings.push(`kept branch ${branch}: not merged`);
     return false;
   }
-  const deletion = await runProcess(['git', '-C', ctx.root, 'branch', '-D', '--', branch]);
+  const deletion = await gitRun(ctx.root, 'branch', '-D', '--', branch);
   if (deletion.status !== 0) {
     ctx.warnings.push(`branch ${branch} not deleted: ${deletion.stderr.trim()}`);
     return false;

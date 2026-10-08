@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { originRepo, repoRoot } from '../git.ts';
+import { repoRoot } from '../git.ts';
+import { originRepo } from '../github.ts';
 
 /** The repository that holds a directory, with null values when the directory is not in a repository. */
 export interface ResolvedDir {

@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, sym
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
-import { run as runProcess } from '../src/proc.ts';
+import { gitSucceeds } from '../src/git.ts';
 import { ghFixture, git, gitShim, ignoreGlobally, logGitCalls, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
 import type { Sandbox, TmpRepo } from './helpers.ts';
 
@@ -11,10 +11,7 @@ let repo: TmpRepo;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
-const hasBranch = async (branch: string): Promise<boolean> => {
-  const result = await runProcess(['git', '-C', repo.dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
-  return result.status === 0;
-};
+const hasBranch = async (branch: string): Promise<boolean> => await gitSucceeds(repo.dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
 
 const addManaged = async (flags: string[]): Promise<string> => {
   const dir = managedPath('feature-x');
