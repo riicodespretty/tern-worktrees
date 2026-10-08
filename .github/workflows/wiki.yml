@@ -3,22 +3,43 @@ name: Wiki
 on:
   push:
     branches: [main]
-    paths: ['docs/**']
+    paths:
+      - docs/**
+      - .github/workflows/wiki.yml
+  pull_request:
+    paths:
+      - docs/**
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
 
 concurrency:
-  group: wiki
-  cancel-in-progress: true
+  group: wiki-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
 
 jobs:
-  wiki:
+  publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Publish docs to the wiki
-        uses: Andrew-Chen-Wang/github-wiki-action@v4
+      - name: Refuse to overwrite a wiki edit that is not in docs/
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          git clone --quiet --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.wiki.git" "$RUNNER_TEMP/wiki"
+          author="$(git -C "$RUNNER_TEMP/wiki" log -1 --format=%ae)"
+          if [ "$author" = "41898282+github-actions[bot]@users.noreply.github.com" ]; then exit 0; fi
+          case "$MESSAGE" in *"sync wiki edits into docs/"*) exit 0 ;; esac
+          echo "::error::The last wiki commit is by $author and is not in docs/. Merge the wiki-sync pull request, or run this workflow by hand to publish anyway."
+          exit 1
+      # NOTE: an unreleased master commit. v5.0.6 has no pull mode and no subdirectory link rewrite. Repin to the first release that has both.
+      - uses: Andrew-Chen-Wang/github-wiki-action@93c86ef70e8354bbd677185b355ba164cb29288f
         with:
           path: docs/
+          dry-run: ${{ github.event_name == 'pull_request' }}
+          disable-empty-commits: true
