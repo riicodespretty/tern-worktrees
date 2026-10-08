@@ -173,12 +173,12 @@ describe('remove command', () => {
       await expect(hasBranch('v1')).resolves.toBeFalsy();
     });
 
-    it('keeps the branch when gh fails', async () => {
+    it('keeps the branch when gh fails, and gives the kept branch first', async () => {
       await useGithubOrigin();
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({
         branchDeleted: false,
-        warnings: ['merged PR check failed: fake gh: no fixture', 'kept local branch feature/x: not merged'],
+        warnings: ['kept local branch feature/x: not merged', 'merged PR check failed: fake gh: no fixture'],
       });
     });
 
@@ -189,7 +189,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       await expect(run([dir])).resolves.toMatchObject({
         branchDeleted: false,
-        warnings: ['merge check failed: fake gh: no fixture', 'kept local branch feature/x: not merged'],
+        warnings: ['kept local branch feature/x: not merged', 'merge check failed: fake gh: no fixture'],
       });
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
