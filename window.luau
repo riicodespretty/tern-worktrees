@@ -20,7 +20,7 @@ local function initial_root(): string
 end
 
 local ROOT = initial_root()
-local DEFAULT_KEYS = { "ctrl+b>w" }
+local DEFAULT_KEYS = { "cmd+alt+t" }
 local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
 	worktree = "Removes the worktree and keeps the branch.",

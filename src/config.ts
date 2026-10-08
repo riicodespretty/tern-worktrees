@@ -15,7 +15,7 @@ export interface Config {
 
 const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
 
-const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['ctrl+b>w'];
+const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['cmd+alt+t'];
 
 type Fail = (key: string, reason: string) => never;
 

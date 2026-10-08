@@ -28,27 +28,27 @@ describe('config', () => {
 
   describe(loadConfig, () => {
     it('gives the defaults without a file', () => {
-      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' });
+      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+alt+t'] }, teardown: 'worktree+merged-branch' });
     });
 
     it('gives fresh default arrays', () => {
       loadConfig().hotkeys.new.push('x');
       write('{"hotkeys":{}}');
       loadConfig().hotkeys.new.push('y');
-      expect(loadConfig().hotkeys.new).toStrictEqual(['ctrl+b>w']);
+      expect(loadConfig().hotkeys.new).toStrictEqual(['cmd+alt+t']);
       write('{}');
-      expect(loadConfig().hotkeys.new).toStrictEqual(['ctrl+b>w']);
+      expect(loadConfig().hotkeys.new).toStrictEqual(['cmd+alt+t']);
     });
 
     it.each([
-      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree' }],
-      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+alt+t'] }, teardown: 'worktree' }],
+      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+alt+t'] }, teardown: 'worktree+merged-branch' }],
       [
         '{"cloneRoot":"/src","hotkeys":{"new":["ctrl+g","alt+w"]},"teardown":"worktree+branch"}',
         { cloneRoot: '/src', hotkeys: { new: ['ctrl+g', 'alt+w'] }, teardown: 'worktree+branch' },
       ],
-      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
-      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['cmd+alt+t'] }, teardown: 'worktree+merged-branch' }],
+      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+alt+t'] }, teardown: 'worktree+merged-branch' }],
       ['{"hotkeys":{"new":[]}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: [] }, teardown: 'worktree+merged-branch' }],
     ])('overrides only the keys in %s', (text, expected) => {
       write(text);

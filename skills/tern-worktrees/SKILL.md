@@ -124,4 +124,4 @@ An invalid file makes each command fail with `config_invalid`. The keys:
 
 - `teardown`: the teardown policy. It sets what `remove`, and the close of a worktree tab, do to the branch. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 - `cloneRoot`: the dir for `clone` and `new-repo`, an absolute path or a path that starts with `~`. The default is `~/Developer`.
-- `hotkeys.new`: the Tern key chords that open the picker for a new worktree tab. The default is `["ctrl+b>w"]`.
+- `hotkeys.new`: the Tern key chords that open the picker for a new worktree tab. The default is `["cmd+alt+t"]`.
