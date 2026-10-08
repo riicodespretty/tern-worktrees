@@ -22,6 +22,8 @@ local TEXT_KEY = "text"
 local PICK_ID = "layer." .. CARD_KEY .. "." .. PICK_KEY
 local PROMPT_INPUT_ID = "layer." .. PROMPT_KEY .. "." .. TEXT_KEY
 local ESCAPE_LABEL = "cancel"
+local DOUBLE_CLICK_MS = 500
+local PAGE_ROWS = 8
 
 type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
 type Button = { id: string, label: string, kind: ("primary" | "danger" | typeof(KIND_CANCEL))? }
@@ -66,6 +68,8 @@ type State = {
 	text: string,
 	answer: Answer?,
 	focused: boolean?,
+	openedAt: number,
+	keyed: boolean?,
 }
 
 local function new_label(req: PickRequest, query: string): string
@@ -120,12 +124,66 @@ local function visible_entries(state: State): ({ string }, { any }, boolean)
 	return ids, order, offers
 end
 
+local function group_starts(order: { any }): { string }
+	local starts: { string } = {}
+	local after_header = true
+	for _, entry in ipairs(order) do
+		if type(entry) == "table" then
+			after_header = true
+		elseif after_header then
+			table.insert(starts, entry)
+			after_header = false
+		end
+	end
+	return starts
+end
+
 local function keep_selection_visible(state: State, ids: { string })
 	local selected = state.selected
 	if selected ~= nil and table.find(ids, selected) ~= nil then
 		return
 	end
 	state.selected = ids[1]
+end
+
+local function select_top(state: State)
+	state.selected = (visible_entries(state))[1]
+	state.keyed = false
+end
+
+local function moved_index(name: string, index: number, count: number): number?
+	if name == "up" then
+		return if index <= 1 then count else index - 1
+	elseif name == "down" then
+		return if index >= count then 1 else index + 1
+	elseif name == "home" then
+		return 1
+	elseif name == "end" then
+		return count
+	elseif name == "page_up" then
+		return math.max(index - PAGE_ROWS, 1)
+	elseif name == "page_down" then
+		return math.min(index + PAGE_ROWS, count)
+	end
+	return nil
+end
+
+local function next_group_start(starts: { string }, ids: { string }, selected: string?, backward: boolean): string?
+	local count = #starts
+	if count == 0 then
+		return nil
+	end
+	local index = (selected and table.find(ids, selected)) or 0
+	local current = 0
+	for i, id in ipairs(starts) do
+		if (table.find(ids, id) :: number) <= index then
+			current = i
+		end
+	end
+	if backward then
+		return starts[if current <= 1 then count else current - 1]
+	end
+	return starts[if current >= count then 1 else current + 1]
 end
 
 local function answer_pick(state: State, id: string?)
@@ -182,12 +240,12 @@ local function hint(keys: { string }, label: string, class: string?): Node
 	return ui.el("span", { class = class }, parts)
 end
 
-local function palette_card(node_key: string, aria: string, children: { Node }, danger: boolean?): Node
+local function palette_card(node_key: string, aria: string, children: { Node }, modifier: string?): Node
 	return ui.col({
 		ui.el("div", { class = "twt-dim", actions = { click = "close" } }),
 		ui.el("div", {
 			key = node_key,
-			class = if danger then "cmdk tn-cmdk twt-card twt-danger" else "cmdk tn-cmdk twt-card",
+			class = if modifier then "cmdk tn-cmdk twt-card " .. modifier else "cmdk tn-cmdk twt-card",
 			attrs = { role = "dialog", ["aria-modal"] = "true", ["aria-label"] = aria },
 		}, children),
 	})
@@ -227,7 +285,7 @@ local function pick_view(state: State, _cx: BlockCx): Node
 			selected = state.selected,
 		}),
 		footer_hints(req.verb or "open", true),
-	})
+	}, if state.keyed then "twt-keyed" else nil)
 end
 
 local function button_shortcut(button: Button, index: number): string
@@ -296,7 +354,7 @@ local function confirm_view(state: State, _cx: BlockCx): Node
 		table.insert(children, ui.el("div", { class = "mdl-body" }, body))
 	end
 	table.insert(children, ui.el("div", { class = "mdl-foot" }, foot))
-	return palette_card("confirm", req.title, children, danger)
+	return palette_card("confirm", req.title, children, if danger then "twt-danger" else nil)
 end
 
 local function prompt_view(state: State, cx: BlockCx): Node
@@ -326,27 +384,36 @@ local function pick_key(state: State, key: Key): boolean
 		answer_pick(state, state.selected)
 		return true
 	end
-	if key.name == "up" or key.name == "down" then
-		local ids = visible_entries(state)
-		local count = #ids
-		if count == 0 then
+	if key.name == "tab" and not (key.ctrl or key.meta or key.alt) then
+		local ids, order = visible_entries(state)
+		local target = next_group_start(group_starts(order), ids, state.selected, key.shift)
+		if target == nil or target == state.selected then
 			return false
 		end
-		local index = (state.selected and table.find(ids, state.selected)) or 0
-		if key.name == "up" then
-			index = if index <= 1 then count else index - 1
-		else
-			index = if index >= count then 1 else index + 1
-		end
-		state.selected = ids[index]
+		state.selected = target
+		state.keyed = true
 		return true
+	end
+	if not (key.ctrl or key.meta or key.alt) then
+		local ids = visible_entries(state)
+		local count = #ids
+		local index = (state.selected and table.find(ids, state.selected)) or 0
+		local target = if count > 0 then moved_index(key.name, index, count) else nil
+		if target ~= nil then
+			if ids[target] == state.selected then
+				return false
+			end
+			state.selected = ids[target]
+			state.keyed = true
+			return true
+		end
 	end
 	local query = edit_text(state.query, key)
 	if query == nil then
 		return false
 	end
 	state.query = query
-	keep_selection_visible(state, (visible_entries(state)))
+	select_top(state)
 	return true
 end
 
@@ -396,6 +463,7 @@ local def: BlockDef<State> = {
 		if type(saved) == "table" and type(saved.req) == "table" then
 			local restored = saved :: State
 			restored.focused = false
+			restored.openedAt = tern.now()
 			return restored
 		end
 		local req = tern.json.decode(args[2]) :: Request
@@ -407,6 +475,7 @@ local def: BlockDef<State> = {
 			text = if req.mode == MODE_PROMPT then req.text or "" else "",
 			answer = nil,
 			focused = false,
+			openedAt = tern.now(),
 		}
 		if req.mode == MODE_PICK then
 			local ids = visible_entries(state)
@@ -457,9 +526,10 @@ local def: BlockDef<State> = {
 			cx:frame({ { "focus", ev.id } })
 			return
 		end
-		if ev.ev == "select" and ev.id == PICK_ID and type(ev.item) == "string" then
-			state.selected = ev.item
-		elseif ev.ev == "activate" and ev.id == PICK_ID and type(ev.item) == "string" then
+		if tern.now() - state.openedAt < DOUBLE_CLICK_MS then
+			return
+		end
+		if (ev.ev == "select" or ev.ev == "activate") and ev.id == PICK_ID and type(ev.item) == "string" then
 			state.selected = ev.item
 			answer_pick(state, ev.item)
 		elseif ev.ev == "action" then
@@ -467,7 +537,7 @@ local def: BlockDef<State> = {
 				state.answer = { action = ACTION_CANCEL }
 			elseif ev.act == "clear" then
 				state.query = ""
-				keep_selection_visible(state, (visible_entries(state)))
+				select_top(state)
 			elseif ev.act == "btn" and type(ev.value) == "string" then
 				state.answer = { action = ACTION_BUTTON, id = ev.value }
 			end

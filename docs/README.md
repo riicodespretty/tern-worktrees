@@ -55,6 +55,14 @@ The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`),
 
 Apart from those two differences, the dialog follows the palette where the picker element is not the same as it. A selected row has the accent edge of the palette. No row moves when the query changes or the selection moves, because these changes come at each key press. The clear button of an empty picker shows no key, because Escape cancels the dialog. A confirmation with a danger button gets the red glow of a Tern danger dialog. The key hint on an accent button has the color of its label: a Tern rule paints it white, and white is almost invisible on the light accent fill of the dark theme.
 
+A picker moves its selection as the palette does. Up and Down wrap at the ends. Home and End go to the first and the last row, and Page Up and Page Down move 8 rows. Tab goes to the first row of the next group, and Shift+Tab to the first row of the previous group. A change to the query selects the top row. One click picks a row, the same as Enter.
+
+The palette moves its selection to the row below the pointer, and the picker cannot do that. In Tern 0.5.3, the `event` handler of the dialog gets a `select` for a click, but no event when the pointer moves over the rows. Thus the selection of the keys stays on its row, and Enter picks that row, not the row below the pointer. After a navigation key moves the selection, the card gets the class `twt-keyed`. A row below the pointer then gets a thin ring and no fill, so it looks different from the selected row. A change to the query, or the clear button, removes the class, because these changes move the selection back to the top row.
+
+The second click of a double-click can come after the next dialog opens, and that dialog opens in less than 50 ms. Thus a dialog ignores clicks for its first 500 ms.
+
+When the query and the selection change together, the Tern picker keeps `aria-selected` on the row that the user selected before. The page shows one selection bar, but a screen reader can find two selected rows.
+
 A screen reader reads each confirmation button by its label alone: the key hint has `aria-hidden`, and `aria-keyshortcuts` on the button names the key.
 
 The Teardown failed dialog lists at most 10 files with work to lose. It gives the hard-to-rebuild files first claim on the 10 lines, and the changes use the lines that are left. The dialog shows the changes first, then a heading, then the hard-to-rebuild files. If the dialog cannot show all files, the last line gives the number of files that it does not show.

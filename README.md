@@ -52,7 +52,7 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
 
-Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
+Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`. The keys of a list are the keys of the palette: the arrows, Home, End, Page Up, Page Down, Tab and Shift+Tab. One click picks a row. Unlike in the palette, the selection does not follow the pointer, because Tern 0.5.3 sends a plugin no event when the pointer moves. After you move the selection with a key, the row below the pointer gets only a thin ring, so it looks different from the selected row.
 
 ### Open a worktree from the command palette
 
