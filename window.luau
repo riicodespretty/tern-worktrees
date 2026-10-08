@@ -736,7 +736,7 @@ local function create(cx: WindowCx, root: string, extra: { string })
 		if type(res.carried) == "table" and #res.carried > 0 then
 			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
 		end
-		cx2:toast("success", tostring(res.status) .. " " .. tostring(res.branch), table.concat(parts, " · "))
+		cx2:toast("success", tostring(res.status) .. " worktree", table.concat(parts, " · "))
 	end)
 end
 
