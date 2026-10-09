@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { isJsonObject, isString } from './json.ts';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
 
@@ -15,7 +16,7 @@ export interface Config {
 
 const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
 
-const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['ctrl+b>w'];
+const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['cmd+shift+w'];
 
 type Fail = (key: string, reason: string) => never;
 
@@ -28,10 +29,6 @@ interface RawOptions {
 interface RawHotkeys {
   new?: unknown;
 }
-
-const isString = (value: unknown): value is string => typeof value === 'string';
-
-const isJsonObject = (value: unknown): value is object => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
 
@@ -53,7 +50,11 @@ const readCloneRoot = (raw: RawOptions, fail: Fail): string => {
   if (!('cloneRoot' in raw)) {
     return expandHome('~/Developer');
   }
-  return isString(raw.cloneRoot) && raw.cloneRoot !== '' ? expandHome(raw.cloneRoot) : fail('cloneRoot', 'expected a non-empty string');
+  if (!isString(raw.cloneRoot) || raw.cloneRoot === '') {
+    return fail('cloneRoot', 'expected a non-empty string');
+  }
+  const cloneRoot = expandHome(raw.cloneRoot);
+  return path.isAbsolute(cloneRoot) ? cloneRoot : fail('cloneRoot', 'expected an absolute path or a path that starts with ~');
 };
 
 const readNewTabHotkeys = (raw: RawOptions, fail: Fail): string[] => {
@@ -71,26 +72,26 @@ const readNewTabHotkeys = (raw: RawOptions, fail: Fail): string[] => {
   return isStringList(hotkeys.new) ? hotkeys.new : fail('hotkeys.new', 'expected an array of strings');
 };
 
-const decode = (text: string, fail: Fail): RawOptions => {
+const decode = (file: string, fail: Fail): RawOptions => {
   let decoded: unknown;
   try {
-    decoded = JSON.parse(text);
+    decoded = JSON.parse(readFileSync(file).toString());
   } catch (error) {
-    return fail('(root)', `invalid JSON: ${String(error)}`);
+    return fail('(root)', error instanceof SyntaxError ? `invalid JSON: ${String(error)}` : `cannot read: ${String(error)}`);
   }
   return isJsonObject(decoded) ? decoded : fail('(root)', 'expected an object');
 };
 
 /**
  * Reads the options file. A missing file gives the defaults, and each key in the file replaces its default.
- * Throws `config_invalid` on invalid JSON, an unknown key or an incorrect value.
+ * Throws `config_invalid` on a file it cannot read, invalid JSON, an unknown key or an incorrect value.
  */
 export const loadConfig = (): Config => {
   const file = path.join(pluginData(), 'config.json');
   const fail: Fail = (key, reason) => {
     throw new CliError('config_invalid', `${file}: ${key}: ${reason}`);
   };
-  const raw = existsSync(file) ? decode(readFileSync(file).toString(), fail) : {};
+  const raw = existsSync(file) ? decode(file, fail) : {};
   rejectUnknownKeys(Object.keys(raw), ['teardown', 'cloneRoot', 'hotkeys'], '', fail);
   return {
     cloneRoot: readCloneRoot(raw, fail),

@@ -1,9 +1,9 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run as setup } from '../src/commands/setup.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, tempDir, useSandbox } from './helpers.ts';
+import { REPO_DIR, tempDir, ternLog, useSandbox } from './helpers.ts';
 
 const PKG = realpathSync(REPO_DIR);
 
@@ -17,11 +17,59 @@ const skillTarget = path.join(PKG, 'skills', 'tern-worktrees');
 
 const pluginPathFile = (): string => path.join(sandbox.configDir, 'plugins', 'tern-worktrees.path');
 
-const ternLog = (): string[] => (existsSync(sandbox.ternLog) ? readFileSync(sandbox.ternLog).toString().trim().split('\n') : []);
+const isAbsent = (target: string): boolean => {
+  try {
+    lstatSync(target);
+    return false;
+  } catch {
+    return true;
+  }
+};
 
 const expectedLinks = (action: string): object[] => [
   { action, path: binLink, target: binTarget },
   { action, path: skillLink, target: skillTarget },
+];
+
+const PARENT_BLOCKERS: [string, () => string, string][] = [
+  [
+    'a dangling symbolic link at ~/.omp',
+    (): string => {
+      const omp = path.join(home, '.omp');
+      symlinkSync(path.join(home, 'missing-omp'), omp);
+      return omp;
+    },
+    'cannot be used: Error: ENOENT',
+  ],
+  [
+    'a symbolic link loop at ~/.omp',
+    (): string => {
+      const omp = path.join(home, '.omp');
+      symlinkSync(omp, omp);
+      return omp;
+    },
+    'cannot be used: Error: ELOOP',
+  ],
+  [
+    'a regular file at ~/.omp/agent/skills',
+    (): string => {
+      const skills = path.dirname(skillLink);
+      mkdirSync(path.dirname(skills), { recursive: true });
+      writeFileSync(skills, 'mine');
+      return skills;
+    },
+    'is not a directory',
+  ],
+  [
+    'a read-only ~/.local/bin',
+    (): string => {
+      const bin = path.dirname(binLink);
+      mkdirSync(bin, { recursive: true });
+      chmodSync(bin, 0o500);
+      return bin;
+    },
+    'cannot be used: Error: EACCES',
+  ],
 ];
 
 describe(setup, () => {
@@ -93,7 +141,34 @@ describe(setup, () => {
     expect(isUnchanged(link)).toBeTruthy();
   });
 
-  it('rejects an unknown option', async () => {
-    await expect(setup(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
+  it.each(PARENT_BLOCKERS)('raises path_conflict on %s before it changes anything', async (_label, occupy, reason) => {
+    const blocked = occupy();
+    const result = setup([]);
+    await expect(result).rejects.toMatchObject({ code: 'path_conflict', extra: { path: blocked } });
+    await expect(result).rejects.toThrow(`${blocked} ${reason}`);
+    expect([isAbsent(binLink), isAbsent(skillLink), existsSync(pluginPathFile()), ternLog()]).toStrictEqual([true, true, false, []]);
+  });
+
+  it('keeps both links on a second run when their parent dirs are read-only', async () => {
+    await setup([]);
+    const parents = [path.dirname(binLink), path.dirname(skillLink)];
+    for (const parent of parents) {
+      chmodSync(parent, 0o500);
+    }
+    try {
+      await expect(setup([])).resolves.toStrictEqual({ links: expectedLinks('kept'), plugin: 'already' });
+    } finally {
+      for (const parent of parents) {
+        chmodSync(parent, 0o700);
+      }
+    }
+    expect([readlinkSync(binLink), readlinkSync(skillLink)]).toStrictEqual([binTarget, skillTarget]);
+  });
+
+  it('makes the links through a parent that is a symbolic link to a dir', async () => {
+    const realOmp = tempDir('omp');
+    symlinkSync(realOmp, path.join(home, '.omp'));
+    await expect(setup([])).resolves.toStrictEqual({ links: expectedLinks('created'), plugin: 'linked' });
+    expect(readlinkSync(path.join(realOmp, 'agent', 'skills', 'tern-worktrees'))).toBe(skillTarget);
   });
 });

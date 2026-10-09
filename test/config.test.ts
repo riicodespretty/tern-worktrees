@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig } from '../src/config.ts';
@@ -28,27 +28,27 @@ describe('config', () => {
 
   describe(loadConfig, () => {
     it('gives the defaults without a file', () => {
-      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' });
+      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' });
     });
 
     it('gives fresh default arrays', () => {
       loadConfig().hotkeys.new.push('x');
       write('{"hotkeys":{}}');
       loadConfig().hotkeys.new.push('y');
-      expect(loadConfig().hotkeys.new).toStrictEqual(['ctrl+b>w']);
+      expect(loadConfig().hotkeys.new).toStrictEqual(['cmd+shift+w']);
       write('{}');
-      expect(loadConfig().hotkeys.new).toStrictEqual(['ctrl+b>w']);
+      expect(loadConfig().hotkeys.new).toStrictEqual(['cmd+shift+w']);
     });
 
     it.each([
-      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree' }],
-      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree' }],
+      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
       [
         '{"cloneRoot":"/src","hotkeys":{"new":["ctrl+g","alt+w"]},"teardown":"worktree+branch"}',
         { cloneRoot: '/src', hotkeys: { new: ['ctrl+g', 'alt+w'] }, teardown: 'worktree+branch' },
       ],
-      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
-      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['ctrl+b>w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
       ['{"hotkeys":{"new":[]}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: [] }, teardown: 'worktree+merged-branch' }],
     ])('overrides only the keys in %s', (text, expected) => {
       write(text);
@@ -60,6 +60,21 @@ describe('config', () => {
       expect(thrown()?.message).toContain(`${file}: (root): invalid JSON: SyntaxError: `);
     });
 
+    it('raises config_invalid when config.json is a directory', () => {
+      mkdirSync(file);
+      const error = thrown();
+      expect(error?.code).toBe('config_invalid');
+      expect(error?.message).toContain(`${file}: (root): cannot read: Error: EISDIR`);
+    });
+
+    it('raises config_invalid when config.json cannot be read', () => {
+      write('{}');
+      chmodSync(file, 0o000);
+      const error = thrown();
+      expect(error?.code).toBe('config_invalid');
+      expect(error?.message).toContain(`${file}: (root): cannot read: Error: EACCES`);
+    });
+
     it.each([
       ['[]', '(root): expected an object'],
       ['null', '(root): expected an object'],
@@ -68,6 +83,8 @@ describe('config', () => {
       ['{"teardown":1}', 'teardown: expected one of worktree, worktree+merged-branch, worktree+branch'],
       ['{"cloneRoot":""}', 'cloneRoot: expected a non-empty string'],
       ['{"cloneRoot":3}', 'cloneRoot: expected a non-empty string'],
+      ['{"cloneRoot":"relative/dir"}', 'cloneRoot: expected an absolute path or a path that starts with ~'],
+      ['{"cloneRoot":"~other/dir"}', 'cloneRoot: expected an absolute path or a path that starts with ~'],
       ['{"hotkeys":[]}', 'hotkeys: expected an object'],
       ['{"hotkeys":null}', 'hotkeys: expected an object'],
       ['{"hotkeys":"ctrl+b>w"}', 'hotkeys: expected an object'],

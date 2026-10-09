@@ -2,14 +2,30 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { must, run as runProcess } from '../src/proc.ts';
-import { FIXTURE_BIN, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
-
-const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
+import { gitRun } from '../src/git.ts';
+import {
+  FIXTURE_BIN,
+  ghFixture,
+  ghLog,
+  git,
+  ignoreGlobally,
+  ompConfigJson,
+  ompLog,
+  readLog,
+  tempDir,
+  ternLog,
+  tmpRepo,
+  useGithubOrigin,
+  useOmp,
+  useSandbox,
+  writeTernLs,
+  writeTernLsRaw,
+} from './helpers.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
-let repo: TmpRepo;
+let repo: RepoFixture;
+let originShimDir: string;
 
 const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
@@ -18,55 +34,7 @@ const currentBranch = async (dir: string): Promise<string> => {
   return out.trim();
 };
 
-const logLines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf-8').trim().split('\n') : []);
-
-const writeTernLs = (cwds: Record<string, string[]>): void => {
-  const blocks = Object.values(cwds).flat();
-  const sessions = Object.entries(cwds).map(([name, dirs], index) => ({
-    id: index + 1,
-    name,
-    tabs: dirs.map(cwd => {
-      const id = blocks.indexOf(cwd) + 1;
-      return { blocks: [{ cwd, id, title: 'sh' }], id, name: 'tab' };
-    }),
-  }));
-  writeFileSync(path.join(sandbox.ternDir, 'ls.json'), JSON.stringify({ sessions }));
-};
-
-const allowFileProtocol = (): void => {
-  vi.stubEnv('GIT_CONFIG_COUNT', '1');
-  vi.stubEnv('GIT_CONFIG_KEY_0', 'protocol.file.allow');
-  vi.stubEnv('GIT_CONFIG_VALUE_0', 'always');
-};
-
-const outsideWorktree = async (branch: string, ...flags: string[]): Promise<string> => {
-  const dir = path.join(tempDir('orca'), 'wt');
-  await git(repo.dir, 'worktree', 'add', '--quiet', ...flags, dir, branch);
-  return dir;
-};
-
-const pushSubmoduleBranch = async (branch: string): Promise<void> => {
-  const sub = await tmpRepo('sub');
-  await git(repo.dir, 'switch', '--quiet', '-c', branch);
-  await git(repo.dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', sub.dir, 'sub');
-  await git(repo.dir, 'commit', '--quiet', '-m', 'add sub');
-  await git(repo.dir, 'push', '--quiet', 'origin', branch);
-  await git(repo.dir, 'switch', '--quiet', 'main');
-  await git(repo.dir, 'branch', '--quiet', '-D', branch);
-};
-
-const useGithubOrigin = async (): Promise<void> => {
-  const shimDir = tempDir('shim');
-  const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
-  const shim = `#!/bin/sh\nif [ "$3 $4 $5" = "remote get-url origin" ]; then echo https://github.com/virtusize/aoyama.git; exit 0; fi\nexec '${gitPath.trim()}' "$@"\n`;
-  writeFileSync(path.join(shimDir, 'git'), shim, { mode: 0o755 });
-  vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
-};
-
-const ghFixture = (args: string[], body: string): void => {
-  const key = args.join('_').replaceAll(/[/ ]/gu, '_');
-  writeFileSync(path.join(sandbox.ghDir, `${key}.json`), body);
-};
+const ompAdds = (): string[] => ompLog().filter(line => line.startsWith('worktree add'));
 
 const prView = (fork: boolean): void => {
   ghFixture(
@@ -96,9 +64,9 @@ describe('create command', () => {
     });
 
     it('rejects unknown options and stray values', async () => {
-      await expect(run(['--nope'])).rejects.toMatchObject({ code: 'bad_args' });
+      await expect(run(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
       await expect(run(['--nope'])).rejects.toThrow(/'--nope'/u);
-      await expect(run(['--repo', repo.dir, '--branch', 'a', 'extra'])).rejects.toMatchObject({ code: 'bad_args' });
+      await expect(run(['--repo', repo.dir, '--branch', 'a', 'extra'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL' });
     });
 
     it('rejects a dir outside a repo', async () => {
@@ -112,6 +80,7 @@ describe('create command', () => {
       const target = managedPath('feature-x');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual({
         branch: 'feature/x',
+        carried: [],
         path: target,
         repo: repo.dir,
         status: 'created',
@@ -127,13 +96,21 @@ describe('create command', () => {
       await git(repo.dir, 'branch', 'feature/local');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
       await expect(currentBranch(managedPath('feature-local'))).resolves.toBe('feature/local');
-      const merge = await runProcess(['git', '-C', repo.dir, 'config', '--get', 'branch.feature/local.merge']);
+      const merge = await gitRun(repo.dir, 'config', '--get', 'branch.feature/local.merge');
       expect(merge).toStrictEqual({ status: 1, stderr: '', stdout: '' });
     });
 
     it('fetches before the lookup', async () => {
       await git(repo.origin, 'branch', 'feature/late', 'main');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/late', '--no-tab'])).resolves.toMatchObject({ status: 'created', warnings: [] });
+    });
+
+    it('prunes the tracking branches that origin deleted', async () => {
+      await repo.pushBranch('gone');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      await git(repo.origin, 'branch', '--quiet', '-D', 'gone');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created', warnings: [] });
+      await expect(git(repo.dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone')).resolves.toBe('');
     });
 
     it('warns when the fetch fails and goes on', async () => {
@@ -191,6 +168,13 @@ describe('create command', () => {
       });
     });
 
+    it('reports git refusing to add the worktree', async () => {
+      writeFileSync(path.join(repo.dir, '.git', 'worktrees'), '');
+      const failure = run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(failure).rejects.toThrow(/could not create leading directories/u);
+    });
+
     it('bases the branch on the current branch without origin and skips the fetch', async () => {
       await git(repo.dir, 'remote', 'remove', 'origin');
       await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
@@ -198,101 +182,27 @@ describe('create command', () => {
       await expect(git(managedPath('feature-z'), 'rev-parse', 'HEAD')).resolves.toBe(await git(repo.dir, 'rev-parse', 'main'));
     });
 
-    it('reports a git failure', async () => {
-      const args = ['--repo', repo.dir, '--branch', 'bad..name', '--new', '--no-tab'];
-      await expect(run(args)).rejects.toMatchObject({ code: 'git_failed' });
-      await expect(run(args)).rejects.toThrow(/'bad\.\.name' is not a valid branch name/u);
-    });
-  });
-
-  describe('relocation', () => {
-    it.each([
-      ['inside', (): string => path.join(managedPath('feature-x'), 'inner')],
-      ['above', (): string => path.dirname(managedPath('feature-x'))],
-    ])('does not reuse a worktree %s the target path', async (_place, where) => {
-      await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', where(), 'origin/feature/x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({ code: 'worktree_exists_elsewhere', extra: { existing: where() } });
+    it.each([['bad..name'], ['-x'], ['HEAD']])('rejects the bad branch name %s and adds no worktree', async name => {
+      await expect(run(['--repo', repo.dir, `--branch=${name}`, '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: `bad branch name ${name}` });
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(sandbox.wtHome);
     });
 
-    it('rejects a worktree elsewhere without --relocate', async () => {
-      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({
-        code: 'worktree_exists_elsewhere',
-        extra: { existing: old, target: managedPath('feature-x') },
-        message: `feature/x has a worktree at ${old}; pass --relocate to move it to ${managedPath('feature-x')}`,
-      });
+    it('rejects a flag-shaped ref instead of reading it as an option', async () => {
+      await git(repo.dir, 'update-ref', 'refs/heads/--detach', 'HEAD');
+      await expect(run(['--repo', repo.dir, '--branch=--detach', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'bad branch name --detach' });
+      expect(existsSync(managedPath('--detach'))).toBeFalsy();
     });
 
-    it('moves a worktree into the root', async () => {
-      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ status: 'relocated', warnings: [] });
-      expect(existsSync(old)).toBeFalsy();
-      await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
-    });
-
-    it('unlocks a locked worktree before the move', async () => {
-      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x', '--lock');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ status: 'relocated', warnings: [] });
-      expect(existsSync(old)).toBeFalsy();
-      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain('locked');
-    });
-
-    it('rejects a relocation onto an existing path and keeps the old worktree', async () => {
-      const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
-      mkdirSync(managedPath('feature-x'), { recursive: true });
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).rejects.toMatchObject({ code: 'path_conflict' });
-      await expect(currentBranch(old)).resolves.toBe('feature/x');
-    });
-
-    describe('with submodules', () => {
-      beforeEach(async () => {
-        await pushSubmoduleBranch('feature/s');
-      });
-
-      const submoduleWorktree = async (): Promise<string> => {
-        const old = await outsideWorktree('origin/feature/s', '--track', '-b', 'feature/s');
-        await git(old, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'update', '--init');
-        return old;
-      };
-
-      it('stops on a dirty worktree that git refuses to move', async () => {
-        const old = await submoduleWorktree();
-        writeFileSync(path.join(old, 'junk.txt'), 'x\n');
-        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).rejects.toMatchObject({
-          code: 'dirty_worktree',
-          extra: { existing: old, files: ['?? junk.txt'] },
-          message: `${old} has uncommitted changes`,
-        });
-        expect(existsSync(path.join(old, 'junk.txt'))).toBeTruthy();
-        expect(existsSync(managedPath('feature-s'))).toBeFalsy();
-      });
-
-      it('recreates a clean worktree that git refuses to move', async () => {
-        allowFileProtocol();
-        const old = await submoduleWorktree();
-        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).resolves.toMatchObject({
-          status: 'relocated',
-          warnings: [SUBMODULE_REFUSED],
-        });
-        expect(existsSync(old)).toBeFalsy();
-        await expect(currentBranch(managedPath('feature-s'))).resolves.toBe('feature/s');
-        expect(existsSync(path.join(managedPath('feature-s'), 'sub', 'README.md'))).toBeTruthy();
-      });
-
-      it('warns when the submodule update fails and keeps the worktree', async () => {
-        const result = await run(['--repo', repo.dir, '--branch', 'feature/s', '--no-tab']);
-        expect(result.status).toBe('created');
-        expect(result.warnings).toHaveLength(1);
-        expect(result.warnings[0]).toMatch(/^submodule update failed: .*transport 'file' not allowed.*\S$/su);
-        await expect(currentBranch(managedPath('feature-s'))).resolves.toBe('feature/s');
-        await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--no-tab'])).resolves.toMatchObject({ status: 'reused', warnings: [] });
-      });
+    it('rejects --new for a branch that already has a worktree', async () => {
+      await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'branch feature/x already exists' });
+      await expect(run(['--repo', repo.dir, '--branch', 'main', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: 'branch main already exists' });
     });
   });
 
   describe('pull requests', () => {
     beforeEach(async () => {
-      await useGithubOrigin();
+      originShimDir = await useGithubOrigin();
     });
 
     it('creates the worktree of a same-repo pull request', async () => {
@@ -309,8 +219,8 @@ describe('create command', () => {
       writeFileSync(path.join(shimDir, 'gh'), `#!/bin/sh\npwd -P >> '${cwdLog}'\nexec '${path.join(FIXTURE_BIN, 'gh')}' "$@"\n`, { mode: 0o755 });
       vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', path: managedPath('pr-7'), status: 'created', warnings: [] });
-      expect(logLines(sandbox.ghLog)).toContain('pr checkout 7 --branch pr-7');
-      expect(logLines(cwdLog).at(-1)).toBe(managedPath('pr-7'));
+      expect(ghLog()).toContain('pr checkout 7 --branch pr-7');
+      expect(readLog(cwdLog).at(-1)).toBe(managedPath('pr-7'));
       await expect(git(managedPath('pr-7'), 'rev-parse', 'HEAD')).resolves.toBe(await git(repo.dir, 'rev-parse', 'origin/main'));
     });
 
@@ -318,18 +228,235 @@ describe('create command', () => {
       prView(true);
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', managedPath('pr-7'));
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', status: 'reused' });
-      expect(logLines(sandbox.ghLog)).not.toContain('pr checkout 7 --branch pr-7');
+      expect(ghLog()).not.toContain('pr checkout 7 --branch pr-7');
     });
 
-    it('reports a gh failure', async () => {
+    it('reports a gh failure and removes the worktree of a failed fork checkout', async () => {
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
       prView(true);
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed' });
+      expect(existsSync(managedPath('pr-7'))).toBeFalsy();
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(managedPath('pr-7'));
+      await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
 
     it('needs a GitHub origin', async () => {
-      vi.stubEnv('PATH', process.env.PATH?.split(':').slice(1).join(':'));
+      vi.stubEnv(
+        'PATH',
+        process.env.PATH?.split(':')
+          .filter(dir => dir !== originShimDir)
+          .join(':'),
+      );
       await expect(run(['--repo', repo.dir, '--pr', '123', '--no-tab'])).rejects.toMatchObject({ code: 'bad_args', message: '--pr needs a GitHub origin' });
+    });
+  });
+
+  describe('with omp', () => {
+    let base: string;
+
+    beforeEach(async () => {
+      base = tempDir('omp-wt');
+      await ignoreGlobally('.env');
+      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
+    });
+
+    it('creates the worktree in the omp root through omp worktree add in clone mode', async () => {
+      useOmp({ base, clone: true });
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual({
+        branch: 'feature/x',
+        carried: [],
+        path: target,
+        repo: repo.dir,
+        status: 'created',
+        tab: null,
+        warnings: [],
+      });
+      expect(readFileSync(path.join(target, '.env'), 'utf-8')).toBe('SECRET=1\n');
+      expect(ompAdds()).toStrictEqual([`worktree add -q -C ${repo.dir} ${target} feature/x`]);
+      await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
+      await expect(git(target, 'status', '--porcelain')).resolves.toBe('');
+    });
+
+    it.each([false, true])('gives a remote branch its upstream also with branch.autoSetupMerge=false, clone mode %s', async clone => {
+      useOmp({ base, clone });
+      await git(repo.dir, 'config', 'branch.autoSetupMerge', 'false');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
+      await expect(git(repo.dir, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
+    });
+
+    it('adds a new branch, a local branch and a fork pull request through omp', async () => {
+      useOmp({ base, clone: true });
+      await git(repo.dir, 'branch', 'feature/local');
+      await useGithubOrigin();
+      prView(true);
+      ghFixture(['pr', 'checkout', '7', '--branch', 'pr-7'], '');
+      await run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab']);
+      await run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab']);
+      await run(['--repo', repo.dir, '--pr', '7', '--no-tab']);
+      const at = (slug: string): string => path.join(base, 'aoyama', slug);
+      expect(ompAdds()).toStrictEqual([
+        `worktree add -q -C ${repo.dir} ${at('feature-y')} feature/y`,
+        `worktree add -q -C ${repo.dir} ${at('feature-local')} feature/local`,
+        `worktree add -q -C ${repo.dir} --detach ${at('pr-7')} origin/main`,
+      ]);
+      await expect(currentBranch(at('feature-y'))).resolves.toBe('feature/y');
+      await expect(currentBranch(at('feature-local'))).resolves.toBe('feature/local');
+      expect(ghLog()).toContain('pr checkout 7 --branch pr-7');
+    });
+
+    it.each([
+      ['true', 'origin/main\n'],
+      ['false', null],
+    ])('gives --new the upstream that plain git gives with branch.autoSetupMerge=%s', async (setting, upstream) => {
+      await git(repo.dir, 'config', 'branch.autoSetupMerge', setting);
+      const upstreamOf = async (branch: string): Promise<string | null> => {
+        const result = await gitRun(repo.dir, 'rev-parse', '--abbrev-ref', `${branch}@{upstream}`);
+        return result.status === 0 ? result.stdout : null;
+      };
+      useOmp({ base, clone: false });
+      await run(['--repo', repo.dir, '--branch', 'feature/plain', '--new', '--no-tab']);
+      useOmp({ base, clone: true });
+      await run(['--repo', repo.dir, '--branch', 'feature/clone', '--new', '--no-tab']);
+      expect(ompAdds()).toStrictEqual([`worktree add -q -C ${repo.dir} ${path.join(base, 'aoyama', 'feature-clone')} feature/clone`]);
+      await expect(upstreamOf('feature/plain')).resolves.toBe(upstream);
+      await expect(upstreamOf('feature/clone')).resolves.toBe(upstream);
+    });
+
+    it('uses plain git in the omp root when clone mode is off', async () => {
+      useOmp({ base, clone: false });
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created', warnings: [] });
+      expect(existsSync(path.join(target, '.env'))).toBeFalsy();
+      expect(ompAdds()).toStrictEqual([]);
+    });
+
+    it('uses ~/.tern-wt/worktrees and plain git without omp', async () => {
+      const home = useOmp({ base, clone: true });
+      vi.stubEnv('TERN_WT_OMP', path.join(tempDir('none'), 'omp'));
+      const target = path.join(home, '.tern-wt', 'worktrees', 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created', warnings: [] });
+      expect(existsSync(path.join(target, '.env'))).toBeFalsy();
+      expect(ompLog()).toStrictEqual([]);
+    });
+
+    it('reads clone mode from the project config, and the root from the global config only', async () => {
+      useOmp({ base, clone: false });
+      writeFileSync(path.join(repo.dir, '.fake-omp.json'), ompConfigJson({ base: tempDir('project-base'), clone: true }));
+      const target = path.join(base, 'aoyama', 'feature-x');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'created' });
+      expect(readFileSync(path.join(target, '.env'), 'utf-8')).toBe('SECRET=1\n');
+    });
+
+    it('passes the warnings of omp on, and deletes the new branch when omp worktree add fails', async () => {
+      useOmp({ base, clone: true });
+      vi.stubEnv('FAKE_OMP_WARN', 'clone failed; checked out instead');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ warnings: ['omp: clone failed; checked out instead'] });
+      vi.stubEnv('FAKE_OMP_FAIL', 'worktree');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab'])).rejects.toMatchObject({ code: 'git_failed', message: 'fake omp: worktree failed' });
+      await expect(gitRun(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/feature/y')).resolves.toMatchObject({ status: 1 });
+      await git(repo.dir, 'branch', 'feature/local');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab'])).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(gitRun(repo.dir, 'rev-parse', '--verify', '--quiet', 'refs/heads/feature/local')).resolves.toMatchObject({ status: 0 });
+    });
+
+    it('fails closed with omp_failed and adds no worktree when omp fails in /', async () => {
+      const home = useOmp({ base, clone: true });
+      vi.stubEnv('FAKE_OMP_FAIL', 'config');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({
+        code: 'omp_failed',
+        message: 'omp config list failed: fake omp: config failed; the omp worktree root is unknown',
+      });
+      expect(existsSync(path.join(home, '.tern-wt'))).toBeFalsy();
+      await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain('feature/x');
+    });
+
+    it('uses plain git in the omp root with a warning when omp fails in the repo only', async () => {
+      useOmp({ base, clone: true });
+      writeFileSync(path.join(repo.dir, '.fake-omp.json'), '{');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab'])).resolves.toMatchObject({
+        path: path.join(base, 'aoyama', 'feature-y'),
+        warnings: ['omp config list printed no JSON object'],
+      });
+      expect(ompAdds()).toStrictEqual([]);
+    });
+
+    it('opens an omp-owned worktree of the branch where it is, without --relocate', async () => {
+      useOmp({ base, clone: true });
+      const ompOwned = path.join(base, 'feature-x-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', ompOwned, 'origin/feature/x');
+      writeTernLs({ work: [repo.dir] });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toStrictEqual({
+        branch: 'feature/x',
+        carried: [],
+        path: ompOwned,
+        repo: repo.dir,
+        status: 'reused',
+        tab: { block: 42, opened: true, session: 'work' },
+        warnings: [],
+      });
+      expect(ternLog()).toContain(`new tab work --cwd ${ompOwned} --json`);
+      expect(existsSync(path.join(base, 'aoyama', 'feature-x'))).toBeFalsy();
+    });
+
+    it('adds a worktree for a branch next to a detached omp-owned worktree', async () => {
+      useOmp({ base, clone: false });
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--detach', path.join(base, 'detached-abc1234'), 'origin/main');
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: path.join(base, 'aoyama', 'feature-x'), status: 'created' });
+    });
+
+    describe('same-repo pull requests', () => {
+      const ompCheckout = (): string => path.join(base, '7-abc1234');
+
+      beforeEach(async () => {
+        useOmp({ base, clone: false });
+        await useGithubOrigin();
+        prView(false);
+        await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', ompCheckout(), 'origin/feature/x');
+      });
+
+      it('reuses the omp checkout on pr-<n> whose ompPrHeadRef is the head branch', async () => {
+        await git(repo.dir, 'config', 'branch.pr-7.ompPrHeadRef', 'feature/x');
+        writeTernLs({ work: [repo.dir] });
+        await expect(run(['--repo', repo.dir, '--pr', '7'])).resolves.toStrictEqual({
+          branch: 'pr-7',
+          carried: [],
+          path: ompCheckout(),
+          repo: repo.dir,
+          status: 'reused',
+          tab: { block: 42, opened: true, session: 'work' },
+          warnings: [],
+        });
+        expect(ternLog()).toContain('rename 42 pr-7 --json');
+        expect(existsSync(path.join(base, 'aoyama', 'feature-x'))).toBeFalsy();
+      });
+
+      it('reuses the omp checkout on pr-<n> without ompPrHeadRef', async () => {
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', path: ompCheckout(), status: 'reused' });
+      });
+
+      it('adds a worktree when ompPrHeadRef names another branch', async () => {
+        await git(repo.dir, 'config', 'branch.pr-7.ompPrHeadRef', 'feature/other');
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'created' });
+      });
+
+      it('prefers a worktree of the head branch to the omp checkout', async () => {
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', target, 'origin/feature/x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'reused' });
+      });
+
+      it('does not reuse a pr-<n> worktree outside the omp root', async () => {
+        await git(repo.dir, 'worktree', 'move', ompCheckout(), path.join(tempDir('elsewhere'), 'pr-7'));
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', status: 'created' });
+      });
+
+      it('does not reuse an omp checkout of another branch', async () => {
+        await git(ompCheckout(), 'branch', '-m', 'pr-8');
+        const target = path.join(base, 'aoyama', 'feature-x');
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: target, status: 'created' });
+      });
     });
   });
 
@@ -337,20 +464,20 @@ describe('create command', () => {
     it('opens a tab in the session of the repo', async () => {
       writeTernLs({ other: [tempDir('plain')], work: [repo.dir] });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'work' }, warnings: [] });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('opens a session named after the repo', async () => {
       writeTernLs({});
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'aoyama' } });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('focuses the tab that already shows the worktree', async () => {
       await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
       writeTernLs({ work: [repo.dir, path.join(managedPath('feature-x'), 'src')] });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ status: 'reused', tab: { block: 2, opened: false, session: 'work' } });
-      expect(logLines(sandbox.ternLog)).toStrictEqual(['ls --json', 'focus 2 --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', 'focus 2 --json']);
     });
 
     it('keeps the worktree when Tern fails', async () => {
@@ -365,7 +492,7 @@ describe('create command', () => {
     });
 
     it('passes on other errors', async () => {
-      writeFileSync(path.join(sandbox.ternDir, 'ls.json'), '{');
+      writeTernLsRaw('{');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).rejects.toBeInstanceOf(SyntaxError);
     });
   });

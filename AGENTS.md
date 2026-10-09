@@ -31,3 +31,17 @@ release. Add a tool name to select part of the graph. For example, run
 ## Gates
 
 Run `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage` before each commit. Run `vp run test.mutation -- --mutate <files>` for mutation tests on the files that you changed.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues in `riicodespretty/tern-worktrees`, used through `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+One context. See `docs/agents/domain.md`.

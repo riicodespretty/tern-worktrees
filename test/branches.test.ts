@@ -1,13 +1,14 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
-import { worktreePath } from '../src/paths.ts';
-import { must } from '../src/proc.ts';
-import type { Sandbox, TmpRepo } from './helpers.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { worktreePath, worktreeRoot } from '../src/paths.ts';
+import type { RepoFixture, Sandbox } from './helpers.ts';
+import { ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 
-const PR_LIST = 'pr_list_--repo_me_aoyama_--state_open_--limit_200_--json_number,title,headRefName,isCrossRepository.json';
+const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
+
+const PR_LIST = ['pr', 'list', '--repo', 'me/aoyama', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
 
 const PRS = [
   { headRefName: 'feature/x', isCrossRepository: false, number: 7, title: 'Add x' },
@@ -16,19 +17,12 @@ const PRS = [
 
 let sandbox: Sandbox;
 
-const pushDatedBranch = async (repo: TmpRepo, branch: string, date: string): Promise<void> => {
+const pushDatedBranch = async (repo: RepoFixture, branch: string, date: string): Promise<void> => {
   vi.stubEnv('GIT_COMMITTER_DATE', date);
   await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', branch);
   await git(repo.dir, 'push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`);
   await git(repo.dir, 'reset', '--quiet', '--hard', 'origin/main');
   vi.stubEnv('GIT_COMMITTER_DATE', undefined);
-};
-
-const useGithubOrigin = async (repo: TmpRepo): Promise<void> => {
-  const ssh = path.join(tempDir('ssh'), 'ssh');
-  writeFileSync(ssh, `#!/bin/sh\nexec git upload-pack '${repo.origin}'\n`, { mode: 0o755 });
-  vi.stubEnv('GIT_SSH_COMMAND', ssh);
-  await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:me/aoyama.git');
 };
 
 describe('branches command', () => {
@@ -42,9 +36,9 @@ describe('branches command', () => {
       await pushDatedBranch(repo, 'aaa', '2000-01-01T00:00:00Z');
       await pushDatedBranch(repo, 'zzz', '2031-01-01T00:00:00Z');
       await pushDatedBranch(repo, 'feature/x', '2030-01-01T00:00:00Z');
-      await useGithubOrigin(repo);
-      writeFileSync(path.join(sandbox.ghDir, PR_LIST), JSON.stringify(PRS));
-      const managed = worktreePath('aoyama', 'feature/x');
+      await useGithubOrigin(GITHUB_ORIGIN);
+      ghFixture(PR_LIST, JSON.stringify(PRS));
+      const managed = worktreePath(await worktreeRoot(), 'aoyama', 'feature/x');
       await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'feature/x');
       const outside = path.join(tempDir('wt'), 'zzz');
       await git(repo.dir, 'worktree', 'add', '--quiet', outside, 'zzz');
@@ -59,11 +53,35 @@ describe('branches command', () => {
         repo: repo.dir,
         warnings: [],
         worktrees: [
-          { branch: 'main', managed: false, path: repo.dir },
-          { branch: 'feature/x', managed: true, path: managed },
-          { branch: 'zzz', managed: false, path: outside },
+          { branch: 'main', managed: false, owner: null, path: repo.dir },
+          { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
+          { branch: 'zzz', managed: false, owner: null, path: outside },
         ],
       });
+    });
+
+    it('tells tern-managed worktrees from omp-owned ones in the omp root', async () => {
+      const repo = await tmpRepo('aoyama');
+      const base = tempDir('omp-wt');
+      useOmp({ base, clone: false });
+      const managed = path.join(base, 'aoyama', 'feature-x');
+      const ompOwned = path.join(base, 'feature-y-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', managed);
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/y', ompOwned);
+      const result = await run(['--repo', repo.dir, '--offline']);
+      expect(result.worktrees).toStrictEqual([
+        { branch: 'main', managed: false, owner: null, path: repo.dir },
+        { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
+        { branch: 'feature/y', managed: false, owner: 'omp', path: ompOwned },
+      ]);
+      expect(result.warnings).toStrictEqual([]);
+    });
+
+    it('fails closed with omp_failed when omp fails', async () => {
+      const repo = await tmpRepo('aoyama');
+      useOmp({ clone: false });
+      vi.stubEnv('FAKE_OMP_FAIL', 'config');
+      await expect(run(['--repo', repo.dir, '--offline'])).rejects.toMatchObject({ code: 'omp_failed' });
     });
 
     it('lists local and origin branches once each, newest first', async () => {
@@ -93,6 +111,57 @@ describe('branches command', () => {
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
     });
 
+    it('reads only local refs offline and leaves FETCH_HEAD untouched', async () => {
+      const repo = await tmpRepo('aoyama');
+      await git(repo.dir, 'fetch', '--quiet', 'origin');
+      const fetchHead = path.join(repo.dir, '.git', 'FETCH_HEAD');
+      const fetchHeadState = () => ({ content: readFileSync(fetchHead, 'utf-8'), mtime: statSync(fetchHead).mtimeMs });
+      const past = new Date('2000-01-01T00:00:00Z');
+      utimesSync(fetchHead, past, past);
+      const before = fetchHeadState();
+      await git(repo.origin, 'branch', 'pushed', 'main');
+      await git(repo.dir, 'branch', 'local-only');
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect({ ...offline, branches: offline.branches.toSorted() }).toStrictEqual({
+        branches: ['local-only', 'main'],
+        default: 'main',
+        name: 'aoyama',
+        prs: [],
+        repo: repo.dir,
+        warnings: [],
+        worktrees: [{ branch: 'main', managed: false, owner: null, path: repo.dir }],
+      });
+      expect(fetchHeadState()).toStrictEqual(before);
+      const online = await run(['--repo', repo.dir]);
+      expect(online.branches.toSorted()).toStrictEqual(['local-only', 'main', 'pushed']);
+    });
+
+    it('gives no PRs and makes no gh call offline', async () => {
+      const repo = await tmpRepo('aoyama');
+      await useGithubOrigin(GITHUB_ORIGIN);
+      ghFixture(PR_LIST, JSON.stringify(PRS));
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect({ prs: offline.prs, warnings: offline.warnings }).toStrictEqual({ prs: [], warnings: [] });
+      expect(existsSync(sandbox.ghLog)).toBeFalsy();
+      const online = await run(['--repo', repo.dir]);
+      expect(online.prs).toStrictEqual([
+        { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
+        { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
+      ]);
+      expect(ghLog().join('\n')).toContain('pr list');
+    });
+
+    it('offline, gives the current branch as default when origin/HEAD is unset', async () => {
+      const repo = await tmpRepo('aoyama');
+      await useGithubOrigin(GITHUB_ORIGIN);
+      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
+      ghDefaultBranchFixture('me/aoyama', 'develop');
+      await git(repo.dir, 'switch', '--quiet', '-c', 'work');
+      const offline = await run(['--repo', repo.dir, '--offline']);
+      expect(offline.default).toBe('work');
+      expect(existsSync(sandbox.ghLog)).toBeFalsy();
+    });
+
     it('warns and lists the known branches when the fetch fails', async () => {
       const repo = await tmpRepo('aoyama');
       await repo.pushBranch('feature/x');
@@ -106,7 +175,7 @@ describe('branches command', () => {
 
     it('warns and gives no PRs when gh fails', async () => {
       const repo = await tmpRepo('aoyama');
-      await useGithubOrigin(repo);
+      await useGithubOrigin(GITHUB_ORIGIN);
       const result = await run(['--repo', repo.dir]);
       expect(result.prs).toStrictEqual([]);
       expect(result.warnings).toStrictEqual(['pr list failed: fake gh: no fixture']);
@@ -153,12 +222,7 @@ describe('branches command', () => {
 
     it('raises git_failed when git cannot list the branches', async () => {
       const repo = await tmpRepo('aoyama');
-      const shimDir = tempDir('shim');
-      const realGit = await must(['sh', '-c', 'command -v git'], 'git_failed');
-      writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\ncase " $* " in *" for-each-ref "*) echo 'for-each-ref broke' >&2; exit 1;; esac\nexec '${realGit.trim()}' "$@"\n`, {
-        mode: 0o755,
-      });
-      vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+      await gitShim(`case " $* " in *" for-each-ref "*) echo 'for-each-ref broke' >&2; exit 1;; esac`);
       await expect(run(['--repo', repo.dir])).rejects.toMatchObject({ code: 'git_failed', message: 'for-each-ref broke' });
     });
   });

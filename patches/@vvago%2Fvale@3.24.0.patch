@@ -1,0 +1,13 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 2beb25da57fbc8666bc8f60c285f74c366522aa6..8b3b9fbc8392c6df34989a39586c303d5589d709 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -195,7 +195,7 @@ function _downloadAndExtract() {
+ 	_downloadAndExtract = _asyncToGenerator(function* () {
+ 		const bin = getRelease();
+ 		const res = yield fetch(bin.url, {
+-			headers: { Accept: "application/octet-stream" },
++			headers: process.env.GITHUB_TOKEN ? { Accept: "application/octet-stream", Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : { Accept: "application/octet-stream" },
+ 			signal: AbortSignal.timeout(6e4)
+ 		});
+ 		if (res.ok && res.body !== null) {

@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'dirty_worktree'
   | 'git_failed'
   | 'gh_failed'
+  | 'omp_failed'
   | 'tern_failed';
 
 /** The added fields of the error envelope, for example the conflicting path or the changed files. */

@@ -1,23 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { must, run } from '../src/proc.ts';
-import { blocksUnder, ls, ternBin } from '../src/tern.ts';
-
-interface Tab {
-  opened: boolean;
-}
-
-interface Created {
-  path: string;
-  status: string;
-  tab: Tab | null;
-}
-
-interface Listed {
-  worktrees: unknown[];
-}
+import type { CreateResult } from '../src/commands/create.ts';
+import type { ListResult } from '../src/commands/list.ts';
+import { run } from '../src/proc.ts';
+import { blocksUnder, ternBin } from '../src/tern.ts';
+import { buildRepo, gitWith } from './repo-fixture.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
 const smokeName = `twt-smoke-${Math.floor(Date.now() / 1000)}`;
@@ -27,9 +18,13 @@ const env = {
   GIT_AUTHOR_NAME: 'Smoke',
   GIT_COMMITTER_EMAIL: 'smoke@example.com',
   GIT_COMMITTER_NAME: 'Smoke',
+  TERN_CONFIG_DIR: path.join(tempRoot, 'tern-config'),
+  TERN_DAEMON_SOCKET: path.join(tempRoot, 'tern.sock'),
   TERN_PLUGIN_DATA: path.join(tempRoot, 'plugin-data'),
   TERN_WT_HOME: path.join(tempRoot, 'home'),
+  TERN_WT_OMP: path.join(tempRoot, 'no-omp'),
 };
+Object.assign(process.env, env);
 
 const check = (ok: boolean, message: string): void => {
   if (!ok) {
@@ -37,7 +32,7 @@ const check = (ok: boolean, message: string): void => {
   }
 };
 
-const git = async (cwd: string, ...args: string[]): Promise<string> => await must(['git', '-C', cwd, ...args], 'git_failed', { env });
+const git = gitWith({ env });
 
 const cli = async <T>(...args: string[]): Promise<T> => {
   const result = await run([CLI, ...args], { env });
@@ -47,39 +42,37 @@ const cli = async <T>(...args: string[]): Promise<T> => {
 };
 
 const makeClone = async (): Promise<string> => {
-  const origin = path.join(tempRoot, 'origin.git');
-  const clone = path.join(tempRoot, smokeName);
-  await git(tempRoot, 'init', '--quiet', '--bare', '--initial-branch=main', origin);
-  await git(tempRoot, 'clone', '--quiet', origin, clone);
-  await git(clone, 'symbolic-ref', 'HEAD', 'refs/heads/main');
-  writeFileSync(path.join(clone, 'README.md'), 'smoke\n');
-  await git(clone, 'add', 'README.md');
-  await git(clone, 'commit', '--quiet', '-m', 'initial');
-  await git(clone, 'push', '--quiet', '-u', 'origin', 'main', 'main:refs/heads/feature/x');
-  await git(clone, 'remote', 'set-head', 'origin', 'main');
-  return clone;
+  const repo = await buildRepo(git, tempRoot, smokeName, 'smoke\n');
+  await repo.pushBranch('feature/x');
+  return repo.dir;
 };
 
-const waitForBlock = async (dir: string, attempts = 50): Promise<void> => {
-  const blocks = await blocksUnder(dir);
-  if (blocks.length > 0) {
+const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, attempts = 50): Promise<void> => {
+  if (await ready()) {
     return;
   }
-  check(attempts > 1, `no block under ${dir} after 5s`);
+  check(attempts > 1, `${what} after 5s`);
   await sleep(100);
-  await waitForBlock(dir, attempts - 1);
+  await waitFor(ready, what, attempts - 1);
+};
+
+const waitForBlock = async (dir: string): Promise<void> => {
+  await waitFor(async () => {
+    const blocks = await blocksUnder(dir);
+    return blocks.length > 0;
+  }, `no block under ${dir}`);
 };
 
 const smoke = async (): Promise<void> => {
   const clone = await makeClone();
-  const created = await cli<Created>('create', '--repo', clone, '--branch', 'feature/x');
+  const created = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(created.status === 'created', `create: status ${created.status}, not created`);
   check(created.tab?.opened === true, 'create: the tab did not open');
   await waitForBlock(created.path);
-  const reused = await cli<Created>('create', '--repo', clone, '--branch', 'feature/x');
+  const reused = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(reused.status === 'reused', `create again: status ${reused.status}, not reused`);
   check(reused.tab?.opened === false, 'create again: a new tab opened');
-  const listed = await cli<Listed>('list');
+  const listed = await cli<ListResult>('list');
   check(listed.worktrees.length === 1, `list: ${listed.worktrees.length} worktrees, not 1`);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);
@@ -87,21 +80,30 @@ const smoke = async (): Promise<void> => {
   check(blocksLeft.length === 0, `remove: ${blocksLeft.length} blocks left under ${created.path}`);
 };
 
-const cleanUp = async (): Promise<void> => {
-  const listing = await ls();
-  if (listing.sessions.some(session => session.name === smokeName)) {
-    await must([ternBin(), 'kill', 'session', smokeName, '--json'], 'tern_failed');
-  }
-  rmSync(tempRoot, { force: true, recursive: true });
-};
-
 mkdirSync(env.TERN_PLUGIN_DATA, { recursive: true });
+mkdirSync(env.TERN_CONFIG_DIR, { recursive: true });
+const daemon = spawn(ternBin(), ['daemon', '--socket', env.TERN_DAEMON_SOCKET], { stdio: 'ignore' });
+let spawnError: Error | undefined;
+daemon.on('error', error => {
+  spawnError = error;
+});
 try {
+  await waitFor(() => {
+    if (spawnError) {
+      throw spawnError;
+    }
+    return existsSync(env.TERN_DAEMON_SOCKET);
+  }, `no Tern daemon socket at ${env.TERN_DAEMON_SOCKET}`);
   await smoke();
-  await cleanUp();
   process.stdout.write('smoke ok\n');
 } catch (error) {
   process.stderr.write(`smoke failed: ${error instanceof Error ? error.message : String(error)}\n`);
-  await cleanUp();
   process.exitCode = 1;
+} finally {
+  if (daemon.exitCode === null && daemon.signalCode === null && !spawnError) {
+    const exited = once(daemon, 'exit');
+    daemon.kill();
+    await exited;
+  }
+  rmSync(tempRoot, { force: true, recursive: true });
 }

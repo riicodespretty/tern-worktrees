@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readlinkSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
+import { accessSync, constants, lstatSync, mkdirSync, readlinkSync, realpathSync, statSync, symlinkSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { userHome } from '../paths.ts';
@@ -21,42 +21,78 @@ export interface SetupResult {
   links: SetupLink[];
 }
 
-const planLink = (link: string, target: string): SetupLink => {
-  const stat = lstatSync(link, { throwIfNoEntry: false });
+const conflict = (target: string, reason: string): CliError => new CliError('path_conflict', `${target} ${reason}`, { path: target });
+
+const onDisk = <T>(target: string, action: () => T): T => {
+  try {
+    return action();
+  } catch (error) {
+    throw conflict(target, `cannot be used: ${String(error)}`);
+  }
+};
+
+const existingAncestor = (dir: string): string => {
+  try {
+    lstatSync(dir);
+    return dir;
+  } catch {
+    return existingAncestor(path.dirname(dir));
+  }
+};
+
+const existingDirAbove = (link: string): string => {
+  const ancestor = existingAncestor(path.dirname(link));
+  if (!onDisk(ancestor, () => statSync(ancestor)).isDirectory()) {
+    throw conflict(ancestor, 'is not a directory');
+  }
+  return ancestor;
+};
+
+const linkAction = (link: string, target: string): LinkAction => {
+  const stat = onDisk(link, () => lstatSync(link, { throwIfNoEntry: false }));
   if (!stat) {
-    return { action: 'created', path: link, target };
+    return 'created';
   }
   if (!stat.isSymbolicLink()) {
-    throw new CliError('path_conflict', `${link} exists and is not a symbolic link`, { path: link });
+    throw conflict(link, 'exists and is not a symbolic link');
   }
-  return { action: readlinkSync(link) === target ? 'kept' : 'replaced', path: link, target };
+  return onDisk(link, () => readlinkSync(link)) === target ? 'kept' : 'replaced';
+};
+
+const planLink = (link: string, target: string): SetupLink => {
+  const ancestor = existingDirAbove(link);
+  const action = linkAction(link, target);
+  if (action !== 'kept') {
+    onDisk(ancestor, () => {
+      accessSync(ancestor, constants.W_OK);
+    });
+  }
+  return { action, path: link, target };
 };
 
 const applyLink = (link: SetupLink): void => {
-  if (link.action === 'replaced') {
-    unlinkSync(link.path);
-  }
-  if (link.action !== 'kept') {
-    mkdirSync(path.dirname(link.path), { recursive: true });
-    symlinkSync(link.target, link.path);
-  }
+  onDisk(link.path, () => {
+    if (link.action === 'replaced') {
+      unlinkSync(link.path);
+    }
+    if (link.action !== 'kept') {
+      mkdirSync(path.dirname(link.path), { recursive: true });
+      symlinkSync(link.target, link.path);
+    }
+  });
 };
 
-const linkPlugin = async (pkg: string): Promise<SetupResult['plugin']> => {
+const checkPlugin = (pkg: string): SetupResult['plugin'] => {
   const linked = pluginLinked();
-  if (linked === pkg) {
-    return 'already';
-  }
-  if (linked !== null) {
+  if (linked !== null && linked !== pkg) {
     throw new CliError('path_conflict', `the tern-worktrees plugin comes from ${linked}, not ${pkg}`, { path: linked });
   }
-  await pluginLink(pkg);
-  return 'linked';
+  return linked === pkg ? 'already' : 'linked';
 };
 
 /**
  * `setup`: links the plugin into Tern, `~/.local/bin/tern-wt` to the CLI and `~/.omp/agent/skills/tern-worktrees` to the skill.
- * It checks each link before it changes anything, so a `path_conflict` keeps the machine as it was. A second run changes nothing.
+ * It checks each link, its parent directories and the plugin before it changes anything, so a `path_conflict` keeps the machine as it was. A second run changes nothing.
  */
 export const run = async (args: string[]): Promise<SetupResult> => {
   parseArgs({ args, options: {} });
@@ -66,9 +102,12 @@ export const run = async (args: string[]): Promise<SetupResult> => {
     planLink(path.join(home, '.local', 'bin', 'tern-wt'), path.join(pkg, 'bin', 'tern-wt')),
     planLink(path.join(home, '.omp', 'agent', 'skills', 'tern-worktrees'), path.join(pkg, 'skills', 'tern-worktrees')),
   ];
-  const plugin = await linkPlugin(pkg);
+  const plugin = checkPlugin(pkg);
   for (const link of links) {
     applyLink(link);
+  }
+  if (plugin === 'linked') {
+    await pluginLink(pkg);
   }
   return { links, plugin };
 };

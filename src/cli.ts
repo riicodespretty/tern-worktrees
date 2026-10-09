@@ -19,7 +19,7 @@ export type CommandLoader = (name: string) => Promise<CommandModule>;
 const COMMAND_NAME = /^[a-z-]+$/u;
 
 /** Returns `name` when it is lowercase letters and dashes only, the form of a command module name. Else it throws `bad_args`. */
-export const checkCommandName = (name: string): string => {
+const checkCommandName = (name: string): string => {
   if (!COMMAND_NAME.test(name)) {
     throw new CliError('bad_args', `unknown command ${name}`);
   }

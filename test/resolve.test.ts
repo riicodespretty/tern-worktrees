@@ -1,9 +1,7 @@
-import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/resolve.ts';
-import { must } from '../src/proc.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { git, logGitCalls, readLog, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 describe('resolve command', () => {
   beforeEach(() => {
@@ -30,14 +28,10 @@ describe('resolve command', () => {
     });
 
     it('runs git once per distinct dir', async () => {
-      const shimDir = tempDir('shim');
-      const log = path.join(shimDir, 'git.log');
-      const realGit = await must(['sh', '-c', 'command -v git'], 'git_failed');
-      writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${realGit.trim()}' "$@"\n`, { mode: 0o755 });
-      vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+      const log = await logGitCalls();
       const plain = tempDir('plain');
       await run([plain, plain, plain]);
-      expect(readFileSync(log).toString().trim().split('\n')).toHaveLength(1);
+      expect(readLog(log)).toHaveLength(1);
     });
 
     it('gives an empty list without dirs', async () => {

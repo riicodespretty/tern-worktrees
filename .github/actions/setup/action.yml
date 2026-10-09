@@ -1,10 +1,12 @@
 name: Setup toolchain
-description: Install Vite+ with the bun lockfile cache.
+description: Install Vite+ with the bun lockfile cache. The token lets the patched vale install script download its binary with the rate limit of the job.
 
 runs:
   using: composite
   steps:
     - uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       with:
         node-version: 22
         cache: true

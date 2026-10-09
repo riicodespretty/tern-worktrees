@@ -1,11 +1,11 @@
-import { readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { CommandModule } from '../src/cli.ts';
-import { checkCommandName, commandLoader, main } from '../src/cli.ts';
-import { CliError } from '../src/proc.ts';
+import { commandLoader, main } from '../src/cli.ts';
+import { CliError, must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, spawnCli, tmpRepo, useSandbox } from './helpers.ts';
+import { gitShim, REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 interface Envelope {
   error: { code: string; message: string };
@@ -32,18 +32,8 @@ describe('cli', () => {
     sandbox = useSandbox();
   });
 
-  describe(checkCommandName, () => {
-    it.each(['resolve', 'new-repo', 'x'])('accepts %s', name => {
-      expect(checkCommandName(name)).toBe(name);
-    });
-
-    it.each(['Resolve', '../cli', 'nope1', '1nope', 'new_repo', ''])('rejects %j', name => {
-      expect(() => checkCommandName(name)).toThrow(new CliError('bad_args', `unknown command ${name}`));
-    });
-  });
-
   describe(commandLoader, () => {
-    it.each(['Resolve', '../cli', 'resolve.ts'])('never imports the name %j', async name => {
+    it.each(['Resolve', '../cli', 'resolve.ts', 'nope1', '1nope', 'new_repo', ''])('never imports the name %j', async name => {
       const imported: string[] = [];
       const load = commandLoader(async moduleName => {
         imported.push(moduleName);
@@ -64,9 +54,8 @@ describe('cli', () => {
       });
     });
 
-    it.each(['nope', 'Resolve', '../cli', 'resolve.ts', ''])('rejects the command %j as unknown', async name => {
-      const message = `unknown command ${name}`;
-      await expect(main([name])).resolves.toStrictEqual({ code: 1, stderr: `${message}\n`, stdout: envelope('bad_args', message) });
+    it('rejects an unknown command name as bad_args', async () => {
+      await expect(main(['nope'])).resolves.toStrictEqual({ code: 1, stderr: 'unknown command nope\n', stdout: envelope('bad_args', 'unknown command nope') });
     });
 
     it('rejects an empty argv as an unknown command', async () => {
@@ -119,6 +108,20 @@ describe('cli', () => {
         { status: 0, stderr: '', stdout: `${JSON.stringify({ repos: [{ dir: '/tmp', name: null, owner: null, root: null }] })}\n` },
         { status: 1, stderr: 'unknown command nope\n', stdout: envelope('bad_args', 'unknown command nope') },
       ]);
+    });
+
+    it('keeps the PATH of the caller ahead of the fallback dirs of the shim', async () => {
+      const gitPath = await must(['sh', '-c', 'command -v git'], 'git_failed');
+      const realGit = gitPath.trim();
+      const home = tempDir('home');
+      const fallbackBin = path.join(home, '.local', 'bin');
+      mkdirSync(fallbackBin, { recursive: true });
+      writeFileSync(path.join(fallbackBin, 'git'), `#!/bin/sh\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+      const marker = path.join(tempDir('marker'), 'ran');
+      vi.stubEnv('HOME', home);
+      await gitShim(`: > '${marker}'`);
+      expect(spawnCli(['resolve', '/tmp']).status).toBe(0);
+      expect(existsSync(marker)).toBeTruthy();
     });
   });
 });

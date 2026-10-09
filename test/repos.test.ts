@@ -1,23 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run as clone } from '../src/commands/clone.ts';
 import { run as newRepo } from '../src/commands/new-repo.ts';
 import { run as repos } from '../src/commands/repos.ts';
-import { must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { git, tempDir, useSandbox } from './helpers.ts';
+import { ghFixture, ghLog, git, logGitCalls, readLog, tempDir, useSandbox } from './helpers.ts';
 
 const LIST_ARGS = ['--limit', '200', '--json', 'nameWithOwner,isPrivate,description'];
+const AOYAMA_ORIGIN = 'git@github.com:me/aoyama.git';
 
 let sandbox: Sandbox;
 let cloneRoot: string;
-
-const ghFixture = (args: string[], content: string): void => {
-  writeFileSync(path.join(sandbox.ghDir, `${args.join('_').replaceAll(/[/ ]/gu, '_')}.json`), content);
-};
-
-const ghLog = (): string[] => (existsSync(sandbox.ghLog) ? readFileSync(sandbox.ghLog).toString().trim().split('\n') : []);
 
 const initRepo = async (dir: string, origin?: string): Promise<void> => {
   mkdirSync(dir, { recursive: true });
@@ -56,7 +50,7 @@ describe('GitHub repo commands', () => {
 
     it('lists the repos of the user and each org, and marks local clones', async () => {
       ghFixture(['repo', 'list', 'acme', ...LIST_ARGS], JSON.stringify(acmeRepos));
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
       await initRepo(path.join(cloneRoot, 'acme'));
       mkdirSync(path.join(cloneRoot, 'acme', 'tool'));
       await expect(repos([])).resolves.toStrictEqual({
@@ -72,7 +66,7 @@ describe('GitHub repo commands', () => {
 
     it('marks a local clone when the clone root is a symbolic link', async () => {
       const linked = useLinkedCloneRoot();
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
       const result = await repos([]);
       expect(result.repos.map(repo => repo.local)).toStrictEqual([path.join(linked, 'me', 'aoyama'), null]);
     });
@@ -108,15 +102,30 @@ describe('GitHub repo commands', () => {
       await expect(repos([])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
     });
 
+    it.each([
+      ['another repository', 'git@github.com:me/other.git'],
+      ['no origin', undefined],
+    ])('gives no local clone for a checkout with %s, where clone raises path_conflict', async (_label, origin) => {
+      const dest = path.join(cloneRoot, 'me', 'aoyama');
+      await initRepo(dest, origin);
+      const result = await repos([]);
+      expect(result.repos.map(repo => repo.local)).toStrictEqual([null, null]);
+      await expect(clone(['me/aoyama'])).rejects.toMatchObject({ code: 'path_conflict', extra: { path: dest } });
+    });
+
+    it('gives no local clone and runs no git for a listed name that is not a valid owner and name', async () => {
+      ghFixture(['repo', 'list', 'me', ...LIST_ARGS], JSON.stringify([{ description: '', isPrivate: false, nameWithOwner: 'me/..' }]));
+      const log = await logGitCalls();
+      const result = await repos([]);
+      expect(result.repos.map(repo => repo.local)).toStrictEqual([null]);
+      expect(readLog(log)).toHaveLength(0);
+    });
+
     it('runs git only for dirs present under the clone root', async () => {
-      await initRepo(path.join(cloneRoot, 'me', 'aoyama'));
-      const shimDir = tempDir('shim');
-      const log = path.join(shimDir, 'git.log');
-      const realGit = await must(['sh', '-c', 'command -v git'], 'git_failed');
-      writeFileSync(path.join(shimDir, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${realGit.trim()}' "$@"\n`, { mode: 0o755 });
-      vi.stubEnv('PATH', `${shimDir}:${process.env.PATH ?? ''}`);
+      await initRepo(path.join(cloneRoot, 'me', 'aoyama'), AOYAMA_ORIGIN);
+      const log = await logGitCalls();
       await repos([]);
-      expect(readFileSync(log).toString().trim().split('\n')).toHaveLength(1);
+      expect(readLog(log)).toHaveLength(2);
     });
 
     it('rejects positional arguments', async () => {
@@ -180,8 +189,37 @@ describe('GitHub repo commands', () => {
       expect(existsSync(path.dirname(dest))).toBeTruthy();
     });
 
-    it.each([[[]], [['me']], [['me/x/y']], [['/x']], [['me/']], [['me/x', 'me/y']]])('raises bad_args on %j', async args => {
+    it.each([
+      [[]],
+      [['me']],
+      [['me/x/y']],
+      [['/x']],
+      [['me/']],
+      [['me/x', 'me/y']],
+      [['../x']],
+      [['x/..']],
+      [['../..']],
+      [['./x']],
+      [['me/.']],
+      [['me/..']],
+      [['.me/x']],
+      [['--', '-me/x']],
+      [['me/-x']],
+      [['--', '--depth=1/x']],
+      [['me/x y']],
+    ])('raises bad_args on %j and runs no gh', async args => {
       await expect(clone(args)).rejects.toMatchObject({ code: 'bad_args', message: 'clone needs one <owner/name>' });
+      expect(ghLog()).toStrictEqual([]);
+    });
+
+    it.each([
+      ['my-org.1/repo_name.js', 'my-org.1', 'repo_name.js'],
+      ['me/.github', 'me', '.github'],
+      ['me/_x', 'me', '_x'],
+    ])('accepts %s', async (nameWithOwner, owner, name) => {
+      const dest = path.join(cloneRoot, owner, name);
+      ghFixture(['repo', 'clone', nameWithOwner, dest], '');
+      await expect(clone([nameWithOwner])).resolves.toStrictEqual({ cloned: true, root: dest });
     });
   });
 
@@ -204,8 +242,18 @@ describe('GitHub repo commands', () => {
       [['me/x'], 'new-repo needs --visibility private or public'],
       [['mex', '--visibility', 'private'], 'new-repo needs one <owner/name>'],
       [['--visibility', 'private'], 'new-repo needs one <owner/name>'],
+      [['../evil', '--visibility', 'private'], 'new-repo needs one <owner/name>'],
+      [['--visibility', 'private', '--', '--template=evil/x'], 'new-repo needs one <owner/name>'],
     ])('raises bad_args on %j', async (args, message) => {
       await expect(newRepo(args)).rejects.toMatchObject({ code: 'bad_args', message });
+      expect(ghLog()).toStrictEqual([]);
+    });
+
+    it('raises path_conflict before it creates the GitHub repo when the clone path is taken', async () => {
+      const dest = path.join(cloneRoot, 'me', 'x');
+      mkdirSync(dest, { recursive: true });
+      ghFixture(['repo', 'create', 'me/x', '--private', '--add-readme'], '');
+      await expect(newRepo(['me/x', '--visibility', 'private'])).rejects.toMatchObject({ code: 'path_conflict', extra: { path: dest } });
       expect(ghLog()).toStrictEqual([]);
     });
   });

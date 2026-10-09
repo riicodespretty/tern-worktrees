@@ -1,9 +1,11 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultBranch, originSlug, repoRoot, worktrees } from '../git.ts';
-import type { RepoSlug } from '../git.ts';
-import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, must, run as runProcess } from '../proc.ts';
+import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
+import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
+import type { GithubRepoRef } from '../github.ts';
+import { worktreeOwner, worktreeRoot } from '../paths.ts';
+import type { WorktreeOwner } from '../paths.ts';
+import { CliError } from '../proc.ts';
 
 /** An open pull request of the repository. */
 export interface PullRequest {
@@ -13,11 +15,15 @@ export interface PullRequest {
   fork: boolean;
 }
 
-/** A worktree of the repository. `managed` tells if the worktree is in the worktree root. */
+/**
+ * A worktree of the repository. `owner` tells who owns it: `tern` for a tern-managed worktree, `<root>/<repo>/<slug>`, `omp` for an omp-owned one,
+ * elsewhere in the omp worktree root, and null for a worktree that is not in the worktree root. `managed` is true for a tern-managed worktree.
+ */
 export interface BranchWorktree {
   branch: string | null;
   path: string;
   managed: boolean;
+  owner: WorktreeOwner;
 }
 
 /** The branch picker data of a repository. */
@@ -31,19 +37,12 @@ export interface BranchesResult {
   warnings: string[];
 }
 
-interface GhPullRequest {
-  number: number;
-  title: string;
-  headRefName: string;
-  isCrossRepository: boolean;
-}
-
 const REMOTE_PREFIX = 'refs/remotes/origin/';
 const LOCAL_PREFIX = 'refs/heads/';
 
-const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]> => {
-  const patterns = hasOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
-  const output = await must(['git', '-C', root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns], 'git_failed');
+const listBranches = async (root: string, withOrigin: boolean): Promise<string[]> => {
+  const patterns = withOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
+  const output = await gitMust(root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns);
   const names = output
     .split('\n')
     .filter(ref => ref !== '')
@@ -52,45 +51,38 @@ const listBranches = async (root: string, hasOrigin: boolean): Promise<string[]>
   return [...new Set(names)];
 };
 
-const listPullRequests = async (slug: RepoSlug, warnings: string[]): Promise<PullRequest[]> => {
-  const argv = ['gh', 'pr', 'list', '--repo', `${slug.owner}/${slug.name}`, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository'];
-  const result = await runProcess(argv);
-  if (result.status !== 0) {
-    warnings.push(`pr list failed: ${result.stderr.trim()}`);
-    return [];
+const openPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<PullRequest[]> => {
+  const { error, prs } = await listPullRequests(repoRef, ['--state', 'open', '--limit', '200'], ['number', 'title', 'headRefName', 'isCrossRepository']);
+  if (error !== null) {
+    warnings.push(`pr list failed: ${error}`);
   }
-  // SAFETY: `gh pr list --json` prints an array with the fields it names.
-  const prs = JSON.parse(result.stdout) as GhPullRequest[];
   return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
 };
 
-/** `branches --repo <dir>`: the branches, open pull requests and worktrees of the repository that holds `dir`. */
+/** `branches --repo <dir> [--offline]`: the branches, open pull requests and worktrees of the repository that holds `dir`. `--offline` reads only local refs: no fetch and no pull requests. */
 export const run = async (args: string[]): Promise<BranchesResult> => {
-  const { values } = parseArgs({ args, options: { repo: { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { offline: { default: false, type: 'boolean' }, repo: { type: 'string' } } });
   if (values.repo === undefined) {
     throw new CliError('bad_args', 'branches needs --repo <dir>');
   }
-  const root = await repoRoot(values.repo);
-  if (root === null) {
-    throw new CliError('not_a_repo', `${values.repo} is not in a git repository`);
-  }
+  const root = await requireRepoRoot(values.repo);
+  const { offline } = values;
   const warnings: string[] = [];
-  const originUrl = await runProcess(['git', '-C', root, 'remote', 'get-url', 'origin']);
-  const hasOrigin = originUrl.status === 0;
-  if (hasOrigin) {
-    const fetchResult = await runProcess(['git', '-C', root, 'fetch', '--prune', 'origin']);
-    if (fetchResult.status !== 0) {
-      warnings.push(`fetch failed: ${fetchResult.stderr.trim()}`);
+  const withOrigin = await hasOrigin(root);
+  if (withOrigin && !offline) {
+    const fetchWarning = await fetchOrigin(root, true);
+    if (fetchWarning !== null) {
+      warnings.push(fetchWarning);
     }
   }
-  const slug = await originSlug(root);
-  const [branches, prs, repoWorktrees, defaultName] = await Promise.all([
-    listBranches(root, hasOrigin),
-    slug === null ? [] : listPullRequests(slug, warnings),
+  const repoRef = offline ? null : await originRepo(root);
+  const [branches, prs, repoWorktrees, defaultName, wtRoot] = await Promise.all([
+    listBranches(root, withOrigin),
+    repoRef === null ? [] : openPullRequests(repoRef, warnings),
     worktrees(root),
-    defaultBranch(root),
+    defaultBranch(root, { offline }),
+    worktreeRoot(),
   ]);
-  const worktreeRootDir = worktreeRoot();
   return {
     branches,
     default: defaultName,
@@ -98,6 +90,9 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     prs,
     repo: root,
     warnings,
-    worktrees: repoWorktrees.map(worktree => ({ branch: worktree.branch, managed: isUnder(worktree.path, worktreeRootDir), path: worktree.path })),
+    worktrees: repoWorktrees.map(worktree => {
+      const owner = worktreeOwner(wtRoot, root, worktree.path);
+      return { branch: worktree.branch, managed: owner === 'tern', owner, path: worktree.path };
+    }),
   };
 };

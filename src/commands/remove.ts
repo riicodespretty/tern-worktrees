@@ -1,13 +1,13 @@
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { defaultBranch, dirtyFiles, originSlug, repoRoot } from '../git.ts';
-import { isUnder, worktreeRoot } from '../paths.ts';
-import { CliError, must, run as runProcess } from '../proc.ts';
+import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuildChanges, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
+import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
+import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
+import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
-import { currentBranch, linkedWorktreeRoot } from './list.ts';
 
 /** The output of `remove`. */
 export interface RemoveResult {
@@ -31,22 +31,17 @@ interface Context {
 }
 
 const parse = (args: string[]): Options => {
-  let parsed;
-  try {
-    parsed = parseArgs({
-      allowPositionals: true,
-      args,
-      options: { 'force': { default: false, type: 'boolean' }, 'keep-tab': { default: false, type: 'boolean' } },
-    });
-  } catch (error) {
-    // SAFETY: `parseArgs` throws a TypeError for the first bad argument.
-    throw new CliError('bad_args', (error as TypeError).message);
-  }
+  const parsed = parseArgs({
+    allowPositionals: true,
+    args,
+    options: { 'force': { default: false, type: 'boolean' }, 'keep-tab': { default: false, type: 'boolean' } },
+  });
   const [target, ...rest] = parsed.positionals;
   if (target === undefined || rest.length > 0) {
     throw new CliError('bad_args', 'remove needs one <path>');
   }
-  return { ...parsed.values, target: path.resolve(target) };
+  const resolved = path.resolve(target);
+  return { ...parsed.values, target: existsSync(resolved) ? realpathSync(resolved) : resolved };
 };
 
 const warnOnCliError = async <T>(ctx: Context, label: string, fallback: T, action: () => Promise<T>): Promise<T> => {
@@ -63,25 +58,28 @@ const warnOnCliError = async <T>(ctx: Context, label: string, fallback: T, actio
 
 const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
   if (force) {
-    const forcedRemoval = await runProcess(['git', '-C', ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target]);
+    const forcedRemoval = await gitRun(ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target);
     if (forcedRemoval.status !== 0 || existsSync(ctx.target)) {
       rmSync(ctx.target, { force: true, recursive: true });
-      await runProcess(['git', '-C', ctx.root, 'worktree', 'prune']);
+      await gitRun(ctx.root, 'worktree', 'prune');
     }
     return;
   }
-  const removal = await runProcess(['git', '-C', ctx.root, 'worktree', 'remove', ctx.target]);
-  if (removal.status === 0) {
-    return;
-  }
-  if (removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
-    const files = await dirtyFiles(ctx.target);
-    if (files.length === 0) {
-      await must(['git', '-C', ctx.root, 'worktree', 'remove', '--force', ctx.target], 'git_failed');
+  const ignored = await hardToRebuildChanges(ctx.target, ctx.root);
+  if (ignored.length === 0) {
+    const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
+    if (removal.status === 0) {
       return;
     }
+    if (!removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
+      throw new CliError('git_failed', removal.stderr.trim());
+    }
   }
-  throw new CliError('git_failed', removal.stderr.trim());
+  const files = [...(await worktreeLosses(ctx.target)), ...ignored.map(file => `!! ${file}`)];
+  if (files.length > 0) {
+    throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
+  }
+  await gitMust(ctx.root, 'worktree', 'remove', '--force', ctx.target);
 };
 
 const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> => {
@@ -98,26 +96,26 @@ const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> =>
 };
 
 const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boolean> => {
-  const slug = await originSlug(ctx.root);
-  if (slug === null) {
+  const repoRef = await originRepo(ctx.root);
+  if (repoRef === null) {
     return false;
   }
-  const result = await runProcess(['gh', 'pr', 'list', '--repo', `${slug.owner}/${slug.name}`, '--head', branch, '--state', 'merged', '--json', 'number', '--jq', 'length']);
-  if (result.status !== 0) {
-    ctx.warnings.push(`merged PR check failed: ${result.stderr.trim()}`);
+  const { error, prs } = await listPullRequests(repoRef, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
+  if (error !== null) {
+    ctx.warnings.push(`merged PR check failed: ${error}`);
     return false;
   }
-  return Number(result.stdout) > 0;
+  const held = await Promise.all(prs.map(async pr => await isAncestor(ctx.root, `refs/heads/${branch}`, pr.headRefOid)));
+  return held.includes(true);
 };
 
 const isMerged = async (ctx: Context, branch: string): Promise<boolean> => {
-  const fetched = await runProcess(['git', '-C', ctx.root, 'fetch', 'origin']);
-  if (fetched.status !== 0) {
-    ctx.warnings.push(`fetch failed: ${fetched.stderr.trim()}`);
+  const fetchWarning = await fetchOrigin(ctx.root, false);
+  if (fetchWarning !== null) {
+    ctx.warnings.push(fetchWarning);
   }
   const base = await defaultBranch(ctx.root);
-  const ancestorCheck = await runProcess(['git', '-C', ctx.root, 'merge-base', '--is-ancestor', branch, `origin/${base}`]);
-  return ancestorCheck.status === 0 || (await hasMergedPullRequest(ctx, branch));
+  return (await isAncestor(ctx.root, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
 };
 
 const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Promise<boolean> => {
@@ -125,35 +123,39 @@ const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Pr
     return false;
   }
   if (teardown === 'worktree+merged-branch' && !(await warnOnCliError(ctx, 'merge check failed', false, async () => await isMerged(ctx, branch)))) {
-    ctx.warnings.push(`kept branch ${branch}: not merged`);
+    ctx.warnings.unshift(`kept local branch ${branch}: not merged`);
     return false;
   }
-  const deletion = await runProcess(['git', '-C', ctx.root, 'branch', '-D', branch]);
+  const deletion = await gitRun(ctx.root, 'branch', '-D', '--', branch);
   if (deletion.status !== 0) {
-    ctx.warnings.push(`branch ${branch} not deleted: ${deletion.stderr.trim()}`);
+    ctx.warnings.unshift(`branch ${branch} not deleted: ${deletion.stderr.trim()}`);
     return false;
   }
   return true;
 };
 
 /**
- * `remove <path> [--force] [--keep-tab]`: removes a managed worktree, closes the Tern blocks in the worktree,
- * then deletes its branch if the teardown policy tells it to. `--force` discards uncommitted changes.
+ * `remove <path> [--force] [--keep-tab]`: removes a tern-managed worktree, closes the Tern blocks in the worktree,
+ * then deletes its branch if the teardown policy tells it to. Ignored files that are hard to rebuild stop it like uncommitted changes do.
+ * A copy with the bytes of the same file in the main checkout does not stop it. `--force` discards the two. It refuses omp-owned worktrees.
  */
 export const run = async (args: string[]): Promise<RemoveResult> => {
   const options = parse(args);
   const { target } = options;
   const { teardown } = loadConfig();
-  if (!isUnder(target, worktreeRoot())) {
-    throw new CliError('not_managed', `${target} is not under ${worktreeRoot()}`);
-  }
-  const mainCheckout = await repoRoot(target);
-  if (mainCheckout === null) {
-    throw new CliError('not_a_repo', `${target} is not in a git repository`);
+  const wtRoot = await worktreeRoot();
+  if (!isUnder(target, wtRoot.dir)) {
+    throw new CliError('not_managed', `${target} is not under ${wtRoot.dir}`);
   }
   const root = await linkedWorktreeRoot(target);
   if (root === null) {
+    const mainCheckout = await requireRepoRoot(target);
     throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${mainCheckout}`);
+  }
+  const owner = worktreeOwner(wtRoot, root, target);
+  if (owner !== 'tern') {
+    const layout = path.join(wtRoot.dir, path.basename(root), '<slug>');
+    throw new CliError('not_managed', owner === 'omp' ? `${target} is an omp-owned worktree, not ${layout}` : `${target} is not ${layout}`);
   }
   const branch = await currentBranch(target);
   const ctx: Context = { root, target, warnings: [] };
