@@ -695,14 +695,24 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 				table.insert(localRepos, { root = repoRoot, name = r.name or basename(repoRoot) })
 			end
 		end
-		table.clear(rootOfSession)
 		local index = session_index(cx2)
+		local tabless: { [number]: string } = {}
+		for id, root in pairs(rootOfSession) do
+			local entry = index.byId[id]
+			if entry ~= nil and #entry.tabs == 0 then
+				tabless[id] = root
+			end
+		end
+		table.clear(rootOfSession)
 		for _, pane in ipairs(cx2.session:panes()) do
 			local sid = session_of_tab(index, pane.tab)
 			local root = pane.cwd and rootOfDir[pane.cwd]
 			if sid ~= nil and type(root) == "string" and rootOfSession[sid] == nil then
 				rootOfSession[sid] = root
 			end
+		end
+		for id, root in pairs(tabless) do
+			rootOfSession[id] = root
 		end
 		cb(cx2)
 	end)
@@ -735,35 +745,58 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			break
 		end
 	end
+	local reused = tab
+	local freshTab: number? = nil
+	if tab == nil and sid == nil then
+		local newSession = cx.sessions:create({ name = basename(res.repo), cwd = path })
+		sid = newSession.id
+		rootOfSession[newSession.id] = res.repo
+		local created = session_index(cx).byId[newSession.id]
+		freshTab = if created ~= nil then created.tabs[1] else nil
+	end
+	if tab == nil and sid ~= nil and freshTab == nil then
+		local target = index.byId[sid]
+		if target ~= nil and #target.tabs == 0 then
+			switch_to_session(cx, index, sid)
+			local pane = cx.layout:new_tab({ cwd = path })
+			freshTab = if pane ~= nil then cx.session:tab_of(pane) else nil
+		end
+	end
 	if tab == nil and parked ~= nil then
-		if sid ~= nil then
+		if freshTab == nil and sid ~= nil then
 			switch_to_session(cx, index, sid)
 		end
+		local shells: { number } = {}
+		for _, pane in ipairs(cx.session:panes()) do
+			if freshTab ~= nil and pane.tab == freshTab then
+				table.insert(shells, pane.pane)
+			end
+		end
 		if cx.layout:unpark(parked) then
-			tab = cx.layout:move_to_new_tab(parked, sid)
-			if tab ~= nil then
-				cx.layout:name_tab(tab, res.branch)
+			if freshTab ~= nil then
+				for _, shell in ipairs(shells) do
+					cx.layout:close(shell)
+				end
+				tab = cx.session:tab_of(parked)
 			else
-				cx.layout:park(parked)
+				tab = cx.layout:move_to_new_tab(parked, sid)
+				if tab == nil then
+					cx.layout:park(parked)
+				end
 			end
 		end
 	end
 	if tab == nil then
-		if sid ~= nil then
+		if freshTab ~= nil then
+			tab = freshTab
+		elseif sid ~= nil then
 			switch_to_session(cx, index, sid)
 			local pane = cx.layout:new_tab({ cwd = path })
 			tab = if pane ~= nil then cx.session:tab_of(pane) else nil
-		else
-			local newSession = cx.sessions:create({ name = basename(res.repo), cwd = path })
-			rootOfSession[newSession.id] = res.repo
-			local created = session_index(cx).byId[newSession.id]
-			if created ~= nil then
-				tab = created.tabs[1]
-			end
 		end
-		if tab ~= nil then
-			cx.layout:name_tab(tab, res.branch)
-		end
+	end
+	if tab ~= nil and tab ~= reused then
+		cx.layout:name_tab(tab, res.branch)
 	end
 	if tab ~= nil and managed_path(path) == path then
 		local paths = managed[tab] or {}

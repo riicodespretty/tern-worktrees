@@ -127,7 +127,13 @@ A close through the CLI, for example `tern close <block>`, sends no event to the
 
 A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
 
-Tern 0.6 can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half switches to the session of the repository, calls `unpark` on the first parked pane, and moves that pane to a new tab of that session with the name of the branch. When the move fails, it parks the pane again and opens a new tab.
+Tern 0.6 can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
+
+- When that session has a tab, the window half switches to the session and moves the pane to a new tab.
+- When that session has no tab, because all of its panes are parked, the window half switches to the session, opens a tab, deals the pane into it and closes the shell of that tab.
+- When no session of the repository is open, the window half first makes that session, deals the pane into its first tab and closes the shell that the new session started.
+
+The window half finds the session of a repository from the folders of the panes in its tabs. A parked pane has no session in the pane list of Tern, so the window half keeps the repository of a session when all of its panes become parked. It loses that record when it loads again, for example after `tern plugin reload`. When it then opens the worktree, and all the panes of the session of the repository are parked, it makes a second session for the repository. When a move fails, the window half parks the pane again and opens a new tab.
 
 When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) and Cancel (Escape). Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
 
