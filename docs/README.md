@@ -144,3 +144,31 @@ The gates are `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test 
 Tern loads a linked plugin again when a file in its folder changes. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the window half again and again during a mutation run. Each load ends the open dialog: the dialog falls back to a small block that does not get the keys. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
 
 `vp run lint:prose` runs vale from `@vvago/vale`. The install script of that package downloads the vale binary from the GitHub API with no token, and shared CI runners hit the limit for calls with no token, so the install failed with HTTP 403. `patches/@vvago%2Fvale@3.24.0.patch` sends `GITHUB_TOKEN` with that download when it is set, and the setup action gives each CI job its token. A vale update needs a new patch: run `bun patch @vvago/vale`, make the same change, and run `bun patch --commit node_modules/@vvago/vale`.
+
+### Releases
+
+The repository uses git flow, with [git-flow-next](https://git-flow.sh/) (`brew install git-flow-next`):
+
+| Branch              | Holds                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `main`              | The released code. This is the default branch, so `tern plugin install` and `setup` get it. |
+| `develop`           | The next release. A pull request for a change goes into `develop`.                          |
+| `release/<version>` | One release, from `develop`.                                                                |
+| `hotfix/<version>`  | One fix of a release, from `main`.                                                          |
+
+A release or a hotfix goes into `main` with a merge commit, and `main` then merges back into `develop`. The tag is the bare version, for example `0.1.0`, with no `v` prefix. The committed `.gitflow` file holds the settings: the branch names, the prefixes, merge commits on finish, and a push after finish. The first `git flow` command in a clone asks to copy `.gitflow` into the local configuration, and `git flow config sync` copies it again.
+
+`main` and `develop` accept a change only through a pull request with green `ci` and `Mutation testing` checks. The ruleset `main and develop` lets the `admin` and `maintain` roles of the repository bypass these rules, so that they can run `git flow release finish`.
+
+To make a release:
+
+1. Start the release branch from `develop`: `git flow release start 0.2.0`.
+2. Set `version` in `plugin.toml` to the new version.
+3. Add the entry of the new version at the top of `CHANGELOG.md`: `## [0.2.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.2.0 "<date>")`.
+4. Commit with the subject `chore(release): 🔖 0.2.0`. Push the branch with `git push -u origin release/0.2.0`, and wait for green CI with `gh run watch`. The finish does not wait for CI.
+5. Finish: `git flow release finish -m 0.2.0`. It merges the release branch into `main` with a merge commit, tags the merge `0.2.0`, merges `main` back into `develop`, deletes the release branch, and pushes `main`, `develop` and the tag.
+6. Publish the GitHub release with the notes of the changelog entry: `gh release create 0.2.0 --verify-tag --title 0.2.0 --notes-file <notes>`.
+
+A hotfix uses the same steps with `git flow hotfix start` and `git flow hotfix finish`. Its branch starts from `main`.
+
+The wiki publishes from `main`, so a wiki edit comes back as a pull request into `main`. The next finish merges it into `develop`.

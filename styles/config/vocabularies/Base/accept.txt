@@ -102,3 +102,4 @@ via
 [Aa]pplication
 [Aa]void
 omp
+[Hh]otfix(?:es)?
