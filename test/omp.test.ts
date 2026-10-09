@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { findOmp, ompSettings, ompWorktreeAdd } from '../src/omp.ts';
+import { findOmp, isExecutableFile, ompSettings, ompWorktreeAdd } from '../src/omp.ts';
 import { FIXTURE_BIN, git, ompLog, tempDir, tmpRepo, useOmp, useSandbox } from './helpers.ts';
 
 const FAKE_OMP = path.join(FIXTURE_BIN, 'omp');
@@ -53,6 +53,17 @@ describe('omp', () => {
       vi.stubEnv('TERN_WT_OMP', '');
       vi.stubEnv('PATH', dirs.join(path.delimiter));
       expect(findOmp()).toBeNull();
+    });
+  });
+
+  describe(isExecutableFile, () => {
+    it('accepts a runnable file or a link to one, and rejects a missing, plain or directory path with false', () => {
+      const dir = tempDir('exec');
+      writeFileSync(path.join(dir, 'runnable'), '#!/bin/sh\n', { mode: 0o755 });
+      writeFileSync(path.join(dir, 'plain'), '#!/bin/sh\n', { mode: 0o644 });
+      mkdirSync(path.join(dir, 'folder'), { mode: 0o755 });
+      symlinkSync(path.join(dir, 'runnable'), path.join(dir, 'link'));
+      expect(['runnable', 'link', 'plain', 'folder', 'missing'].map(name => isExecutableFile(path.join(dir, name)))).toStrictEqual([true, true, false, false, false]);
     });
   });
 

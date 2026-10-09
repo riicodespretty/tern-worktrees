@@ -21,13 +21,14 @@ interface OmpListing {
   'worktree.clone'?: { value?: unknown } | null;
 }
 
-const isExecutableFile = (file: string): boolean => {
+/** Tells if `file` is a regular file, or a link to one, that the user can run. False when it is missing, also when it goes away during the check. */
+export const isExecutableFile = (file: string): boolean => {
   try {
     accessSync(file, constants.X_OK);
+    return statSync(file).isFile();
   } catch {
     return false;
   }
-  return statSync(file).isFile();
 };
 
 /** The omp binary: `$TERN_WT_OMP` when it is set, else `omp` from the absolute directories of `PATH`. Null when that file is not an executable file. */
