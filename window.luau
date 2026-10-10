@@ -470,10 +470,18 @@ local function ask(cx: WindowCx, req: DialogRequest, cb: AnswerCb, reveal: boole
 		cx:toast("error", "Worktree dialog unavailable")
 		return false
 	end
+	local floated, reason
 	if reveal == false then
-		cx.layout:float(pane, nil, nil, { focus = false })
+		floated, reason = cx.layout:float(pane, nil, nil, { focus = false })
 	else
-		cx.layout:float(pane)
+		floated, reason = cx.layout:float(pane)
+	end
+	if not floated then
+		cx.layout:close(pane)
+		cx:toast("error", "Worktree dialog unavailable", reason)
+		return false
+	end
+	if reveal ~= false then
 		cx.layout:focus(pane)
 	end
 	begin_wait(pane, { reqid = reqid, cb = cb })
