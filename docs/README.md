@@ -13,14 +13,14 @@ A branch can still have an Orca worktree. When the user picks that branch, the p
 The design has three parts:
 
 - `tern-wt`, a Bun and TypeScript CLI in `src/`, the single implementation. Each git and gh step runs in the CLI.
-- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the dialog block, turns each answer into a CLI call, and keeps each worktree tab matched to its worktree. It also keeps the worktree rows of the command palette current.
-- The dialog block, in `host.luau`, a floating block that shows a picker, a confirmation or a text prompt.
+- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the native pickers and prompts of Tern, turns each answer into a CLI call, and keeps each worktree tab matched to its worktree. It also keeps the worktree rows of the command palette, the worktree index and the worktree segment current, and types the setup commands into a new worktree tab.
+- The host half of the plugin, `host.luau`. It holds only the spawn filter, which gives a new shell in a worktree in the worktree root the worktree variables.
 
 The omp skill and the Carly exports give agents the same CLI, so the user and the agents get the same behavior.
 
 ### The CLI
 
-Each command prints one JSON object, and each failure has an error code. The window half reads the code to select its next step. For example, `worktree_exists_elsewhere` opens the Relocate dialog. The CLI uses only `node:` built-in modules, so Bun runs it from source and Vitest tests the same files.
+Each command prints one JSON object, and each failure has an error code. The window half reads the code to select its next step. For example, `worktree_exists_elsewhere` opens the Relocate picker. The CLI uses only `node:` built-in modules, so Bun runs it from source and Vitest tests the same files.
 
 `branches` lists the local branches and the branches on `origin`, each once, newest commit first. `branches --offline` reads only local refs: no fetch, no pull request list and no GitHub lookup of the default branch. The worktree rows use it, so most of their refreshes cost no network traffic.
 
@@ -59,75 +59,42 @@ These events start a refresh:
 
 One refresh for each repository runs at a time. A trigger during a refresh queues one more refresh.
 
-### The dialog block
+### Native pickers and prompts
 
-The window half opens the dialog block with a request: a pick, a confirmation or a prompt. The dialog floats over the layout. When Tern refuses the float, the window half closes the block and shows the error of Tern in an error toast, and the request ends with no answer. A docked dialog is not a fallback: in a Tern 0.7.0 window that gave the plugin pane ids different from the ids of its daemon, the float, the close and the answers of a dialog all failed. In that window the block stays as a split, and the toast shows the error.
+Each picker, prompt and confirmation of the plugin is a native dialog of Tern: `cx:pick` for a list, and `cx:prompt` for a line of text. The two open over the pane with the focus. In the 0.1.0 release (tag `0.1.0`), the plugin showed its own dialog in a floating block. Tern gives the plugin an incorrect id for a pane with an id generation above `0xfff`: for a pane of generation `0x106d`, the plugin API sees `0x6d`. With that id, the float of the custom dialog failed, and the dialog split the pane. This is a bug in Tern. `cx:pick` and `cx:prompt` work from such a pane. Tern 0.7.1 added them, and the minimum Tern for the plugin is 0.8.0.
 
-The dialog reuses the classes of the Tern command palette card (`cmdk tn-cmdk`), and the Tern classes `mdl`, `btn`, `kbd` and `ck-foot`. `styles.css` gets its colors, font families and easing from the Tern theme variables. Where Tern has no variable, it copies the value from the Tern theme rule on `body`, the palette rules, or the overlay rules (`.tn-pl-*`). Some values are the plugin's own: the focus ring and the gap of the key hints. The prompt head copies the size and the offsets of the picker head, so the card keeps its shape when a picker gives way to a prompt. Thus the dialog opens where the palette opens, and it uses the Tern theme colors, fonts, font size and interface style. Two differences stay. Picker rows keep the fixed pitch of the picker element, 36 pixels, where palette rows are 40 pixels. In the studio layout, the prompt input has no box, where the palette input is a pill. Each dialog shows paths in a short form:
+A native dialog gives its answer through its `Awaitable`. The `:next` callback gets the answer, an error text and a new `cx`. In `window.luau`, `choose` wraps `cx:pick` and `ask_text` wraps `cx:prompt`. When the callback gets a nil `cx`, they return at once, as the callback of `cli` does. When the callback gets an error, they show the `Picker failed` or `Prompt failed` toast with the error, then give the error to the next step. Escape gives nil. Enter on an empty prompt gives `""`, and the plugin reads it as Escape. Tern keeps the state of an open dialog, so the plugin keeps no record of it and installs no CSS.
 
-- `~` for the home folder.
-- `…/worktrees/…` for a worktree root that is not in the home folder.
-- A cut in the middle of a long path.
+`cx:pick` filters on the label of each item only, not on its dim text (`detail`). Thus a pull request item of the branch picker has its branch in its label: `#<n> <title> · <branch>`, and part of the branch name finds it. The `worktree` text of a branch with a worktree is dim text, so a query for `worktree` does not find that branch.
 
-Apart from those two differences, the dialog follows the palette where the picker element is not the same as it. A selected row has the accent edge of the palette. No row moves when the query changes or the selection moves, because these changes come at each key press. The clear button of an empty picker shows no key, because Escape cancels the dialog. A confirmation with a danger button gets the red glow of a Tern danger dialog. The key hint on an accent button has the color of its label: a Tern rule paints it white, and white is almost invisible on the light accent fill of the dark theme.
+`New branch…` opens a prompt for the name. `cx:prompt` checks nothing while the user types, so the CLI checks the name on Enter. When `create` refuses the name with `bad_args`, a toast tells why, and the prompt opens again with the typed name.
 
-A picker moves its selection as the palette does. Up and Down wrap at the ends. Home and End go to the first and the last row, and Page Up and Page Down move 8 rows. Tab goes to the first row of the next group, and Shift+Tab to the first row of the previous group. A change to the query selects the top row. One click picks a row, the same as Enter.
-
-The palette moves its selection to the row below the pointer, and the picker cannot do that. In Tern 0.5.3, the `event` handler of the dialog gets a `select` for a click, but no event when the pointer moves over the rows. Thus the selection of the keys stays on its row, and Enter picks that row, not the row below the pointer. After a navigation key moves the selection, the card gets the class `twt-keyed`. A row below the pointer then gets a thin ring and no fill, so it looks different from the selected row. A change to the query, or the clear button, removes the class, because these changes move the selection back to the top row.
-
-The second click of a double-click can come after the next dialog opens, and that dialog opens in less than 50 ms. Thus a dialog ignores clicks for its first 500 ms.
-
-When the query and the selection change together, the Tern picker keeps `aria-selected` on the row that the user selected before. The page shows one selection bar, but a screen reader can find two selected rows.
-
-A screen reader reads each confirmation button by its label alone: the key hint has `aria-hidden`, and `aria-keyshortcuts` on the button names the key.
-
-The Teardown failed dialog lists at most 10 files with work to lose. It gives the hard-to-rebuild files first claim on the 10 lines, and the changes use the lines that are left. The dialog shows the changes first, then a heading, then the hard-to-rebuild files. If the dialog cannot show all files, the last line gives the number of files that it does not show.
-
-A floating pane comes with a frame: a title bar, a border and a background. The float has no attribute that names its pane, and the Tern CSS engine rejects `:has()`, so no static rule can pick out the dialog. The window half installs `dialog-float.css` with `tern.css` while a dialog waits for an answer, and clears the sheet when the last dialog ends. It also clears the sheet at load, so a reload removes a sheet that the previous plugin left.
-
-A reload of the window half loses the record of each dialog that waits for an answer, but the dialog block keeps running. At the first event, hotkey or close key after a load, the window half closes each dialog pane that no request of its own waits on. A close key that hits such a pane only closes it. When a stale dialog gives an answer before that, the window half closes its pane and drops the answer. When the window half fails to load, for example when its `load` goes over the 50 ms budget of Tern, no handler of the plugin runs in that window until the next reload. A dialog that waits at that time stays open after its answer. The × of its pane closes it.
-
-The sheet removes the frame from each floating pane. Thus a float that the user opened also shows with no frame until the last dialog ends. The rules use Tern-internal classes, for example `section.tn-pane.pip` and `tn-head`. When a Tern update renames them, the dialog shows with its frame again. When the plugin cannot read the file, it installs no sheet.
-
-The block gives its answer through its pane title. After the user answers, the title changes to `twt:<request id>:<answer as JSON>`. The window half listens for `title` events, decodes the answer of its pending request, closes the dialog and goes on. When the user closes the dialog, the window half reads that as Cancel.
-
-The title protocol has a fixed set of names:
-
-- The modes of a request are `pick`, `confirm` and `prompt`.
-- The actions of an answer are `select`, `new`, `button`, `text` and `cancel`.
-- The `kind` value `cancel` on a button changes its key hint to `esc` and moves the button to the left end of the footer. The dialog then drops its own `esc` hint.
-- The `key` value of a button is `backspace` or `cmd+backspace`. It gives the button the key hint `⌫` or `⌘⌫`, and that key presses the button.
-
-A click on a button, Enter for the first button, or the `key` of a button gives the `button` action with the id of that button. A button after the first, with no `kind` of `cancel` and no `key`, has no key hint. Escape or a close gives the `cancel` action.
-
-Tern binds `cmd+backspace` to the delete-line code of the terminal (`text:\x15`), and the bindings of the window get each key before a block does. Thus the dialog gets `ctrl+u` when the user presses `cmd+backspace` (seen on Tern 0.5.3). A plugin cannot change a default binding, so the dialog reads `ctrl+u` as `cmd+backspace`. A `ctrl+u` that the user presses also presses that button.
-
-`window.luau` and `host.luau` each hold a copy of these names and the `twt:` prefix, so the copies must match. A changed action name reads as Cancel in `parse_answer`. A changed prefix makes the window half ignore the answer, so the dialog keeps waiting.
-
-The request types follow the same rule. `host.luau` holds the full request types (`PickRequest`, `ConfirmRequest` and `PromptRequest`). The payload that the window half sends is a subset of these types. `window.luau` holds the types of that payload (`PickDialog`, `ConfirmDialog` and `PromptDialog`), and it does not add the fields that only the host uses. A field can be mandatory in the window half and optional in the host. The field names and their base value types (`string`, `{ Item }` and `{ Button }`) must match in the two files. `ConfirmDialog` also has the window-only field `reveal`, because it comes from `ConfirmOptions`. The `confirm` function gives `reveal` to `ask` and removes it before it sends the request, so the payload has no `reveal`.
+The native picker has no keys of its own for an item. Thus the `⌫` key of Tear down and the `⌘⌫` key of Force delete are gone: the user selects the item and presses Enter. In the pickers that open when a worktree tab closes, Keep worktree is the first item, so Enter keeps the worktree. The custom dialog of a closed tab opened without the focus, but the native picker gets the focus. Thus a key that the user types for a pane goes to the picker, and a typed letter can filter out Keep worktree.
 
 ### Pickers and sessions
 
 When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The current session gets the branch picker of its repository, else the repo picker opens. A new worktree tab opens in the session of its repository, else in a new session. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
 
-While a dialog waits in the current session, the hotkey opens no second picker. It focuses that dialog. A dialog in a different session does not block the hotkey. When the user presses the hotkey again before a picker opens, the newest press wins: the `resolve` and `branches` calls of the older presses end with no picker, so one picker opens, and no picker opens after the user closes it.
+When the user presses the hotkey again before a picker opens, the newest press wins: the `resolve` and `branches` calls of the older presses end with no picker, so one picker opens, and no picker opens after the user closes it.
 
 ### Close interception
 
-Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. A pane is in a managed worktree when its working directory is in `<root>/<repo>/<slug>`, and the `.git` file of `<root>/<repo>/<slug>` names a main checkout with the name `<repo>`. This is the same test as the one in the CLI. Thus a pane in an omp-owned worktree, for example `<root>/12-abc1234/src` or a task sandbox at `<root>/t<hash>/m`, is not in a managed worktree. The window half does not add an omp-owned worktree that `create` opens to the map, so closing its tab opens no dialog.
+Each tab with a pane in a managed worktree is a worktree tab. The window half keeps a map from each tab to its worktree. It updates the map when a tab or pane opens, or when a working directory changes. A pane is in a managed worktree when its working directory is in `<root>/<repo>/<slug>`, and the `.git` file of `<root>/<repo>/<slug>` names a main checkout with the name `<repo>`. This is the same test as the one in the CLI. Thus a pane in an omp-owned worktree, for example `<root>/12-abc1234/src` or a task sandbox at `<root>/t<hash>/m`, is not in a managed worktree. The window half does not add an omp-owned worktree that `create` opens to the map, so closing its tab opens no picker.
 
-The window half reads the root from the `root` field of `tern-wt list`, removes a trailing `/`, and keeps the last root in `tern.kv`. At load it cannot wait for the CLI, so it starts from the kept root, else from `~/.tern-wt/worktrees`. `TERN_WT_HOME` wins over the two. When `list` fails, for example with `omp_failed`, the window half keeps the root that it has.
+When the window starts, the window half reads the root from the `root` field of `tern-wt list --all`, removes a trailing `/`, and keeps the last root in `tern.kv`. At load it cannot wait for the CLI, so it starts from the kept root, else from `~/.tern-wt/worktrees`. `TERN_WT_HOME` wins over the two. When `list` fails, for example with `omp_failed`, the window half keeps the root that it has.
 
 Two paths catch the close of a worktree tab:
 
-- The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. The dialog has the title "Closing a worktree tab" and offers Keep worktree (Enter), Tear down (`⌫`) and Cancel (Escape). The tab closes after Keep worktree, or after the teardown succeeds, so Cancel keeps the tab and the worktree.
-- The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the dialog has the title "Worktree tab closed" and offers Keep worktree and Tear down only.
+- The `close_tab` and `close_pane` overrides catch the close keys before the tab closes. `close_pane` catches only the last pane of a tab. The picker reads `Closing worktree tab · <path>` and lists Keep worktree, then Tear down. The tab closes after Keep worktree, or after the teardown succeeds. Escape cancels: the tab and the worktree stay. When the picker gives an error, the window half counts it as Keep worktree, so the tab can always close.
+- The `tab_closed` event catches the other closes in the window, for example the tab bar or the tab menu. At that time the tab is closed, so the picker reads `Worktree tab closed · <path>`, with the same two items. Escape keeps the worktree.
 
-A close through the CLI, for example `tern close <block>`, sends no event to the window half: no `pane_closed` and no `tab_closed` (seen on Tern 0.5.3). That tab closes with no dialog, and the worktree stays on disk until `tern-wt remove` tears it down.
+A tab with panes in two or more worktrees gets one picker for each worktree, one after the other.
 
-A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
+`tern close <block>` on the only pane of a worktree tab closes the tab, and the window half shows no picker (seen on Tern 0.8.0, with a second tab open). A close of the tab in the window that does not go through the close keys, for example `tern ctl tab close`, opens the `Worktree tab closed` picker. After `tern close`, the worktree stays on disk until `tern-wt remove` tears it down.
 
-Tern can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
+A tab that shares its worktree with a different open tab closes with no picker. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no picker.
+
+Tern can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no picker. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
 
 - When that session has a tab, the window half switches to the session and moves the pane to a new tab.
 - When that session has no tab, because all of its panes are parked, the window half switches to the session, opens a tab, deals the pane into it and closes the shell of that tab.
@@ -135,17 +102,46 @@ Tern can park a pane: the pane goes out of its tab, and its program goes on in t
 
 The window half finds the session of a repository from the folders of the panes in its tabs. A parked pane has no session in the pane list of Tern, so the window half keeps the repository of a session when all of its panes become parked. It loses that record when it loads again, for example after `tern plugin reload`. When it then opens the worktree, and all the panes of the session of the repository are parked, it makes a second session for the repository. When a move fails, the window half parks the pane again and opens a new tab.
 
-When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) and Cancel (Escape). Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
+When a teardown fails, an error toast names the worktree and tells why. For a worktree with work to lose, the toast lists at most 10 files. The hard-to-rebuild files come first in the count of 10, and the changes fill what is left. The toast gives the changes first, then the hard-to-rebuild files, then `and <n> more` for the files that it does not show. A picker then lists Retry, then Force delete. Escape keeps the worktree, and after the close keys it also keeps the tab. Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
+
+### The worktree index
+
+The worktree index lists each worktree in the worktree root, managed and omp-owned, by its path, with its main checkout, its branch and its number of changed files. It comes from `tern-wt list --all`: `--all` adds the omp-owned worktrees, and each worktree in the output has its `owner` and its number of `changed` files. The window half keeps the index in `tern.kv`, with the key `worktreeIndex`. The host half and each window read that key.
+
+Three writes change the index:
+
+- A `list --all` result replaces the whole index. A `list --all` runs when the window starts. A refresh also runs it when the `cwd` of a pane moves to a folder in the worktree root that the index does not have, and when a pane in an indexed worktree gets focus or ends a shell command. At most one `list --all` runs at a time, and a refresh starts at most one in each 2 s. A refresh in that gap runs one time at its end, from a timer. The result keeps each entry that this window set or deleted after the start of that `list --all`.
+- `open_tab` sets the entry of the worktree before it opens the tab, so the first shell of the tab gets the worktree variables.
+- A teardown that succeeds deletes the entry, also from the Carly `remove` export.
+
+Each window writes the same key. Thus `set_entry` reads `tern.kv` again and changes only its one entry, so a window keeps the entries of the other windows.
+
+### The spawn filter
+
+`host.luau` holds one handler, the `spawn` filter. Tern runs it before a shell pane starts and waits 50 ms for it, so the filter runs no process and calls no CLI. It reads the worktree index from `tern.kv`, expands a leading `~` in the `cwd` of the shell, and selects the longest path in the index that holds that `cwd`. It then gives the shell `TERN_WT_PATH`, `TERN_WT_MAIN` and `TERN_WT_BRANCH`. A worktree with a detached `HEAD` gets no `TERN_WT_BRANCH`. When `tern.kv` has no index, when no path matches, or when the filter raises an error, it returns nil, and the shell starts with no change. Tern gives the filter `spec.args` and `spec.env` as read-only tables, which `table.clone` refuses, so the filter copies them field by field.
+
+### The worktree segment
+
+`tern.chrome.status` gives the worktree segment of the pane with the focus: the branch, plus ` · <n>` when the worktree has `n` changed files. A worktree with a detached `HEAD` shows `detached`. The tone applies to the full segment: muted when the worktree has no changed files, and the warning tone when it has one or more. The formatter reads only the worktree index. Tern disables a formatter that runs for more than 4 ms, and a formatter cannot call `tern.chrome.refresh`. Tern keeps the segments that a formatter gave, so after an index write that changes a segment, the window half calls `tern.chrome.refresh` one time. A change to a segment is a new or a removed worktree, or a different branch or number of changed files. A click on the segment runs the `New worktree tab` command, as the hotkey does: it opens the branch picker of the repository of the current session, else the repo picker.
+
+### Setup commands
+
+The options file lists the setup commands in the `setup` key, by the name with owner of a repository. `create` reads them only for a new worktree, with the status `created`, and only when the URL of `origin` names a GitHub repository. It joins the commands into one line with `&&` between them, and gives that line in the `setup` field, with `typed`. Two paths type the line into the shell of the new worktree tab:
+
+- When `create` opens the tab, it waits a maximum of 30 s for the shell prompt with `tern wait <block> --until prompt`, then types the line with `tern run`. `typed` is true when it did.
+- The plugin runs `create --no-tab` and opens the tab itself. `type_setup` then reads `at_prompt` of the new shell pane each 200 ms, for a maximum of 30 s, and types the line with `cx:run`. The Carly `create` export replies only after the line is typed or after the plugin gives up, so `setup.typed` and the warnings tell the agent the result.
+
+When the tab was open before, or when no prompt shows in 30 s, the line does not run. A warning of `create` or a toast of the plugin tells why. The commands run in the shell of the tab, where the user sees them and can stop them.
 
 ## Development
 
 The gates are `vp check`, `vp run check:luau`, `vp run test:luau`, `vp run lint:prose` and `vp test --coverage`, with coverage at 100%. `vp run test.mutation` runs the mutation tests. It isolates `HOME`, the Tern config folder and the Tern daemon socket, so no mutant touches the real machine. `vp run smoke` tests the CLI against a Tern session daemon of its own, with its own config folder and socket, so it does not touch the Tern that you use.
 
-`vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). They load `window.luau` unchanged against a stand-in for `tern` in `test/luau/stub.luau`, so they need no Tern. `vp run check:luau` also checks the types of these tests, and it needs lune for the types of its modules. Homebrew has lune 0.10.5, so install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform, and put the `lune` binary on your `PATH`.
+`vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). They load `window.luau` and `host.luau` unchanged against a stand-in for `tern` in `test/luau/stub.luau`, so they need no Tern. `vp run check:luau` also checks the types of these tests, and it needs lune for the types of its modules. Homebrew has lune 0.10.5, so install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform, and put the `lune` binary on your `PATH`.
 
 `tern plugin types types` refreshes `types/tern.d.luau`.
 
-Tern loads a linked plugin again when a file in its folder changes. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the window half again and again during a mutation run. Each load ends the open dialog: the dialog falls back to a small block that does not get the keys. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
+Tern loads a linked plugin again when a file in its folder changes. Each load drops each pending `cx:pick` and `cx:prompt`: its callback does not run, so the step that waits on it does not come. Thus the plugin code and the Luau tests write no file into the plugin folder. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the plugin again and again during a mutation run. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
 
 `vp run lint:prose` runs vale from `@vvago/vale`. The install script of that package downloads the vale binary from the GitHub API with no token, and shared CI runners hit the limit for calls with no token, so the install failed with HTTP 403. `patches/@vvago%2Fvale@3.24.0.patch` sends `GITHUB_TOKEN` with that download when it is set, and the setup action gives each CI job its token. A vale update needs a new patch: run `bun patch @vvago/vale`, make the same change, and run `bun patch --commit node_modules/@vvago/vale`.
 
