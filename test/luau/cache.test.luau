@@ -16,6 +16,8 @@ local STALE = [[{"name":"app","default":"main","branches":["main"],"prs":[],"wor
 local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs":[],
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":[]}]]
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
+local PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],
+"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":["pr list failed: gh auth"]}]]
 local CREATED =
 	'{"branch":"y","carried":[],"path":"/wt/worktrees/app/y","repo":"/r/app","status":"created","warnings":[]}'
 
@@ -27,6 +29,17 @@ local function argv_lines(plugin: Stub.Harness, verb: string): { string }
 		end
 	end
 	return found
+end
+
+-- Takes the pending `branches` runs out of the fake CLI, as a callback that Tern drops, and returns them.
+local function drop_branches(plugin: Stub.Harness): { Stub.Run }
+	local dropped: { Stub.Run } = {}
+	for i = #plugin.runs, 1, -1 do
+		if plugin.runs[i].argv[2] == "branches" then
+			table.insert(dropped, table.remove(plugin.runs, i) :: Stub.Run)
+		end
+	end
+	return dropped
 end
 
 local function item_by_id(request: any, id: string): any?
@@ -137,6 +150,76 @@ test("a failed first branches still shows its error", function()
 	eq(cx.toasts[#cx.toasts].title, "fetch failed", "toast title")
 	eq(open(plugin, cx), 0, "pickers on the next open, which waits for branches again")
 	eq(#argv_lines(plugin, "branches"), 1, "branches calls")
+end)
+
+test("a background branches with a failed pull request list keeps the cached pull requests", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
+	open(plugin, cx)
+	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main b:x b:y*", "items after the failed pull request list")
+end)
+
+test("a second press during the first branches starts no second one and opens one picker", function()
+	local plugin, cx = window()
+	open(plugin, cx)
+	eq(open(plugin, cx), 0, "pickers after the second press")
+	eq(#argv_lines(plugin, "branches"), 1, "branches calls after the second press")
+	plugin:answer("branches", BRANCHES, 0, cx)
+	eq(#cx.asked, 1, "pickers after branches answers")
+	eq(#argv_lines(plugin, "branches"), 0, "branches calls after the answer")
+end)
+
+test("a teardown during the first branches runs one more branches after it", function()
+	local plugin, cx = window()
+	open(plugin, cx)
+	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
+	function call.wait(_self: any, _ms: number): any
+		return nil
+	end
+	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
+	plugin:answer("remove", '{"removed":"/wt/worktrees/app/x","branch":"x","warnings":[]}', 0, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	eq(#cx.asked, 1, "pickers after the first branches answers")
+	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app --offline", "rerun")
+	plugin:answer("branches", STALE, 0, cx)
+	open(plugin, cx)
+	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main", "items after the teardown")
+end)
+
+test("a press after a first branches that never answered for 120 s starts it again", function()
+	local plugin, cx = window()
+	open(plugin, cx)
+	local dropped = drop_branches(plugin)
+	plugin:tick(120000)
+	eq(open(plugin, cx), 0, "pickers after a press at 120 s")
+	eq(#argv_lines(plugin, "branches"), 0, "branches calls after a press at 120 s")
+	plugin:tick(1)
+	eq(open(plugin, cx), 0, "pickers after a press after 120 s")
+	eq(#argv_lines(plugin, "branches"), 1, "branches calls after a press after 120 s")
+	plugin:answer("branches", BRANCHES, 0, cx)
+	eq(#cx.asked, 1, "pickers after the new branches answers")
+	dropped[1].cb({ stdout = STALE, stderr = "", status = 0 }, cx)
+	eq(#cx.asked, 1, "pickers after the late answer of the dropped branches")
+	open(plugin, cx)
+	eq(item_ids(cx.asked[#cx.asked]), item_ids(cx.asked[1]), "items after the late answer")
+end)
+
+test("a press after a background branches that never answered for 120 s starts a new one", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	drop_branches(plugin)
+	plugin:tick(120000)
+	eq(open(plugin, cx), 3, "pickers after a press at 120 s")
+	eq(#argv_lines(plugin, "branches"), 0, "branches calls after a press at 120 s")
+	plugin:tick(1)
+	eq(open(plugin, cx), 4, "pickers after a press after 120 s")
+	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app", "new background branches")
+	plugin:answer("branches", UPDATED, 0, cx)
+	open(plugin, cx)
+	eq(item_ids(cx.asked[#cx.asked]), "new other b:main b:x b:y*", "items after the new background branches")
 end)
 
 test("choosing a branch in a cached picker creates its worktree", function()
