@@ -1898,7 +1898,7 @@ local function reply_to<T>(call: any): CliCb<T>
 end
 
 tern.carly.export("create", {
-	sig = "(repo: string, branch: string, new: boolean?) -> {branch: string, carried: {string}, path: string, repo: string, setup: {line: string, typed: boolean}?, status: string, warnings: {string}}",
+	sig = "(repo: string, branch: string, new: boolean?) -> {branch: string, carried: {string}, owner: string, path: string, repo: string, setup: {line: string, typed: boolean}?, status: string, warnings: {string}}",
 	doc = "Create or reuse a worktree for branch in repo (a dir inside the repo) and open it as a tab. For a new worktree, setup is the line of setup commands of its repository: the reply comes once the tab's shell prompt shows and the line is typed (typed true), or once that is given up after at most 30 s (typed false, with a setup not run warning).",
 }, function(...: any): ...any
 	local args, _cx, call = export_args(...)

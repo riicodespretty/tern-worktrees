@@ -19,7 +19,8 @@ export interface Config {
   setup: SetupCommands;
 }
 
-const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
+/** Each value that `teardown` of the options file accepts. */
+export const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
 
 const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['cmd+shift+w'];
 

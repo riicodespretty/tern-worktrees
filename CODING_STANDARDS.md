@@ -5,7 +5,7 @@ Review reads this file. Each rule here is a judgment call that no linter makes. 
 ## One implementation
 
 - The CLI in `src/` is the one implementation of each git, gh and path rule. `window.luau` and `host.luau` call the CLI for paths, defaults and checks. A Luau copy of a CLI rule (the worktree root, the defaults of the options file, a path test) is a defect, because the two copies drift.
-- Two Luau copies stay, each with a test that fails when the copies drift. The window half reads `hotkeys.new` of the options file at load, before a CLI answer can come, so `DEFAULT_KEYS` in `window.luau` copies the default of `src/config.ts`: `test/config-command.test.ts` compares the two. `host.luau` and `window.luau` run in different virtual machines and cannot share code, so each has a copy of the worktree index lookup: `test/luau/lookup.test.luau` runs one case table through the two copies.
+- Three Luau copies stay, each with a test that fails when the copies drift. The window half reads `hotkeys.new` of the options file at load, before a CLI answer can come, so `DEFAULT_KEYS` in `window.luau` copies the default of `src/config.ts`: `test/config-command.test.ts` compares the two. `POLICY` in `window.luau` keys the text of each teardown policy by the values of `TEARDOWNS` in `src/config.ts`: `test/config-command.test.ts` compares its keys to `TEARDOWNS`. `host.luau` and `window.luau` run in different virtual machines and cannot share code, so each has a copy of the worktree index lookup: `test/luau/lookup.test.luau` runs one case table through the two copies.
 - A command module in `src/commands/` exports `run` only. A helper that two commands share goes in `src/git.ts`, `src/paths.ts` or a small module adjacent to them.
 
 ## Contracts that meet

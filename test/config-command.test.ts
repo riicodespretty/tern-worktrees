@@ -3,7 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { main } from '../src/cli.ts';
 import { run } from '../src/commands/config.ts';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig, TEARDOWNS } from '../src/config.ts';
 import { REPO_DIR, useSandbox } from './helpers.ts';
 
 let file = '';
@@ -13,6 +13,13 @@ const windowDefaultKeys = (): string[] => {
   const source = readFileSync(path.join(REPO_DIR, 'window.luau'), 'utf-8');
   const literal = /^local DEFAULT_KEYS = \{(?<keys>[^}]*)\}$/mu.exec(source)?.groups?.keys ?? '';
   return [...literal.matchAll(/"(?<key>[^"]*)"/gu)].map(match => match.groups?.key ?? '');
+};
+
+/** The keys of the `POLICY` literal in `window.luau`, the teardown policy text that the window half shows before a teardown. */
+const windowPolicyKeys = (): string[] => {
+  const source = readFileSync(path.join(REPO_DIR, 'window.luau'), 'utf-8');
+  const literal = /^local POLICY = \{(?<entries>[^}]*)\}$/mu.exec(source)?.groups?.entries ?? '';
+  return [...literal.matchAll(/^\s*(?:\["(?<quoted>[^"]*)"\]|(?<bare>\w+))\s*=/gmu)].map(match => match.groups?.quoted ?? match.groups?.bare ?? '');
 };
 
 describe('config command', () => {
@@ -51,5 +58,9 @@ describe('config command', () => {
 
   it('keeps the hotkeys default of window.luau equal to the default of the options file', () => {
     expect(windowDefaultKeys()).toStrictEqual(loadConfig().hotkeys.new);
+  });
+
+  it('keeps the keys of POLICY in window.luau equal to the teardown values of the options file', () => {
+    expect(new Set(windowPolicyKeys())).toStrictEqual(new Set(TEARDOWNS));
   });
 });

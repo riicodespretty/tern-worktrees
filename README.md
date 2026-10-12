@@ -83,7 +83,7 @@ The branch picker of that repository opens next.
 
 A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a picker reads `Worktree of this branch is at <path>` and offers `Relocate to <path>`. Enter relocates, and Escape keeps the worktree where it is. Relocate moves the worktree into the root.
 
-When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode. Of the work to lose in the first worktree, only a change, a new file that git does not track or a submodule commit that no remote holds stops the rebuild. Then the worktree stays where it is, and a message lists that work.
 
 An omp-owned worktree of the branch needs no relocation: `tern-wt` opens its tab where it is.
 

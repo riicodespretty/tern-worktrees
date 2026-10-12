@@ -21,7 +21,7 @@ export type CreateStatus = 'created' | 'relocated' | 'reused';
 /** How long `create` waits for the shell prompt of the tab it opened before it types the setup commands. */
 const SETUP_PROMPT_SECONDS = 30;
 
-/** Who owns the worktree that `create` gives: a worktree in the worktree root always has an owner. */
+/** Who owns the worktree that `create` gives. */
 type Owner = Exclude<WorktreeOwner, null>;
 
 /** The Tern tab that shows the worktree. */
