@@ -103,7 +103,7 @@ When the tab closes before the picker opens, for example from the tab bar, the p
 When the teardown fails, for example because of uncommitted changes, a new file that git does not track, or an ignored `.env` file, an error toast gives the cause, `Teardown failed: <cause>`. For a worktree with work to lose, the cause lists the files, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the cause adds `and <n> more`. A second picker then shows the same `Teardown failed: <cause>` in its placeholder, for example `Teardown failed: 1 file with work to lose: ?? .setup-ran`, and offers:
 
 - Retry: runs the teardown again.
-- Force delete: removes the worktree and discards its uncommitted work.
+- Force delete: removes the worktree and discards its uncommitted work. A `Deleting worktree…` toast shows while it runs, and a `Deleted worktree` toast replaces it when the worktree is gone.
 
 Escape keeps the tab and the worktree.
 

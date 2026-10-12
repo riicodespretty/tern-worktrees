@@ -1473,6 +1473,7 @@ local function run_remove(
 	local args = { "remove", path, "--keep-tab" }
 	if force then
 		table.insert(args, "--force")
+		cx:toast("info", "Deleting worktree…")
 	end
 	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
@@ -1498,7 +1499,7 @@ local function run_remove(
 		end
 		cx2:toast(
 			"success",
-			"deleted" .. NO_BREAK_SPACE .. "worktree",
+			"Deleted" .. NO_BREAK_SPACE .. "worktree",
 			join_or_nil(res.warnings, "; ") or short_path(path)
 		)
 		set_entry(res.removed, nil)
