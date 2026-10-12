@@ -1464,8 +1464,13 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		placeholder = placeholderPrefix .. short_path(path),
 		icon = "branch",
 		items = {
-			{ id = "keep", label = "Keep worktree", detail = keepDetail },
-			{ id = "teardown", label = "Tear down", detail = POLICY[policy] or ("Teardown policy: " .. policy) },
+			{ id = "keep", label = "Keep worktree", detail = keepDetail, icon = "folder" },
+			{
+				id = "teardown",
+				label = "Tear down",
+				detail = POLICY[policy] or ("Teardown policy: " .. policy),
+				icon = "trash",
+			},
 		},
 	}, function(id, cx2, pickErr)
 		if id == "teardown" then
