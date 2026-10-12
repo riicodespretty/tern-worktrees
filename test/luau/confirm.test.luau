@@ -200,13 +200,13 @@ end)
 test("a failed teardown toasts the files, ignored ones first in the 10", function()
 	local _, cx = fail_teardown(DIRTY)
 	local toast = cx.toasts[#cx.toasts]
-	local reason = "15 files with work to lose:  M c1,  M c2,  M c3,  M c4,  M c5,  M c6,  M c7; "
+	local cause = "15 files with work to lose:  M c1,  M c2,  M c3,  M c4,  M c5,  M c6,  M c7; "
 		.. "ignored, hard to rebuild: i1, i2, i3; and 5 more"
 	eq(toast.level, "error", "toast level")
-	eq(toast.title, "Teardown failed: feat", "toast title")
-	eq(toast.detail, reason, "toast detail")
+	eq(toast.title, "Teardown failed: " .. cause, "toast title")
+	eq(toast.detail, nil, "toast detail")
 	local opts = cx.asked[2].opts
-	eq(opts.placeholder, "Teardown failed · feat · " .. reason, "placeholder")
+	eq(opts.placeholder, "Teardown failed: " .. cause, "placeholder")
 	eq(#opts.items, 2, "items")
 	eq(opts.items[1].id, "retry", "items[1].id")
 	eq(opts.items[1].label, "Retry", "items[1].label")
@@ -223,8 +223,11 @@ test("the failed-teardown picker names the file that stops the teardown, not the
 			.. WORKTREE
 			.. '","files":["?? .setup-ran"]}}'
 	)
+	local toast = cx.toasts[#cx.toasts]
+	eq(toast.title, "Teardown failed: 1 file with work to lose: ?? .setup-ran", "toast title")
+	eq(toast.detail, nil, "toast detail")
 	local placeholder = cx.asked[2].opts.placeholder
-	eq(placeholder, "Teardown failed · feat · 1 file with work to lose: ?? .setup-ran", "placeholder")
+	eq(placeholder, "Teardown failed: 1 file with work to lose: ?? .setup-ran", "placeholder")
 	eq(string.find(placeholder, "/", 1, true), nil, "a slash in the placeholder")
 end)
 
@@ -236,9 +239,9 @@ test("a failed teardown names the worktree by its folder in the git message and 
 			.. WORKTREE
 			.. '.carry"}}'
 	)
-	local reason = "fatal: 'feat' is locked · Saved files: …/worktrees/app/feat.carry"
-	eq(cx.toasts[#cx.toasts].detail, reason, "toast detail")
-	eq(cx.asked[2].opts.placeholder, "Teardown failed · feat · " .. reason, "placeholder")
+	local cause = "fatal: 'feat' is locked · Saved files: …/worktrees/app/feat.carry"
+	eq(cx.toasts[#cx.toasts].title, "Teardown failed: " .. cause, "toast title")
+	eq(cx.asked[2].opts.placeholder, "Teardown failed: " .. cause, "placeholder")
 end)
 
 test("Retry sends remove again", function()

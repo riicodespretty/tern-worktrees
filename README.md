@@ -98,7 +98,7 @@ Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys.
 
 When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can hide Keep worktree, so check the selected item before you press Enter.
 
-When the teardown fails, for example because of uncommitted changes, a new file that git does not track, or an ignored `.env` file, an error toast names the worktree by its folder and tells why. The toast shows the files with work to lose, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the toast adds `and <n> more`. A second picker then shows the same cause in its placeholder, `Teardown failed · <folder> · <cause>`, for example `Teardown failed · feature-x · 1 file with work to lose: ?? .setup-ran`, and offers:
+When the teardown fails, for example because of uncommitted changes, a new file that git does not track, or an ignored `.env` file, an error toast gives the cause, `Teardown failed: <cause>`. For a worktree with work to lose, the cause lists the files, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the cause adds `and <n> more`. A second picker then shows the same `Teardown failed: <cause>` in its placeholder, for example `Teardown failed: 1 file with work to lose: ?? .setup-ran`, and offers:
 
 - Retry: runs the teardown again.
 - Force delete: removes the worktree and discards its uncommitted work.
