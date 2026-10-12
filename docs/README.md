@@ -79,7 +79,9 @@ The native picker has no keys of its own for an item. Thus Tear down has no `⌫
 
 ### Pickers and sessions
 
-When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The current session gets the branch picker of its repository, else the repo picker opens. A new worktree tab opens in the session of its repository, else in a new session. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
+When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The current session gets the branch picker of its repository, else the repo picker opens. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
+
+A new worktree tab opens in the repository session, or in a new session when the repository has none. When two sessions show the repository, the oldest session (the lowest session id) gets the tab, also when the other session is the current session. The window half does not change the other session. After a reload of the plugin, a repository can get a second session: see the parked panes below.
 
 When the user presses the hotkey again before a picker opens, the newest press wins: the `resolve` and `branches` calls of the older presses end with no picker, so one picker opens, and no picker opens after the user closes it.
 

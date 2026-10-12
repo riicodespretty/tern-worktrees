@@ -32,10 +32,7 @@ local LISTED = listed({
 
 -- Starts a window with one pane in `cwd` (default FEAT/src), and answers its `list --all` with `answer`.
 local function started(answer: string, cwd: string?): (Stub.Harness, any)
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = cwd or FEAT .. "/src" } }, 1)
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = cwd or FEAT .. "/src" } }, 1, { fail = { new_tab = true } })
 	local plugin = Stub.load({ env = ENV })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", answer, 0, cx)

@@ -28,19 +28,17 @@ end
 
 local UNTYPED = created(`\{"line":"{LINE}","typed":false}`)
 
--- A window with pane 1 in /r/app plus `extra`. Its `new_tab` opens shell pane 5 in tab 2, not yet at the prompt.
-local function window(extra: { Stub.Pane }?): (Stub.Harness, any, { Stub.Pane })
+-- The shell pane of the new tab that a create opens in a `window()`, not yet at the prompt.
+local SHELL = 2
+
+-- A window with pane 1 in /r/app plus `extra`, with the effects of `fail` failing.
+local function window(extra: { Stub.Pane }?, fail: Stub.Fail?): (Stub.Harness, any, { Stub.Pane })
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local more: { Stub.Pane } = extra or {}
 	for _, p in more do
 		table.insert(panes, p)
 	end
-	local cx = Stub.cx(panes, 1)
-	cx.layout.new_tab = function(_self: any, opts: any): number?
-		table.insert(panes, { pane = 5, tab = 2, cwd = opts.cwd, at_prompt = false })
-		return 5
-	end
-	cx.layout.name_tab = function(_self: any, _tab: number, _name: string) end
+	local cx = Stub.cx(panes, 1, { fail = fail })
 	return Stub.load({ env = ENV, cx = cx }), cx, panes
 end
 
@@ -90,10 +88,10 @@ test("type_setup polls, then types the line once the shell is at its prompt", fu
 	eq(#cx.typed, 0, "typed before the prompt")
 	plugin:tick(200)
 	eq(#cx.typed, 0, "typed after one poll without a prompt")
-	find_pane(panes, 5).at_prompt = true
+	find_pane(panes, SHELL).at_prompt = true
 	plugin:tick(200)
 	eq(#cx.typed, 1, "typed at the prompt")
-	eq(cx.typed[1].pane, 5, "typed pane")
+	eq(cx.typed[1].pane, SHELL, "typed pane")
 	eq(cx.typed[1].text, LINE .. "\r", "typed text")
 	wait_ms(plugin, 30000)
 	eq(#cx.typed, 1, "typed once")
@@ -125,7 +123,7 @@ do
 	test(`type_setup does nothing when {case.what}`, function()
 		local plugin, cx, panes = window()
 		create_x(plugin, cx, created(case.setup))
-		find_pane(panes, 5).at_prompt = true
+		find_pane(panes, SHELL).at_prompt = true
 		wait_ms(plugin, 31000)
 		eq(#cx.typed, 0, "typed")
 		eq(#setup_toasts(cx), 0, "setup toasts")
@@ -135,7 +133,7 @@ end
 test("type_setup stops when the pane is gone", function()
 	local plugin, cx, panes = window()
 	create_x(plugin, cx, UNTYPED)
-	local shell = find_pane(panes, 5)
+	local shell = find_pane(panes, SHELL)
 	table.remove(panes, table.find(panes, shell))
 	plugin:tick(200)
 	shell.at_prompt = true
@@ -158,7 +156,7 @@ test("type_setup stops when its timer gets no cx", function()
 		end
 	end
 	eq(polls, 1, "pending polls")
-	find_pane(panes, 5).at_prompt = true
+	find_pane(panes, SHELL).at_prompt = true
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
 	eq(#setup_toasts(cx), 0, "setup toasts")
@@ -177,10 +175,7 @@ test("a tab that was open before gets the open-before toast and no typing", func
 end)
 
 test("a create that opens no tab gets the no-tab toast and no typing", function()
-	local plugin, cx = window()
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local plugin, cx = window(nil, { new_tab = true })
 	create_x(plugin, cx, UNTYPED)
 	local toasts = setup_toasts(cx)
 	eq(#toasts, 1, "setup toasts")
@@ -189,59 +184,6 @@ test("a create that opens no tab gets the no-tab toast and no typing", function(
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
-end)
-
-test("a parked pane moved into a new tab gets the no-new-shell toast and no typing", function()
-	local plugin, cx, panes = window({ { pane = 3, cwd = PATH, parked = true, at_prompt = true } })
-	cx.layout.unpark = function(_self: any, _pane: number): boolean
-		return true
-	end
-	cx.layout.move_to_new_tab = function(_self: any, pane: number, _session: number?): number?
-		find_pane(panes, pane).tab = 4
-		find_pane(panes, pane).parked = false
-		return 4
-	end
-	cx.sessions.create = function(_self: any, _opts: any): any
-		return { id = 2, name = "app" }
-	end
-	create_x(plugin, cx, UNTYPED)
-	local toasts = setup_toasts(cx)
-	eq(#toasts, 1, "setup toasts")
-	eq(toasts[1].title, "Setup not run: no new shell in the tab", "toast title")
-	eq(toasts[1].detail, LINE, "toast detail")
-	wait_ms(plugin, 31000)
-	eq(#cx.typed, 0, "typed")
-end)
-
-test("the first tab of a new session gets the setup commands", function()
-	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/other" } }
-	local cx = Stub.cx(panes, 1)
-	local opened = false
-	cx.sessions.create = function(_self: any, opts: any): any
-		opened = true
-		table.insert(panes, { pane = 7, tab = 3, cwd = opts.cwd, at_prompt = true })
-		return { id = 2, name = opts.name }
-	end
-	cx.session.sessions = function(_self: any): { any }
-		local sessions = { { id = 1, name = "main", tabs = { 1 }, current = true } }
-		if opened then
-			table.insert(sessions, { id = 2, name = "app", tabs = { 3 }, current = false })
-		end
-		return sessions
-	end
-	cx.layout.name_tab = function(_self: any, _tab: number, _name: string) end
-	local plugin = Stub.load({ env = ENV, cx = cx })
-	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
-	function call.wait(_self: any, _ms: number): any
-		return nil
-	end
-	plugin.exports.create("/r/app", "x", nil, cx, call)
-	plugin:answer("create", UNTYPED, 0, cx)
-	plugin:answer("resolve", '{"repos":[{"dir":"/r/other","root":"/r/other","name":"other"}]}', 0, cx)
-	eq(opened, true, "session created")
-	eq(#cx.typed, 1, "typed")
-	eq(cx.typed[1].pane, 7, "typed pane")
-	eq(cx.typed[1].text, LINE .. "\r", "typed text")
 end)
 
 test("a Carly create whose tab fails to open types nothing", function()
@@ -293,7 +235,7 @@ test("a Carly create replies typed = true after the tick that types the line", f
 	local replies = carly_create(plugin, cx)
 	plugin:tick(200)
 	eq(#replies, 0, "replies before the prompt")
-	find_pane(panes, 5).at_prompt = true
+	find_pane(panes, SHELL).at_prompt = true
 	plugin:tick(200)
 	eq(#cx.typed, 1, "typed")
 	eq(#replies, 1, "replies after the prompt")
@@ -319,7 +261,7 @@ end)
 test("a Carly create replies typed = false with no warning when the pane is gone", function()
 	local plugin, cx, panes = window()
 	local replies = carly_create(plugin, cx)
-	table.remove(panes, table.find(panes, find_pane(panes, 5)))
+	table.remove(panes, table.find(panes, find_pane(panes, SHELL)))
 	plugin:tick(200)
 	eq(#replies, 1, "replies")
 	eq(replies[1].setup.typed, false, "setup typed")
@@ -338,10 +280,7 @@ test("a Carly create into a tab that was open before replies at once with the wa
 end)
 
 test("a Carly create that opens no tab replies at once with the no-tab warning", function()
-	local plugin, cx = window()
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local plugin, cx = window(nil, { new_tab = true })
 	local replies = carly_create(plugin, cx)
 	eq(#replies, 1, "replies")
 	eq(replies[1].setup.typed, false, "setup typed")

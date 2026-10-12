@@ -19,6 +19,7 @@
 - Count a tab that `tern-wt create` opened from a shell as a worktree tab after one refresh. Its close then offers the teardown picker
 - Run one `branches` at a time for each repository, which the worktree rows and the branch picker share. A create or a teardown refreshes only the repository of its worktree
 - Start a new `branches` or `list --all` when Tern dropped the answer of the last one for 120 s. Before, the worktree rows and the worktree index stopped their refreshes until the plugin reloaded
+- Open a new worktree tab in the oldest session of its repository when two or more sessions show that repository. Before, the order of a Luau table selected the session
 
 ## [0.1.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.1.0 "2026-10-10")
 

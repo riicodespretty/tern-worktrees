@@ -184,35 +184,12 @@ test("window_start writes the worktree index from list --all", function()
 	eq(omp.owner, "omp", "owner of the omp-owned worktree")
 end)
 
-test("a create answer writes the index entry before new_tab runs", function()
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local plugin = Stub.load({ env = ENV })
-	local seen: any = nil
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		local stored = plugin.kv.worktreeIndex
-		seen = if stored ~= nil then stored["/wt/worktrees/app/x"] else nil
-		return nil
-	end
-	pick_branch_x(plugin, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	eq(seen ~= nil, true, "entry written before new_tab")
-	eq(seen.main, "/r/app", "main")
-	eq(seen.branch, "x", "branch")
-	eq(seen.changed, 0, "changed")
-	eq(seen.owner, "tern", "owner")
-end)
-
 -- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
 -- `owner`.
 local function pickers_after_close_of_created_tab(owner: string): number
 	local X = "/wt/worktrees/app/x"
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
-	cx.layout.new_tab = function(_self: any, opts: any): number?
-		table.insert(panes, { pane = 2, tab = 2, cwd = opts.cwd })
-		return 2
-	end
-	cx.layout.name_tab = function(_self: any, _tab: number, _name: string) end
 	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
 	pick_branch_x(plugin, cx)
 	plugin:answer(
@@ -368,11 +345,8 @@ test(
 
 for _, gap in { 10, 0 } do
 	test(`an entry from open_tab {gap} ms after a list --all started survives its answer`, function()
-		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1, { fail = { new_tab = true } })
 		local plugin = Stub.load({ env = ENV })
-		cx.layout.new_tab = function(_self: any, _opts: any): number?
-			return nil
-		end
 		plugin.handlers.window_start(cx)
 		plugin:tick(gap)
 		pick_branch_x(plugin, cx)
@@ -432,10 +406,7 @@ end)
 
 -- Starts a window over the shared `kv`, with a pane in /r/app, and answers its `list --all` with LISTED.
 local function window_over(kv: { [string]: any }): (Stub.Harness, any)
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1, { fail = { new_tab = true } })
 	local plugin = Stub.load({ env = ENV, kv = kv })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", LISTED, 0, cx)

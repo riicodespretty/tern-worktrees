@@ -380,16 +380,19 @@ local function session_of_tab(index: SessionIndex, tab: number?): number?
 	return if session ~= nil then session.id else nil
 end
 
-local function switch_to_session_if_current_known(cx: WindowCx, index: SessionIndex, sid: number)
+-- The session to switch to before an effect in session `sid`, or nil when no switch is needed. With `strict` false,
+-- a switch runs only when the current session is known and is not `sid`. With `strict` true, a switch runs unless the
+-- current session is known to be `sid`.
+local function switch_for(index: SessionIndex, sid: number, strict: boolean): number?
 	local current = index.current
-	if current ~= nil and current.id ~= sid then
-		cx.sessions:switch(sid)
+	if current == nil then
+		return if strict then sid else nil
 	end
+	return if current.id ~= sid then sid else nil
 end
 
-local function switch_to_session(cx: WindowCx, index: SessionIndex, sid: number)
-	local current = index.current
-	if current == nil or current.id ~= sid then
+local function switch_to(cx: WindowCx, sid: number?)
+	if sid ~= nil then
 		cx.sessions:switch(sid)
 	end
 end
@@ -420,9 +423,7 @@ local function close_tab(cx: WindowCx, tab: number)
 	end
 	local index = session_index(cx)
 	local sid = session_of_tab(index, tab)
-	if sid ~= nil then
-		switch_to_session_if_current_known(cx, index, sid)
-	end
+	switch_to(cx, if sid ~= nil then switch_for(index, sid, false) else nil)
 	cx.layout:focus(target)
 	local focused = cx.session:focused()
 	if focused == nil or cx.session:tab_of(focused) ~= tab then
@@ -639,6 +640,34 @@ local function known_cwd(cwd: string?): string?
 	return cwd
 end
 
+-- Tab placement: the repository of each session, where the worktree tab of a `create` answer goes, and the effects
+-- that put it there.
+
+-- The repository root of each session: the root of the first pane, in pane order, of its tabs. A session of
+-- `previous` that is open and has no tab keeps its root. A session that closed drops out.
+local function repos_of_sessions(
+	panes: { PaneInfo },
+	index: SessionIndex,
+	rootOf: { [string]: string | false },
+	previous: { [number]: string }
+): { [number]: string }
+	local repos: { [number]: string } = {}
+	for _, pane in ipairs(panes) do
+		local sid = session_of_tab(index, pane.tab)
+		local root = pane.cwd and rootOf[pane.cwd]
+		if sid ~= nil and type(root) == "string" and repos[sid] == nil then
+			repos[sid] = root
+		end
+	end
+	for id, root in pairs(previous) do
+		local entry = index.byId[id]
+		if entry ~= nil and #entry.tabs == 0 then
+			repos[id] = root
+		end
+	end
+	return repos
+end
+
 local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	local cwds: { string } = {}
 	local seen: { [string]: boolean } = {}
@@ -670,27 +699,105 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 				table.insert(localRepos, { root = repoRoot, name = r.name or basename(repoRoot) })
 			end
 		end
-		local index = session_index(cx2)
-		local tabless: { [number]: string } = {}
-		for id, root in pairs(rootOfSession) do
-			local entry = index.byId[id]
-			if entry ~= nil and #entry.tabs == 0 then
-				tabless[id] = root
-			end
-		end
+		local repos = repos_of_sessions(cx2.session:panes(), session_index(cx2), rootOfDir, rootOfSession)
 		table.clear(rootOfSession)
-		for _, pane in ipairs(cx2.session:panes()) do
-			local sid = session_of_tab(index, pane.tab)
-			local root = pane.cwd and rootOfDir[pane.cwd]
-			if sid ~= nil and type(root) == "string" and rootOfSession[sid] == nil then
-				rootOfSession[sid] = root
-			end
-		end
-		for id, root in pairs(tabless) do
+		for id, root in pairs(repos) do
 			rootOfSession[id] = root
 		end
 		cb(cx2)
 	end)
+end
+
+-- Where the worktree tab goes:
+-- - `open`: a pane in the worktree has a tab. The plugin focuses it, after a switch to `switch` when set.
+-- - `new_tab`: the repository session `session` has a tab. A new tab opens there, after a switch to `switch` when
+--   set, with the parked pane `parked` when it moves, else with a new shell.
+-- - `empty_session`: the repository session `session` has no tab. A new tab opens there, after a switch to `switch`
+--   when set, and the parked pane `parked` goes into it in place of its shell.
+-- - `new_session`: the repository has no session. A new session named `name` opens, and the parked pane `parked`
+--   goes into its first tab in place of its shell.
+type Placement =
+	{ kind: "open", pane: number, tab: number?, switch: number? }
+	| { kind: "new_tab", session: number, switch: number?, parked: number? }
+	| { kind: "empty_session", session: number, switch: number?, parked: number? }
+	| { kind: "new_session", name: string, parked: number? }
+
+-- Where the worktree tab of `path`, in the repository `repo`, goes. The repository session is the open session with
+-- the lowest id of the sessions whose root in `repoOf` is `repo`. Reads facts only and runs no effect.
+local function place(
+	path: string,
+	repo: string,
+	panes: { PaneInfo },
+	index: SessionIndex,
+	repoOf: { [number]: string }
+): Placement
+	local parked: number? = nil
+	for _, pane in ipairs(panes) do
+		if is_under(pane.cwd, path) then
+			if pane.parked then
+				parked = parked or pane.pane
+			else
+				local sid = session_of_tab(index, pane.tab)
+				local switch = if sid ~= nil then switch_for(index, sid, false) else nil
+				return { kind = "open", pane = pane.pane, tab = pane.tab, switch = switch }
+			end
+		end
+	end
+	local sid: number? = nil
+	for id, root in pairs(repoOf) do
+		if root == repo and index.byId[id] ~= nil and (sid == nil or id < sid) then
+			sid = id
+		end
+	end
+	if sid == nil then
+		return { kind = "new_session", name = basename(repo), parked = parked }
+	end
+	local switch = switch_for(index, sid, true)
+	if #index.byId[sid].tabs == 0 then
+		return { kind = "empty_session", session = sid, switch = switch, parked = parked }
+	end
+	return { kind = "new_tab", session = sid, switch = switch, parked = parked }
+end
+
+-- Unparks `parked` and moves it to a new tab of session `sid`. Returns that tab, or nil when the pane did not move.
+-- A pane that unparks and does not move parks again.
+local function move_parked(cx: WindowCx, parked: number?, sid: number): number?
+	if parked == nil or not cx.layout:unpark(parked) then
+		return nil
+	end
+	local tab = cx.layout:move_to_new_tab(parked, sid)
+	if tab == nil then
+		cx.layout:park(parked)
+	end
+	return tab
+end
+
+-- Puts the parked pane `parked` into the new tab `freshTab` in place of its shells. Returns the tab of the worktree
+-- and its new shell: the tab of `parked` and no shell when it unparks, else `freshTab` and its first pane.
+local function fill_fresh_tab(cx: WindowCx, freshTab: number?, parked: number?): (number?, number?)
+	if freshTab == nil then
+		return nil, nil
+	end
+	if parked ~= nil then
+		local shells: { number } = {}
+		for _, pane in ipairs(cx.session:panes()) do
+			if pane.tab == freshTab then
+				table.insert(shells, pane.pane)
+			end
+		end
+		if cx.layout:unpark(parked) then
+			for _, shell in ipairs(shells) do
+				cx.layout:close(shell)
+			end
+			return cx.session:tab_of(parked), nil
+		end
+	end
+	for _, pane in ipairs(cx.session:panes()) do
+		if pane.tab == freshTab then
+			return freshTab, pane.pane
+		end
+	end
+	return freshTab, nil
 end
 
 -- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or nil and the reason
@@ -698,89 +805,31 @@ end
 local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	local path = res.path
 	set_entry(path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
+	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), rootOfSession)
 	local tab: number? = nil
-	local index = session_index(cx)
-	local parked: number? = nil
-	for _, pane in ipairs(cx.session:panes()) do
-		if is_under(pane.cwd, path) then
-			if pane.parked then
-				parked = parked or pane.pane
-			else
-				local sid = session_of_tab(index, pane.tab)
-				if sid ~= nil then
-					switch_to_session_if_current_known(cx, index, sid)
-				end
-				cx.layout:focus(pane.pane)
-				tab = pane.tab
-				break
-			end
-		end
-	end
-	local sid: number? = nil
-	for id, root in pairs(rootOfSession) do
-		if root == res.repo and index.byId[id] ~= nil then
-			sid = id
-			break
-		end
-	end
-	local reused = tab
-	local freshTab: number? = nil
-	if tab == nil and sid == nil then
-		local newSession = cx.sessions:create({ name = basename(res.repo), cwd = path })
-		sid = newSession.id
-		rootOfSession[newSession.id] = res.repo
-		local created = session_index(cx).byId[newSession.id]
-		freshTab = if created ~= nil then created.tabs[1] else nil
-	end
-	if tab == nil and sid ~= nil and freshTab == nil then
-		local target = index.byId[sid]
-		if target ~= nil and #target.tabs == 0 then
-			switch_to_session(cx, index, sid)
-			local pane = cx.layout:new_tab({ cwd = path })
-			freshTab = if pane ~= nil then cx.session:tab_of(pane) else nil
-		end
-	end
-	if tab == nil and parked ~= nil then
-		if freshTab == nil and sid ~= nil then
-			switch_to_session(cx, index, sid)
-		end
-		local shells: { number } = {}
-		for _, pane in ipairs(cx.session:panes()) do
-			if freshTab ~= nil and pane.tab == freshTab then
-				table.insert(shells, pane.pane)
-			end
-		end
-		if cx.layout:unpark(parked) then
-			if freshTab ~= nil then
-				for _, shell in ipairs(shells) do
-					cx.layout:close(shell)
-				end
-				tab = cx.session:tab_of(parked)
-			else
-				tab = cx.layout:move_to_new_tab(parked, sid)
-				if tab == nil then
-					cx.layout:park(parked)
-				end
-			end
-		end
-	end
 	local shellPane: number? = nil
-	if tab == nil then
-		if freshTab ~= nil then
-			tab = freshTab
-			for _, pane in ipairs(cx.session:panes()) do
-				if pane.tab == freshTab then
-					shellPane = pane.pane
-					break
-				end
-			end
-		elseif sid ~= nil then
-			switch_to_session(cx, index, sid)
+	if plan.kind == "open" then
+		switch_to(cx, plan.switch)
+		cx.layout:focus(plan.pane)
+		tab = plan.tab
+	elseif plan.kind == "new_tab" then
+		switch_to(cx, plan.switch)
+		tab = move_parked(cx, plan.parked, plan.session)
+		if tab == nil then
 			shellPane = cx.layout:new_tab({ cwd = path })
 			tab = if shellPane ~= nil then cx.session:tab_of(shellPane) else nil
 		end
+	elseif plan.kind == "empty_session" then
+		switch_to(cx, plan.switch)
+		local pane = cx.layout:new_tab({ cwd = path })
+		tab, shellPane = fill_fresh_tab(cx, if pane ~= nil then cx.session:tab_of(pane) else nil, plan.parked)
+	else
+		local created = cx.sessions:create({ name = plan.name, cwd = path })
+		rootOfSession[created.id] = res.repo
+		local info = session_index(cx).byId[created.id]
+		tab, shellPane = fill_fresh_tab(cx, if info ~= nil then info.tabs[1] else nil, plan.parked)
 	end
-	if tab ~= nil and tab ~= reused then
+	if tab ~= nil and plan.kind ~= "open" then
 		cx.layout:name_tab(tab, res.branch)
 	end
 	if tab ~= nil and res.owner == "tern" then
@@ -794,7 +843,7 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 		return shellPane, nil
 	elseif tab == nil then
 		return nil, "no tab opened"
-	elseif tab == reused then
+	elseif plan.kind == "open" then
 		return nil, "the tab was open before"
 	end
 	return nil, "no new shell in the tab"

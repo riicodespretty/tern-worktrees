@@ -215,6 +215,21 @@ test("Keep worktree closes the tab and sends no remove", function()
 	eq(cx.commands[1], "close_tab", "command")
 end)
 
+test("Keep worktree when the worktree tab does not get focus toasts and runs no close_tab", function()
+	local panes: { Stub.Pane } =
+		{ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" }, { pane = 2, tab = 2, cwd = "/tmp" } }
+	local cx = Stub.cx(panes, 1, { fail = { focus = true } })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
+	plugin:answer("config", CONFIG, 0, cx)
+	cx.focused = 2
+	cx.asked[1].next(item_by_id(cx.asked[1], "keep"), nil, cx)
+	eq(table.concat(cx.effects, "; "), "focus 1 failed", "effects")
+	local toast = cx.toasts[#cx.toasts]
+	eq(`{toast.title} · {toast.detail}`, "Could not focus the worktree tab · Close it by hand", "toast")
+	eq(#cx.commands, 0, "commands run")
+end)
+
 test("Tear down sends remove <path> --keep-tab", function()
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(item_by_id(cx.asked[1], "teardown"), nil, cx)

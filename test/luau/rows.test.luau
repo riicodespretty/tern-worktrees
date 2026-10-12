@@ -55,10 +55,7 @@ end
 -- A window with `panes` (default pane 1 in REPO), the focused pane `focused` (default 1), and
 -- `git.auto_fetch_minutes` set to `minutes`.
 local function window(minutes: number, panes: { Stub.Pane }?, focused: number?): (Stub.Harness, any)
-	local cx = Stub.cx(panes or { { pane = 1, tab = 1, cwd = REPO } }, focused or 1)
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local cx = Stub.cx(panes or { { pane = 1, tab = 1, cwd = REPO } }, focused or 1, { fail = { new_tab = true } })
 	cx.settings = {
 		get = function(_self: any, _key: string): any
 			return minutes

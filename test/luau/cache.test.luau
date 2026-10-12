@@ -98,10 +98,7 @@ end
 
 -- A window with pane 1 in REPO and `git.auto_fetch_minutes` set to `minutes`.
 local function window(minutes: number): (Stub.Harness, any)
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
-	cx.layout.new_tab = function(_self: any, _opts: any): number?
-		return nil
-	end
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1, { fail = { new_tab = true } })
 	cx.settings = {
 		get = function(_self: any, _key: string): any
 			return minutes
