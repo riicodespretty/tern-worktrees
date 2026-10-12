@@ -12,6 +12,7 @@ local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":
 local NO_PROMPT = "setup not run: no shell prompt in 30 s"
 local OPEN_BEFORE = "setup not run: the tab was open before"
 local NO_TAB = "setup not run: no tab opened"
+local NO_NEW_SHELL = "setup not run: no new shell in the tab"
 
 -- The `create` answer for branch x, with `setup` as its JSON value.
 local function created(setup: string): string
@@ -178,6 +179,28 @@ test("a create that opens no tab gets the no-tab toast and no typing", function(
 	eq(#toasts, 1, "setup toasts")
 	eq(toasts[1].level, "error", "toast level")
 	eq(toasts[1].title, NO_TAB, "toast title")
+	eq(toasts[1].detail, LINE, "toast detail")
+	wait_ms(plugin, 31000)
+	eq(#cx.typed, 0, "typed")
+end)
+
+test("a parked pane moved into a new tab gets the no-new-shell toast and no typing", function()
+	local plugin, cx, panes = window({ { pane = 3, cwd = PATH, parked = true, at_prompt = true } })
+	cx.layout.unpark = function(_self: any, _pane: number): boolean
+		return true
+	end
+	cx.layout.move_to_new_tab = function(_self: any, pane: number, _session: number?): number?
+		find_pane(panes, pane).tab = 4
+		find_pane(panes, pane).parked = false
+		return 4
+	end
+	cx.sessions.create = function(_self: any, _opts: any): any
+		return { id = 2, name = "app" }
+	end
+	create_x(plugin, cx, UNTYPED)
+	local toasts = setup_toasts(cx)
+	eq(#toasts, 1, "setup toasts")
+	eq(toasts[1].title, NO_NEW_SHELL, "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")

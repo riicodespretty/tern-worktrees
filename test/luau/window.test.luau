@@ -6,7 +6,6 @@ local test, eq = runner.test, runner.eq
 
 local WORKTREE = "/wt/worktrees/app/feat"
 
--- Loads window.luau with WORKTREE as a worktree whose main checkout is /src/<mainRepo>.
 local function load_worktree_of(mainRepo: string): Stub.Harness
 	return Stub.load({
 		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },

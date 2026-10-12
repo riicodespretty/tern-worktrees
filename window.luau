@@ -166,7 +166,6 @@ local listAgain = false
 local refreshPending = false
 local listStartedAt: number? = nil
 
--- The worktree index entry of the worktree that holds `cwd`. When worktree paths nest, the longest path wins.
 local function entry_at(cwd: string?): IndexEntry?
 	local found: string? = nil
 	for path in pairs(worktreeIndex) do
@@ -515,15 +514,12 @@ local function settle<T>(
 	end
 end
 
--- `choose` asks with `cx:pick`, and calls `cb` with the id of the picked item, or nil when the user dismissed the
--- picker or the pick failed.
 local function choose(cx: WindowCx, opts: PickOptions, cb: (id: string?, cx: WindowCx, err: string?) -> ())
 	cx:pick(opts):next(settle("Picker failed", function(item: PickItem?, cx2: WindowCx, err: string?)
 		cb(if err == nil and item ~= nil then item.id else nil, cx2, err)
 	end))
 end
 
--- `prompt_text` asks with `cx:prompt`, and calls `cb` with the typed text.
 local function prompt_text(cx: WindowCx, opts: PromptOptions, cb: (text: string?, cx: WindowCx, err: string?) -> ())
 	cx:prompt(opts):next(settle("Prompt failed", cb))
 end
@@ -712,9 +708,9 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	end)
 end
 
--- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, and the tab. The pane is
--- nil when it focused or unparked a pane that was there before, and both are nil when no tab opened.
-local function open_tab(cx: WindowCx, res: CreateResult): (number?, number?)
+-- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or nil and the reason
+-- that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
+local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	local path = res.path
 	set_entry(path, { main = res.repo, branch = res.branch, changed = 0 })
 	local tab: number? = nil
@@ -809,7 +805,14 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, number?)
 			table.insert(paths, path)
 		end
 	end
-	return shellPane, tab
+	if shellPane ~= nil then
+		return shellPane, nil
+	elseif tab == nil then
+		return nil, "no tab opened"
+	elseif tab == reused then
+		return nil, "the tab was open before"
+	end
+	return nil, "no new shell in the tab"
 end
 
 local SETUP_POLL_MS = 200
@@ -817,14 +820,13 @@ local SETUP_PROMPT_MS = 30000
 
 -- Types `setup.line` into the shell `pane` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
 -- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
--- the pane is gone. When `pane` is nil, it only shows the line in a toast: the tab was open before, or, when `tab` is
--- nil too, no tab opened.
+-- the pane is gone. When `pane` is nil, it only shows the line in a toast with `noShellReason`.
 -- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
 -- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
 local function type_setup(
 	cx: WindowCx,
 	pane: number?,
-	tab: number?,
+	noShellReason: string?,
 	setup: SetupLine?,
 	done: ((typed: boolean, warning: string?) -> ())?
 )
@@ -843,7 +845,7 @@ local function type_setup(
 		finish(false, warning)
 	end
 	if pane == nil then
-		give_up(cx, if tab == nil then "setup not run: no tab opened" else "setup not run: the tab was open before")
+		give_up(cx, "setup not run: " .. (noShellReason or "no tab opened"))
 		return
 	end
 	local deadline = tern.now() + SETUP_PROMPT_MS
@@ -906,8 +908,8 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 			end
 			return
 		end
-		local pane, tab = open_tab(cx2, res)
-		type_setup(cx2, pane, tab, res.setup)
+		local pane, noShellReason = open_tab(cx2, res)
+		type_setup(cx2, pane, noShellReason, res.setup)
 		after_change(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
@@ -1568,9 +1570,9 @@ tern.carly.export("create", {
 		call:fail(err_text(err))
 	end, function(res: CreateResult, cx2)
 		resolve_sessions(cx2, function(cx3)
-			local pane: number?, tab: number? = nil, nil
+			local pane: number?, noShellReason: string? = nil, nil
 			local ok, openErr = pcall(function()
-				pane, tab = open_tab(cx3, res)
+				pane, noShellReason = open_tab(cx3, res)
 			end)
 			if not ok then
 				res.warnings = res.warnings or {}
@@ -1584,7 +1586,7 @@ tern.carly.export("create", {
 				call:reply(res)
 				return
 			end
-			type_setup(cx3, pane, tab, setup, function(typed, warning)
+			type_setup(cx3, pane, noShellReason, setup, function(typed, warning)
 				setup.typed = typed
 				if warning ~= nil then
 					res.warnings = res.warnings or {}
