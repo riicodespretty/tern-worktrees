@@ -30,9 +30,9 @@ local ROOT = initial_root()
 local DEFAULT_KEYS = { "cmd+shift+w" }
 local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
-	worktree = "Tear down removes the worktree and keeps the branch.",
-	["worktree+merged-branch"] = "Tear down removes the worktree, and deletes the branch if it is merged.",
-	["worktree+branch"] = "Tear down removes the worktree and deletes the branch.",
+	worktree = "removes worktree, keeps branch",
+	["worktree+merged-branch"] = "removes worktree, deletes branch if merged",
+	["worktree+branch"] = "removes worktree, deletes branch",
 }
 
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()

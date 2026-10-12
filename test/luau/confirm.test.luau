@@ -121,11 +121,7 @@ test("closing a worktree tab lists Keep worktree first, then Tear down", functio
 	eq(opts.items[1].detail, "closes the tab, keeps the worktree", "items[1].detail")
 	eq(opts.items[2].id, "teardown", "items[2].id")
 	eq(opts.items[2].label, "Tear down", "items[2].label")
-	eq(
-		opts.items[2].detail,
-		"Tear down removes the worktree, and deletes the branch if it is merged.",
-		"items[2].detail"
-	)
+	eq(opts.items[2].detail, "removes worktree, deletes branch if merged", "items[2].detail")
 end)
 
 test("dismissing the close-tab picker sends no remove and keeps the tab", function()
