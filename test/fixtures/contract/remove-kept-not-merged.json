@@ -4,5 +4,6 @@
   "branchKept": "not_merged",
   "closedBlocks": [],
   "removed": "{{worktree}}",
+  "repo": "{{repo}}",
   "warnings": ["kept local branch feature/x: not merged", "merge check failed: fake gh: no fixture"]
 }

@@ -13,9 +13,10 @@ import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
 /** Why `remove` kept the branch: the teardown policy `worktree`, a branch that is not merged (also when the merge check failed), or a failed `git branch -D`. */
 export type BranchKept = 'not_deleted' | 'not_merged' | 'policy';
 
-/** The output of `remove`. `branchKept` is null when `remove` deleted the branch, and for a detached `HEAD`. */
+/** The output of `remove`. `repo` is the main checkout of the removed worktree. `branchKept` is null when `remove` deleted the branch, and for a detached `HEAD`. */
 export interface RemoveResult {
   removed: string;
+  repo: string;
   branch: string | null;
   branchDeleted: boolean;
   branchKept: BranchKept | null;
@@ -167,5 +168,5 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
   await removeWorktree(ctx, options.force);
   const closedBlocks = await closeBlocks(ctx, blocks);
   const branchKept = branch === null ? null : await applyPolicy(ctx, teardown, branch);
-  return { branch, branchDeleted: branch !== null && branchKept === null, branchKept, closedBlocks, removed: target, warnings: ctx.warnings };
+  return { branch, branchDeleted: branch !== null && branchKept === null, branchKept, closedBlocks, removed: target, repo: root, warnings: ctx.warnings };
 };

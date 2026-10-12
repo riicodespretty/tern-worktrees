@@ -117,7 +117,7 @@ end)()
 
 -- The contract fixture `name` for WORKTREE, with each key of `fields` set to its value.
 local function remove_answer(name: string, fields: { [string]: any }?): string
-	local res = serde.decode("json", Stub.fixture(name, { worktree = WORKTREE }))
+	local res = serde.decode("json", Stub.fixture(name, { repo = "/r/app", worktree = WORKTREE }))
 	local extra: { [string]: any } = fields or {}
 	for key, value in extra do
 		res[key] = value
@@ -384,7 +384,7 @@ test("the Deleted worktree toast says in its title what happened to the branch",
 	local failed = deleted_toast(
 		'{"removed":"'
 			.. WORKTREE
-			.. '","branch":"feat","branchDeleted":false,"branchKept":"not_deleted",'
+			.. '","repo":"/r/app","branch":"feat","branchDeleted":false,"branchKept":"not_deleted",'
 			.. '"warnings":["branch feat not deleted: error: in use"]}'
 	)
 	eq(failed.title, "Deleted\u{A0}worktree, kept branch", "failed title")

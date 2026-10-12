@@ -43,8 +43,8 @@ local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
 local CREATED =
 	'{"branch":"y","carried":[],"owner":"tern","path":"/wt/worktrees/app/y","repo":"/r/app","status":"created","warnings":[]}'
-local REMOVED =
-	'{"removed":"/wt/worktrees/app/x","branch":"x","branchDeleted":false,"branchKept":"policy","warnings":[]}'
+local REMOVED = '{"removed":"/wt/worktrees/app/x","repo":"/r/app","branch":"x","branchDeleted":false,'
+	.. '"branchKept":"policy","warnings":[]}'
 
 local function argv_lines(plugin: Stub.Harness, verb: string): { string }
 	local found: { string } = {}
@@ -96,15 +96,15 @@ local function toast_lines(cx: any): string
 	return table.concat(lines, "; ")
 end
 
--- A window with pane 1 in REPO and `git.auto_fetch_minutes` 0, so the worktree rows run only `branches --offline`.
-local function window(): (Stub.Harness, any)
+-- A window with pane 1 in REPO and `git.auto_fetch_minutes` set to `minutes`.
+local function window(minutes: number): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
 	cx.layout.new_tab = function(_self: any, _opts: any): number?
 		return nil
 	end
 	cx.settings = {
 		get = function(_self: any, _key: string): any
-			return 0
+			return minutes
 		end,
 	}
 	return Stub.load({ env = ENV }), cx
@@ -142,7 +142,7 @@ local function first_open(plugin: Stub.Harness, cx: any, stdout: string)
 end
 
 test("the first open shows a loading toast while branches runs, then a loaded toast", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	open(plugin, cx)
 	eq(toast_lines(cx), LOADING, "toasts while the first branches runs")
 	open(plugin, cx)
@@ -153,14 +153,14 @@ test("the first open shows a loading toast while branches runs, then a loaded to
 end)
 
 test("a cached open shows a refreshing toast", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	eq(open(plugin, cx), 2, "pickers after the second open")
 	eq(toast_lines(cx), REFRESHING, "toasts after the second open")
 end)
 
 test("a background branches that changes the picker toasts to reopen it", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", UPDATED, 0, cx)
@@ -168,7 +168,7 @@ test("a background branches that changes the picker toasts to reopen it", functi
 end)
 
 test("a background branches with the same picker toasts no changes", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
@@ -176,7 +176,7 @@ test("a background branches with the same picker toasts no changes", function()
 end)
 
 test("a background branches compares after it keeps the cached pull requests", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, LISTED_PRS)
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
@@ -184,7 +184,7 @@ test("a background branches compares after it keeps the cached pull requests", f
 end)
 
 test("a second press during a background branches shows one loading and one finish toast", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	eq(open(plugin, cx), 3, "pickers after the third press")
@@ -196,7 +196,7 @@ test("a second press during a background branches shows one loading and one fini
 end)
 
 test("refreshes after a create or a teardown show no toasts", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
@@ -212,7 +212,7 @@ test("refreshes after a create or a teardown show no toasts", function()
 end)
 
 test("a second open shows the cached picker before branches answers", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	eq(open(plugin, cx), 2, "pickers after the second open, with branches unanswered")
 	eq(item_ids(cx.asked[2]), item_ids(cx.asked[1]), "items of the second picker")
@@ -221,7 +221,7 @@ test("a second open shows the cached picker before branches answers", function()
 end)
 
 test("the third open shows the answer of the background branches", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", UPDATED, 0, cx)
@@ -230,7 +230,7 @@ test("the third open shows the answer of the background branches", function()
 end)
 
 test("at most one background branches runs per repository", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	open(plugin, cx)
@@ -242,7 +242,7 @@ test("at most one background branches runs per repository", function()
 end)
 
 test("a failed background branches keeps the cache and toasts the cause", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", FAILED, 1, cx)
@@ -252,7 +252,7 @@ test("a failed background branches keeps the cache and toasts the cause", functi
 end)
 
 test("a failed first branches still shows its error", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	open(plugin, cx)
 	plugin:answer("branches", FAILED, 1, cx)
 	eq(#cx.asked, 0, "pickers")
@@ -262,7 +262,7 @@ test("a failed first branches still shows its error", function()
 end)
 
 test("a background branches with a failed pull request list keeps the cached pull requests", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, LISTED_PRS)
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
@@ -273,7 +273,7 @@ end)
 test(
 	"a background branches with prsFailed false replaces the cached pull requests, whatever its warnings say",
 	function()
-		local plugin, cx = window()
+		local plugin, cx = window(0)
 		first_open(plugin, cx, LISTED_PRS)
 		open(plugin, cx)
 		plugin:answer("branches", pr_list_failed_with({ prsFailed = false }), 0, cx)
@@ -327,7 +327,7 @@ test(
 )
 
 test("a second press during the first branches starts no second one and opens one picker", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	open(plugin, cx)
 	eq(open(plugin, cx), 0, "pickers after the second press")
 	eq(#argv_lines(plugin, "branches"), 1, "branches calls after the second press")
@@ -337,7 +337,7 @@ test("a second press during the first branches starts no second one and opens on
 end)
 
 test("a teardown during the first branches runs one more branches after it", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	open(plugin, cx)
 	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
 	function call.wait(_self: any, _ms: number): any
@@ -354,7 +354,7 @@ test("a teardown during the first branches runs one more branches after it", fun
 end)
 
 test("a press after a first branches that never answered for 120 s starts it again", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	open(plugin, cx)
 	local dropped = drop_branches(plugin)
 	plugin:tick(120000)
@@ -372,7 +372,7 @@ test("a press after a first branches that never answered for 120 s starts it aga
 end)
 
 test("a press after a background branches that never answered for 120 s starts a new one", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	drop_branches(plugin)
@@ -390,7 +390,7 @@ test("a press after a background branches that never answered for 120 s starts a
 end)
 
 test("choosing a branch in a cached picker creates its worktree", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	cx.asked[2].next(item_by_id(cx.asked[2], "b:x"), nil, cx)
@@ -398,13 +398,13 @@ test("choosing a branch in a cached picker creates its worktree", function()
 end)
 
 test("a create refreshes the cache offline and keeps its pull requests and default branch", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
 	local online, offline = branches_calls(plugin)
 	eq(online, 0, "online branches calls after the create")
-	eq(offline >= 1, true, "offline branches calls after the create")
+	eq(offline, 1, "offline branches calls after the create")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	open(plugin, cx)
 	local picker = cx.asked[#cx.asked]
@@ -413,7 +413,7 @@ test("a create refreshes the cache offline and keeps its pull requests and defau
 end)
 
 test("a create during an online background branches runs one offline after it", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	cx.asked[2].next(item_by_id(cx.asked[2], "b:x"), nil, cx)
@@ -426,7 +426,7 @@ test("a create during an online background branches runs one offline after it", 
 end)
 
 test("an open during an offline refresh runs one online after it", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
@@ -442,7 +442,7 @@ test("an open during an offline refresh runs one online after it", function()
 end)
 
 test("a teardown refreshes the cache offline", function()
-	local plugin, cx = window()
+	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
 	function call.wait(_self: any, _ms: number): any
@@ -452,7 +452,7 @@ test("a teardown refreshes the cache offline", function()
 	plugin:answer("remove", REMOVED, 0, cx)
 	local online, offline = branches_calls(plugin)
 	eq(online, 0, "online branches calls after the teardown")
-	eq(offline >= 1, true, "offline branches calls after the teardown")
+	eq(offline, 1, "offline branches calls after the teardown")
 	plugin:answer("branches", STALE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main", "items after the teardown")

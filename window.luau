@@ -60,6 +60,7 @@ type ResolvedDir = { dir: string, root: string?, name: string? }
 type ResolveResult = { repos: { ResolvedDir } }
 type RemoveResult = {
 	removed: string,
+	repo: string,
 	branch: string?,
 	branchDeleted: boolean?,
 	branchKept: ("policy" | "not_merged" | "not_deleted")?,
@@ -69,13 +70,6 @@ type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
 type ConfigResult = { teardown: string }
 type IndexEntry = { main: string, branch: string?, changed: number, owner: "tern" | "omp" }
-type RootState = {
-	rows: { string }?,
-	prs: { PullRequest }?,
-	networkAt: number?,
-	refreshing: boolean,
-	again: boolean,
-}
 type SessionIndex = {
 	byId: { [number]: SessionInfo },
 	byTab: { [number]: SessionInfo },
@@ -94,54 +88,7 @@ local rootOfDir: { [string]: string | false } = {}
 local cwdOfPane: { [number]: string? } = {}
 local resolving: { [string]: boolean } = {}
 local rootOfLiveRow: { [string]: string } = {}
-local stateOfRoot: { [string]: RootState } = {}
-local refresh: (cx: WindowCx, root: string) -> ()
-
-local function state_of(root: string): RootState
-	local existing = stateOfRoot[root]
-	if existing ~= nil then
-		return existing
-	end
-	local created: RootState = { refreshing = false, again = false }
-	stateOfRoot[root] = created
-	return created
-end
-
-local function refresh_all_roots(cx: WindowCx)
-	for root, state in pairs(stateOfRoot) do
-		if state.rows ~= nil then
-			refresh(cx, root)
-		end
-	end
-end
-
-type PickerCache = {
-	res: BranchesResult?,
-	openFor: number?,
-	refreshing: boolean,
-	startedAt: number,
-	again: boolean,
-	againOnline: boolean,
-	notify: boolean,
-	againNotify: boolean,
-}
--- The last `branches` answer of each repository root, which the branch picker shows at once. `res` is nil while the
--- first `branches` of the root runs, and `openFor` is then the press that waits for it. `startedAt` is the start of
--- the last run, and `notify` tells whether that run shows its toasts.
-local pickerCacheOfRoot: { [string]: PickerCache } = {}
-local refresh_picker_cache: (cx: WindowCx, root: string, online: boolean, notify: boolean) -> ()
-
-local function after_change(cx: WindowCx, root: string?)
-	if root == nil then
-		refresh_all_roots(cx)
-		for cachedRoot in pairs(pickerCacheOfRoot) do
-			refresh_picker_cache(cx, cachedRoot, false, false)
-		end
-	else
-		refresh(cx, root)
-		refresh_picker_cache(cx, root, false, false)
-	end
-end
+local refresh_branches: (cx: WindowCx, root: string) -> ()
 
 local function flush(cx: WindowCx)
 	for _, text in ipairs(queuedErrors) do
@@ -168,6 +115,11 @@ local function cli<T>(args: { string }, cb: CliCb<T>)
 	end)
 end
 
+-- Whether a run that started at `startedAt` can still answer: it started at most the timeout of `cli` before.
+local function in_flight(startedAt: number?): boolean
+	return startedAt ~= nil and tern.now() - startedAt <= CLI_OPTIONS.timeout_ms
+end
+
 local function is_under(cwd: string?, path: string): boolean
 	return cwd ~= nil and (cwd == path or string.sub(cwd, 1, #path + 1) == path .. "/")
 end
@@ -187,7 +139,7 @@ local worktreeIndex = stored_index({})
 -- The time when this window last set or deleted each entry. A `list --all` answer keeps the value of this window
 -- for each entry that changed at or after the time that the `list --all` started.
 local changedAt: { [string]: number } = {}
-local listing = false
+local listing: number? = nil
 local listAgain = false
 local refreshPending = false
 local listStartedAt: number? = nil
@@ -295,12 +247,16 @@ end
 local refresh_index: () -> ()
 
 -- Runs `list --all`, writes the worktree index from its answer, and passes the answer, or nil on an error, to `cb`.
+-- When a later `list_all` starts before the answer, the answer is dropped and `cb` does not run.
 local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
-	listing = true
 	local startedAt = tern.now()
+	listing = startedAt
 	listStartedAt = startedAt
 	cli({ "list", "--all" }, function(res: ListResult, err, cx2)
-		listing = false
+		if listing ~= startedAt then
+			return
+		end
+		listing = nil
 		if err == nil then
 			apply_list(res, startedAt)
 			rebuild_managed(cx2)
@@ -314,9 +270,10 @@ local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 end
 
 -- Refreshes the worktree index: at most one `list --all` at a time, and at most one each INDEX_GAP_MS. A refresh
--- request inside that gap runs one time, at the end of the gap.
+-- request inside that gap runs one time, at the end of the gap. A `list --all` with no answer after the timeout of
+-- `cli` is lost: the next refresh starts a new one, and the answer of the lost one is dropped.
 refresh_index = function()
-	if listing then
+	if in_flight(listing) then
 		listAgain = true
 		return
 	end
@@ -948,7 +905,7 @@ local function create(
 		end
 		local pane, noShellReason = open_tab(cx2, res)
 		type_setup(cx2, pane, noShellReason, res.setup)
-		after_change(cx2, root)
+		refresh_branches(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
 		if warnings then
@@ -1009,92 +966,6 @@ local function branches_with_worktree(res: BranchesResult): { [string]: boolean 
 	return hasWorktree
 end
 
-local function register_rows(root: string, res: BranchesResult, prs: { PullRequest })
-	local name: string = if type(res.name) == "string" then res.name else basename(root)
-	local prefix = "wt-" .. fnv1a(root) .. "-"
-	local hasWorktree = branches_with_worktree(res)
-	local ids: { string } = {}
-	for _, pr in ipairs(prs) do
-		local n = tostring(pr.number)
-		local prBranch = tostring(pr.branch)
-		add_row(
-			root,
-			prefix .. fnv1a("pr:" .. n),
-			name .. ": " .. pr_label(pr),
-			{ "--pr", n },
-			prBranch,
-			hasWorktree[prBranch] == true,
-			ids
-		)
-	end
-	for _, branch in ipairs(res.branches or {}) do
-		if type(branch) == "string" then
-			local title = name .. ": " .. branch .. (if hasWorktree[branch] then " · worktree" else "")
-			add_row(
-				root,
-				prefix .. fnv1a(branch),
-				title,
-				{ "--branch", branch },
-				branch,
-				hasWorktree[branch] == true,
-				ids
-			)
-		end
-	end
-	local currentIds: { [string]: boolean } = {}
-	for _, id in ipairs(ids) do
-		currentIds[id] = true
-	end
-	local state = state_of(root)
-	for _, id in ipairs(state.rows or {}) do
-		if not currentIds[id] then
-			rootOfLiveRow[id] = nil
-		end
-	end
-	state.rows = ids
-end
-
-local function fetch_interval_ms(cx: WindowCx): number
-	local ok, minutes = pcall(function()
-		return cx.settings:get("git.auto_fetch_minutes")
-	end)
-	if ok and type(minutes) == "number" and minutes >= 0 then
-		return minutes * 60000
-	end
-	return 5 * 60000
-end
-
-refresh = function(cx: WindowCx, root: string)
-	local state = state_of(root)
-	if state.refreshing then
-		state.again = true
-		return
-	end
-	state.refreshing = true
-	local interval = fetch_interval_ms(cx)
-	local lastNetworkAt = state.networkAt
-	local useNetwork = interval > 0 and (lastNetworkAt == nil or tern.now() - lastNetworkAt >= interval)
-	local args = { "branches", "--repo", root }
-	if useNetwork then
-		state.networkAt = tern.now()
-	else
-		table.insert(args, "--offline")
-	end
-	cli(args, function(res: BranchesResult, err, cx2)
-		state.refreshing = false
-		if err == nil then
-			if useNetwork and res.prsFailed ~= true then
-				state.prs = if type(res.prs) == "table" then res.prs else {}
-			end
-			register_rows(root, res, state.prs or {})
-		end
-		if state.again then
-			state.again = false
-			refresh(cx2, root)
-		end
-	end)
-end
-
 local function remember_cwd(pane: number, cwd: string?)
 	cwdOfPane[pane] = known_cwd(cwd)
 end
@@ -1107,7 +978,7 @@ local function refresh_dir(cx: WindowCx, cwd: string?)
 	local root = rootOfDir[dir]
 	if root ~= nil then
 		if type(root) == "string" then
-			refresh(cx, root)
+			refresh_branches(cx, root)
 		end
 		return
 	end
@@ -1123,7 +994,7 @@ local function refresh_dir(cx: WindowCx, cwd: string?)
 		learn_roots(res)
 		local found = rootOfDir[dir]
 		if type(found) == "string" then
-			refresh(cx2, found)
+			refresh_branches(cx2, found)
 		end
 	end)
 end
@@ -1222,119 +1093,252 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 	)
 end
 
--- Whether the run of `cache` started more than the timeout of `cli` before, so that its answer is lost.
-local function picker_run_lost(cache: PickerCache): boolean
-	return cache.refreshing and tern.now() - cache.startedAt > CLI_OPTIONS.timeout_ms
+-- Branches store: the `branches` answers of each repository root, which its worktree rows and its branch picker share.
+
+type BranchesRun = { startedAt: number, online: boolean, notify: boolean }
+-- The `branches` answers of one repository root. `answer` is the latest answer after `keep_last_prs`, and `online` is
+-- true when `answer` holds the pull requests of an online answer. `networkAt` is the start of the last online run.
+-- `run` is the run in flight, and a lost run stays there until a request replaces it. `queued` is the one run after
+-- `run`. `openFor` is the press that waits for the first online answer.
+type BranchesStore = {
+	answer: BranchesResult?,
+	online: boolean,
+	networkAt: number?,
+	run: BranchesRun?,
+	queued: { online: boolean, notify: boolean }?,
+	openFor: number?,
+}
+local storeOfRoot: { [string]: BranchesStore } = {}
+-- The ids of the worktree rows of each repository root.
+local rowsOfRoot: { [string]: { string } } = {}
+
+-- The answer to keep after `res`: an offline answer keeps the pull requests and the default branch of `before`, and an
+-- online answer with `prsFailed` keeps the pull requests of `before`.
+local function keep_last_prs(before: BranchesResult?, res: BranchesResult, online: boolean): BranchesResult
+	if before ~= nil and not online then
+		res.prs = before.prs
+		res.default = before.default
+	elseif before ~= nil and res.prsFailed == true then
+		res.prs = before.prs
+	end
+	return res
 end
 
--- Runs `branches` for `root` and keeps its answer as the picker cache of `root`, when `root` has a cache entry. With
--- `online` false it runs `branches --offline` and keeps the pull requests and the default branch of the cache. An
--- online answer with a failed pull request list keeps the pull requests of the cache. At most one runs per root at
--- a time: a request during a run runs one more after it, online when one of those requests is online. A run with no
--- answer after the timeout of `cli` counts as lost: a request then starts a new run, and the lost run's answer is
--- ignored. A failed run keeps the cache. While the entry has no answer yet, a failed run shows the error and drops
--- the entry, and an answer opens the picker when the press that waits for it is the latest press. With `notify`, the
--- run shows a loading toast when it starts and a toast when it ends: a loaded toast for a first answer, else the
--- cause of a failure, or whether the picker items changed. A `notify` request during a run that shows no toasts makes
--- the run after it show them.
-refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, notify: boolean)
-	local cache = pickerCacheOfRoot[root]
-	if cache == nil then
+local function store_of(root: string): BranchesStore
+	local existing = storeOfRoot[root]
+	if existing ~= nil then
+		return existing
+	end
+	local created: BranchesStore = { online = false }
+	storeOfRoot[root] = created
+	return created
+end
+
+-- Registers the worktree rows of `root` from `res`: one for each pull request and each branch. A row of `root` that is
+-- not in `res` stops to show.
+local function register_rows(root: string, res: BranchesResult)
+	local name: string = if type(res.name) == "string" then res.name else basename(root)
+	local prefix = "wt-" .. fnv1a(root) .. "-"
+	local hasWorktree = branches_with_worktree(res)
+	local ids: { string } = {}
+	for _, pr in ipairs(res.prs or {}) do
+		local n = tostring(pr.number)
+		local prBranch = tostring(pr.branch)
+		add_row(
+			root,
+			prefix .. fnv1a("pr:" .. n),
+			name .. ": " .. pr_label(pr),
+			{ "--pr", n },
+			prBranch,
+			hasWorktree[prBranch] == true,
+			ids
+		)
+	end
+	for _, branch in ipairs(res.branches or {}) do
+		if type(branch) == "string" then
+			local title = name .. ": " .. branch .. (if hasWorktree[branch] then " · worktree" else "")
+			add_row(
+				root,
+				prefix .. fnv1a(branch),
+				title,
+				{ "--branch", branch },
+				branch,
+				hasWorktree[branch] == true,
+				ids
+			)
+		end
+	end
+	local currentIds: { [string]: boolean } = {}
+	for _, id in ipairs(ids) do
+		currentIds[id] = true
+	end
+	for _, id in ipairs(rowsOfRoot[root] or {}) do
+		if not currentIds[id] then
+			rootOfLiveRow[id] = nil
+		end
+	end
+	rowsOfRoot[root] = ids
+end
+
+local function fetch_interval_ms(cx: WindowCx): number
+	local ok, minutes = pcall(function()
+		return cx.settings:get("git.auto_fetch_minutes")
+	end)
+	if ok and type(minutes) == "number" and minutes >= 0 then
+		return minutes * 60000
+	end
+	return 5 * 60000
+end
+
+-- Whether a background trigger of `store` runs online: `git.auto_fetch_minutes` is more than 0, and at least that time
+-- went by since the start of the last online run.
+local function network_due(cx: WindowCx, store: BranchesStore): boolean
+	local interval = fetch_interval_ms(cx)
+	local networkAt = store.networkAt
+	return interval > 0 and (networkAt == nil or tern.now() - networkAt >= interval)
+end
+
+-- Keeps the answer `res` of `run` in `store`, registers the worktree rows of `root` from it, opens the branch picker
+-- of the press that waits for an online answer, and shows the toasts of `run`.
+local function apply_branches(cx: WindowCx, root: string, store: BranchesStore, run: BranchesRun, res: BranchesResult)
+	local hadOnline = store.online
+	local before = store.answer
+	local answer = keep_last_prs(before, res, run.online)
+	store.answer = answer
+	store.online = hadOnline or run.online
+	register_rows(root, answer)
+	local openFor = store.openFor
+	if store.online and openFor ~= nil then
+		store.openFor = nil
+		if openFor == startCount then
+			show_branch_picker(cx, root, answer)
+		end
+	end
+	if not run.notify then
 		return
 	end
-	if cache.refreshing and not picker_run_lost(cache) then
-		cache.again = true
-		cache.againOnline = cache.againOnline or online
-		cache.againNotify = cache.againNotify or (notify and not cache.notify)
+	if before == nil or not hadOnline then
+		cx:toast("info", "Branches loaded")
+	else
+		cx:toast(
+			"info",
+			if same_branch_picker_items(before, answer)
+				then "Branches refreshed: no changes"
+				else "Branches refreshed: reopen to see changes"
+		)
+	end
+end
+
+-- Shows the toasts of the failed `run`. With no online answer in `store`, the press that waits for it stops waiting.
+local function fail_branches(cx: WindowCx, store: BranchesStore, run: BranchesRun, err: any)
+	if not run.notify then
 		return
 	end
-	cache.refreshing = true
-	cache.notify = notify
-	local startedAt = tern.now()
-	cache.startedAt = startedAt
-	if notify then
-		cx:toast("info", if cache.res == nil then "Loading branches…" else "Refreshing branches…")
+	if store.online then
+		cx:toast("error", "Branch refresh failed: " .. tostring(err.message or "tern-wt failed"))
+	else
+		store.openFor = nil
+		toast_error(cx, err)
+	end
+end
+
+-- `queued` merged with one more request: online when one of the two is online, and with toasts when one of the two
+-- has toasts.
+local function merge_queued(
+	queued: { online: boolean, notify: boolean }?,
+	online: boolean,
+	notify: boolean
+): { online: boolean, notify: boolean }
+	return {
+		online = online or (queued ~= nil and queued.online),
+		notify = notify or (queued ~= nil and queued.notify),
+	}
+end
+
+-- Starts a `branches` run for `root`, merged with the queued run after the run in flight, which it clears.
+local function start_branches(cx: WindowCx, root: string, store: BranchesStore, online: boolean, notify: boolean)
+	local merged = merge_queued(store.queued, online, notify)
+	store.queued = nil
+	local run: BranchesRun = { startedAt = tern.now(), online = merged.online, notify = merged.notify }
+	store.run = run
+	if run.online then
+		store.networkAt = run.startedAt
+	end
+	if run.notify then
+		cx:toast("info", if store.online then "Refreshing branches…" else "Loading branches…")
 	end
 	local args = { "branches", "--repo", root }
-	if not online then
+	if not run.online then
 		table.insert(args, "--offline")
 	end
 	cli(args, function(res: BranchesResult, err, cx2)
-		if pickerCacheOfRoot[root] ~= cache or cache.startedAt ~= startedAt then
+		if store.run ~= run then
 			return
 		end
-		cache.refreshing = false
-		local before = cache.res
-		if err ~= nil then
-			if before == nil then
-				pickerCacheOfRoot[root] = nil
-				toast_error(cx2, err)
-				return
-			end
-			if notify then
-				cx2:toast("error", "Branch refresh failed: " .. tostring(err.message or "tern-wt failed"))
-			end
+		store.run = nil
+		if err == nil then
+			apply_branches(cx2, root, store, run, res)
 		else
-			if before ~= nil and not online then
-				res.prs = before.prs
-				res.default = before.default
-			elseif before ~= nil and res.prsFailed == true then
-				res.prs = before.prs
-			end
-			cache.res = res
-			local openFor = cache.openFor
-			cache.openFor = nil
-			if openFor == startCount then
-				show_branch_picker(cx2, root, res)
-			end
-			if notify and before == nil then
-				cx2:toast("info", "Branches loaded")
-			elseif notify then
-				cx2:toast(
-					"info",
-					if same_branch_picker_items(before, res)
-						then "Branches refreshed: no changes"
-						else "Branches refreshed: reopen to see changes"
-				)
-			end
+			fail_branches(cx2, store, run, err)
 		end
-		if cache.again then
-			local againOnline, againNotify = cache.againOnline, cache.againNotify
-			cache.again = false
-			cache.againOnline = false
-			cache.againNotify = false
-			refresh_picker_cache(cx2, root, againOnline, againNotify)
+		local queued = store.queued
+		if queued ~= nil then
+			start_branches(cx2, root, store, queued.online, queued.notify)
 		end
 	end)
 end
 
--- Opens the branch picker of `root`. With no picker cache of `root` it shows a loading toast, waits for `branches`,
--- keeps the answer as the cache and shows it with a loaded toast, or shows the error. A press while that `branches`
--- runs starts no second one and shows no second toast: the answer opens the picker of the latest press. A press after
--- that `branches` is lost starts it again. With a cache it shows the cache at once and refreshes the cache in the
--- background for the next open, with toasts when that refresh starts and ends.
+-- Requests a `branches` run for `root`: online with `online`, and with toasts with `notify`. The rules:
+-- I0. Only a press asks for toasts, and a press is online: `notify` is true only with `online`.
+-- I1. At most one run of each root is in flight. A run is in flight until it answers, or for the timeout of `cli`
+--     (120 s). A run with no answer after that time is lost.
+-- I2. A request while a run is in flight starts no run. It sets the one run after it: online when one of the requests
+--     is online, and with toasts when one of the requests asks for toasts that the run in flight does not show.
+--     I3 is the exception.
+-- I3. A press while the store has no online answer joins an online run in flight and sets no run after it. When that
+--     run has no toasts, it gets them, and `Loading branches…` shows at once.
+-- I4. A run starts merged with the run after the run in flight, which it clears. An online run sets `networkAt`. A run
+--     with toasts shows `Refreshing branches…` when the store has an online answer, else `Loading branches…`. The run
+--     goes into the store before `cli` starts it.
+-- I5. The answer of a run that a request replaced is ignored. A successful answer goes through `keep_last_prs` into the
+--     store and opens the branch picker of the press that waits for an online answer. With toasts it shows
+--     `Branches loaded` for the first online answer, else a toast that tells if the picker items changed. A failed
+--     answer keeps the store answer. With toasts it shows `Branch refresh failed: <cause>` when the store has an online
+--     answer, else the error, and the waiting press stops. Then the run after it starts.
+-- I6. The worktree rows register from each successful answer, of each run.
+local function request_branches(cx: WindowCx, root: string, online: boolean, notify: boolean)
+	local store = store_of(root)
+	local run = store.run
+	if run == nil or not in_flight(run.startedAt) then
+		start_branches(cx, root, store, online, notify)
+	elseif notify and not store.online and run.online then
+		if not run.notify then
+			run.notify = true
+			cx:toast("info", "Loading branches…")
+		end
+	else
+		store.queued = merge_queued(store.queued, online, notify and not run.notify)
+	end
+end
+
+-- A background trigger of `root`: a `branches` run with no toasts, online when `git.auto_fetch_minutes` is due.
+refresh_branches = function(cx: WindowCx, root: string)
+	request_branches(cx, root, network_due(cx, store_of(root)), false)
+end
+
+-- Opens the branch picker of `root`. With an online answer in the store it shows that answer at once. Else the press
+-- waits for the next online answer, which opens the picker when this press is the latest press. Then it requests an
+-- online `branches` with toasts, for this open or the next one.
 local function branch_picker(cx: WindowCx, root: string)
-	local cache = pickerCacheOfRoot[root]
-	local res = if cache ~= nil then cache.res else nil
-	if cache ~= nil and res == nil and not picker_run_lost(cache) then
-		cache.openFor = startCount
-		return
+	local store = store_of(root)
+	local answer = store.answer
+	if store.online and answer ~= nil then
+		store.openFor = nil
+		show_branch_picker(cx, root, answer)
+	else
+		store.openFor = startCount
 	end
-	if res == nil then
-		pickerCacheOfRoot[root] = {
-			refreshing = false,
-			startedAt = 0,
-			again = false,
-			againOnline = false,
-			notify = false,
-			againNotify = false,
-			openFor = startCount,
-		}
-		refresh_picker_cache(cx, root, true, true)
-		return
-	end
-	show_branch_picker(cx, root, res)
-	refresh_picker_cache(cx, root, true, true)
+	request_branches(cx, root, true, true)
 end
 
 local function github_picker(cx: WindowCx)
@@ -1548,7 +1552,7 @@ local function run_remove(
 		end
 		cx2:toast("success", deleted_title(res), short_warnings(res))
 		set_entry(res.removed, nil)
-		after_change(cx2)
+		refresh_branches(cx2, res.repo)
 		done(cx2)
 	end)
 end
@@ -1682,7 +1686,7 @@ tern.on("window_start", function(cx: WindowCx)
 	end
 	resolve_sessions(cx, function(cx2)
 		for _, repo in ipairs(localRepos) do
-			refresh(cx2, repo.root)
+			refresh_branches(cx2, repo.root)
 		end
 	end)
 	list_all(function(res, _cx2)
@@ -1820,7 +1824,7 @@ tern.carly.export("create", {
 				table.insert(res.warnings, "tab not opened: " .. tostring(openErr))
 			end
 			if type(res.repo) == "string" then
-				after_change(cx3, res.repo)
+				refresh_branches(cx3, res.repo)
 			end
 			local setup = res.setup
 			if not ok or setup == nil then
@@ -1866,7 +1870,7 @@ tern.carly.export("remove", {
 	cli(argv, function(res: RemoveResult, err, cx2)
 		if err == nil then
 			set_entry(res.removed, nil)
-			after_change(cx2)
+			refresh_branches(cx2, res.repo)
 		end
 		reply_to(call)(res, err, cx2)
 	end)

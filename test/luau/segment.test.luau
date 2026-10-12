@@ -161,7 +161,7 @@ do
 		plugin.exports.remove(case.path, nil, cx, call)
 		plugin:answer(
 			"remove",
-			`\{"removed":"{case.path}","branch":"feat","branchDeleted":false,"branchKept":"policy","warnings":[]}`,
+			`\{"removed":"{case.path}","repo":"/r/app","branch":"feat","branchDeleted":false,"branchKept":"policy","warnings":[]}`,
 			0,
 			cx
 		)

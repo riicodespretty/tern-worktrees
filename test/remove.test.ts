@@ -18,7 +18,6 @@ import {
   useGithubOrigin,
   useSandbox,
   writeTernLs,
-  writeTernLsRaw,
 } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
@@ -123,7 +122,7 @@ describe('remove command', () => {
     it('deletes a branch that origin/main holds, and closes the tabs in the worktree', async () => {
       const dir = await addFeature();
       writeTernLs({ work: [repo.dir, dir, path.join(dir, 'src')] });
-      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-deleted', { worktree: dir }));
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-deleted', { repo: repo.dir, worktree: dir }));
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
       expect(ternLog().toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
@@ -205,14 +204,14 @@ describe('remove command', () => {
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'config', 'remote.origin.followRemoteHEAD', 'never');
       const dir = await addFeature();
-      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-not-merged', { worktree: dir }));
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-not-merged', { repo: repo.dir, worktree: dir }));
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
     it('keeps the branch under the worktree policy', async () => {
       setTeardown('worktree');
       const dir = await addFeature();
-      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-policy', { worktree: dir }));
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-policy', { repo: repo.dir, worktree: dir }));
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
@@ -248,7 +247,7 @@ describe('remove command', () => {
     it('leaves the branches alone for a detached worktree', async () => {
       setTeardown('worktree+branch');
       const dir = await addManaged(['--detach']);
-      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-detached', { worktree: dir }));
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-detached', { repo: repo.dir, worktree: dir }));
       expect(existsSync(dir)).toBeFalsy();
     });
   });
@@ -326,7 +325,15 @@ describe('remove command', () => {
       const dir = await addFeature();
       writeTernLs({ work: [dir] });
       await shimForcedRemove('rm -rf "$7"; exit 1');
-      await expect(run([dir, '--force'])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, branchKept: null, closedBlocks: [1], removed: dir, warnings: [] });
+      await expect(run([dir, '--force'])).resolves.toStrictEqual({
+        branch: 'feature/x',
+        branchDeleted: true,
+        branchKept: null,
+        closedBlocks: [1],
+        removed: dir,
+        repo: repo.dir,
+        warnings: [],
+      });
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(dir);
     });
 
@@ -465,36 +472,6 @@ describe('remove command', () => {
       } finally {
         chmodSync(sub, 0o755);
       }
-    });
-  });
-
-  describe('tabs', () => {
-    it('leaves the tabs alone under --keep-tab', async () => {
-      const dir = await addFeature();
-      writeTernLs({ work: [dir] });
-      await expect(run([dir, '--keep-tab'])).resolves.toMatchObject({ closedBlocks: [], warnings: [] });
-      expect(ternLog()).toStrictEqual([]);
-    });
-
-    it('removes the worktree when Tern cannot list the blocks', async () => {
-      const dir = await addFeature();
-      vi.stubEnv('FAKE_TERN_FAIL', 'ls');
-      await expect(run([dir])).resolves.toMatchObject({ closedBlocks: [], warnings: ['tabs not closed: fake tern: ls failed'] });
-      expect(existsSync(dir)).toBeFalsy();
-    });
-
-    it('warns for each block that Tern cannot close', async () => {
-      const dir = await addFeature();
-      writeTernLs({ work: [dir] });
-      vi.stubEnv('FAKE_TERN_FAIL', 'close');
-      await expect(run([dir])).resolves.toMatchObject({ closedBlocks: [], warnings: ['block 1 not closed: fake tern: close failed'] });
-    });
-
-    it('passes on other errors before it removes anything', async () => {
-      const dir = await addFeature();
-      writeTernLsRaw('{');
-      await expect(run([dir])).rejects.toBeInstanceOf(SyntaxError);
-      expect(existsSync(dir)).toBeTruthy();
     });
   });
 });

@@ -128,8 +128,8 @@ local LISTED = '{"root":"/wt/worktrees","worktrees":['
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES =
 	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
-local REMOVED =
-	'{"removed":"/wt/worktrees/app/feat","branch":"feat","branchDeleted":false,"branchKept":"policy","warnings":[]}'
+local REMOVED = '{"removed":"/wt/worktrees/app/feat","repo":"/r/app","branch":"feat","branchDeleted":false,'
+	.. '"branchKept":"policy","warnings":[]}'
 local CREATED = '{"branch":"x","carried":[],"owner":"tern","path":"/wt/worktrees/app/x","repo":"/r/app",'
 	.. '"status":"created","warnings":[]}'
 
@@ -346,6 +346,25 @@ test("a cwd under the root that is not in the index starts a list, and one in th
 	plugin.handlers.cwd({ pane = 1, path = "/home/u/new" }, cx)
 	eq(#argv_lines(plugin, "list"), 0, "list runs for a cwd outside the root")
 end)
+
+test(
+	"a cwd into a new worktree after a list --all whose callback Tern dropped for 120 s starts one list --all",
+	function()
+		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
+		local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+		plugin.handlers.window_start(cx)
+		local dropped = table.remove(plugin.runs) :: Stub.Run
+		eq(table.concat(dropped.argv, " ", 2), "list --all", "dropped run")
+		dropped.cb({ stdout = LISTED, stderr = "", status = 0 }, nil)
+		plugin:tick(120001)
+		plugin.handlers.cwd({ pane = 1, path = "/wt/worktrees/app/new" }, cx)
+		eq(table.concat(argv_lines(plugin, "list"), ";"), "list --all", "list runs after the cwd")
+		plugin:answer("list", LISTED, 0, cx)
+		dropped.cb({ stdout = '{"root":"/wt/worktrees","worktrees":[]}', stderr = "", status = 0 }, cx)
+		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry after the late answer of the dropped run")
+		eq(#argv_lines(plugin, "list"), 0, "list runs after the late answer")
+	end
+)
 
 for _, gap in { 10, 0 } do
 	test(`an entry from open_tab {gap} ms after a list --all started survives its answer`, function()

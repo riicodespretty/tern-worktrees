@@ -9,12 +9,16 @@
 - Add `changes` and `hardToRebuild` to the `dirty_worktree` error of `remove` and Relocate. `files` stays the same
 - Add `prsFailed` to the output of `branches`. It is true when `gh pr list` failed
 - Add `branchKept` to the output of `remove`: `policy`, `not_merged` or `not_deleted` when `remove` kept the branch, else null
+- Add `repo`, the main checkout of the removed worktree, to the output of `remove`
+- Show and update the pull request rows after each open of the branch picker, also with `git.auto_fetch_minutes` 0
 
 ### Fix
 
 - Read the teardown policy of the close-tab picker from `tern-wt config`. An invalid options file gives no detail line, not a policy that the CLI rejects
 - Get the worktree root only from the CLI in the Tern window. With omp installed, the window no longer uses `~/.tern-wt/worktrees` before the first `tern-wt list --all` answers
 - Count a tab that `tern-wt create` opened from a shell as a worktree tab after one refresh. Its close then offers the teardown picker
+- Run one `branches` at a time for each repository, which the worktree rows and the branch picker share. A create or a teardown refreshes only the repository of its worktree
+- Start a new `branches` or `list --all` when Tern dropped the answer of the last one for 120 s. Before, the worktree rows and the worktree index stopped their refreshes until the plugin reloaded
 
 ## [0.1.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.1.0 "2026-10-10")
 

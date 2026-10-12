@@ -4,5 +4,6 @@
   "branchKept": "policy",
   "closedBlocks": [],
   "removed": "{{worktree}}",
+  "repo": "{{repo}}",
   "warnings": []
 }
