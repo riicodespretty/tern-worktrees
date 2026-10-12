@@ -58,9 +58,10 @@ type GithubRepo = { nameWithOwner: string, description: string? }
 type ReposResult = { owners: { string }, repos: { GithubRepo } }
 type ResolvedDir = { dir: string, root: string?, name: string? }
 type ResolveResult = { repos: { ResolvedDir } }
-type RemoveResult = { branch: string?, warnings: { string } }
+type RemoveResult = { removed: string, branch: string?, warnings: { string } }
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
+type IndexEntry = { main: string, branch: string?, changed: number }
 type RootState = {
 	rows: { string }?,
 	prs: { PullRequest }?,
@@ -141,6 +142,107 @@ end
 
 local function is_under(cwd: string?, path: string): boolean
 	return cwd ~= nil and (cwd == path or string.sub(cwd, 1, #path + 1) == path .. "/")
+end
+
+local INDEX_KEY = "worktreeIndex"
+local INDEX_GAP_MS = 2000
+
+-- The index stored in kv, or `fallback` when kv holds none or its read raises.
+local function stored_index(fallback: { [string]: IndexEntry? }): { [string]: IndexEntry? }
+	local ok, stored = pcall(tern.kv.get, INDEX_KEY)
+	return if ok and type(stored) == "table" then stored else fallback
+end
+
+-- The worktree index: each worktree in the worktree root by path, with its main checkout, branch and number of
+-- changed files. The host half reads it from kv to give the worktree variables to a new shell.
+local index = stored_index({})
+-- When this window last set or deleted each entry; a `list --all` that started before keeps that change.
+local recent: { [string]: number } = {}
+local listing = false
+local listAgain = false
+local listTimer = false
+local listedAt: number? = nil
+
+local function in_index(cwd: string?): boolean
+	for path in pairs(index) do
+		if is_under(cwd, path) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Sets or deletes one entry. Other windows write the same kv key, so this reads kv again and changes only `path`.
+local function set_entry(path: string, entry: IndexEntry?)
+	local merged = table.clone(stored_index(index))
+	merged[path] = entry
+	index = merged
+	recent[path] = tern.now()
+	pcall(tern.kv.set, INDEX_KEY, index)
+end
+
+local function apply_list(res: ListResult, startedAt: number)
+	local fresh: { [string]: IndexEntry? } = {}
+	for _, w in ipairs(res.worktrees or {}) do
+		if type(w.path) == "string" and type(w.repo) == "string" then
+			fresh[w.path] = {
+				main = w.repo,
+				branch = if type(w.branch) == "string" then w.branch else nil,
+				changed = if type(w.changed) == "number" then w.changed else 0,
+			}
+		end
+	end
+	for path, at in pairs(recent) do
+		if at >= startedAt then
+			fresh[path] = index[path]
+		else
+			recent[path] = nil
+		end
+	end
+	index = fresh
+	pcall(tern.kv.set, INDEX_KEY, index)
+end
+
+local refresh_index: () -> ()
+
+-- Runs `list --all`, writes the worktree index from its answer, and passes the answer, or nil on an error, to `cb`.
+local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
+	listing = true
+	local startedAt = tern.now()
+	listedAt = startedAt
+	cli({ "list", "--all" }, function(res: ListResult, err, cx2)
+		listing = false
+		if err == nil then
+			apply_list(res, startedAt)
+		end
+		cb(if err == nil then res else nil, cx2)
+		if listAgain then
+			listAgain = false
+			refresh_index()
+		end
+	end)
+end
+
+-- Refreshes the worktree index: at most one `list --all` at a time, and at most one each INDEX_GAP_MS. A refresh
+-- asked for inside that gap runs once at its end.
+refresh_index = function()
+	if listing then
+		listAgain = true
+		return
+	end
+	if listTimer then
+		return
+	end
+	local wait = if listedAt == nil then 0 else listedAt + INDEX_GAP_MS - tern.now()
+	if wait > 0 then
+		listTimer = true
+		tern.timer(wait, function()
+			listTimer = false
+			refresh_index()
+		end)
+		return
+	end
+	list_all(function() end)
 end
 
 local function basename(path: string): string
@@ -571,6 +673,7 @@ end
 
 local function open_tab(cx: WindowCx, res: CreateResult)
 	local path = res.path
+	set_entry(path, { main = res.repo, branch = res.branch, changed = 0 })
 	local tab: number? = nil
 	local index = session_index(cx)
 	local parked: number? = nil
@@ -1113,6 +1216,7 @@ local function run_remove(
 			"deleted" .. NO_BREAK_SPACE .. "worktree",
 			join_or_nil(res.warnings, "; ") or short_path(path)
 		)
+		set_entry(res.removed, nil)
 		after_change(cx2)
 		done(cx2)
 	end)
@@ -1223,8 +1327,8 @@ tern.on("window_start", function(cx: WindowCx)
 			refresh(cx2, repo.root)
 		end
 	end)
-	cli({ "list" }, function(res: RootResult, err, cx2)
-		local learned = if err == nil and type(res.root) == "string" then without_trailing_slash(res.root) else nil
+	list_all(function(res, cx2)
+		local learned = if res ~= nil and type(res.root) == "string" then without_trailing_slash(res.root) else nil
 		if learned ~= nil and learned ~= "" and learned ~= ROOT then
 			ROOT = learned
 			if env("TERN_WT_HOME") == nil then
@@ -1248,6 +1352,9 @@ tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
 	if ev.pane == cx.session:focused() then
 		refresh_dir(cx, ev.path)
 	end
+	if is_under(ev.path, ROOT) and not in_index(ev.path) then
+		refresh_index()
+	end
 end)
 
 tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
@@ -1256,6 +1363,9 @@ tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
 		remember_cwd(ev.pane, pane.cwd)
 		if ev.pane == cx.session:focused() then
 			refresh_dir(cx, pane.cwd)
+		end
+		if in_index(pane.cwd) then
+			refresh_index()
 		end
 	end
 end)
@@ -1267,6 +1377,9 @@ tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
 		cwd = if pane ~= nil then pane.cwd else nil
 	end
 	refresh_dir(cx, cwd)
+	if in_index(cwd) then
+		refresh_index()
+	end
 end)
 
 tern.on("pane_closed", function(ev: PaneEvent, _cx: WindowCx)
@@ -1374,6 +1487,7 @@ tern.carly.export("remove", {
 	end
 	cli(argv, function(res: RemoveResult, err, cx2)
 		if err == nil then
+			set_entry(res.removed, nil)
 			after_change(cx2)
 		end
 		reply_to(call)(res, err, cx2)

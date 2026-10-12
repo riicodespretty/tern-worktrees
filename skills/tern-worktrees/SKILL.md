@@ -57,9 +57,11 @@ Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `b
 
 ### `list`
 
-`tern-wt list [--repo <dir>]`
+`tern-wt list [--repo <dir>] [--all]`
 
-Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty"}], "warnings"}`. `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`.
+- `--all`: also list the omp-owned worktrees, at all depths in the worktree root. `list` does not look in a worktree or a main checkout.
+
+Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty", "changed", "owner"}]}`. Without `--all`, `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`. `repo` is the main checkout. `branch` is null for a detached `HEAD`. `changed` is the number of changed files: changed and new files, each once, and submodule changes. `dirty` is true when `changed` is more than 0. `owner` is `tern` for a tern-managed worktree and `omp` for an omp-owned worktree.
 
 ### `branches`
 

@@ -103,12 +103,22 @@ When the teardown fails, for example because of uncommitted changes or an ignore
 
 Escape keeps the tab and the worktree.
 
+### Worktree variables
+
+A shell that starts in a worktree in the worktree root, a managed worktree or an omp-owned worktree, or in a folder of one, gets three environment variables:
+
+- `TERN_WT_PATH`: the path of the worktree.
+- `TERN_WT_MAIN`: the path of its main checkout.
+- `TERN_WT_BRANCH`: its branch. A shell in a worktree with a detached `HEAD` does not get it.
+
+A shell that starts in a folder that is not in the worktree root gets none of them. The values come from the last refresh of the plugin's list of worktrees, `tern-wt list --all`. The refresh runs when a Tern window starts, when a pane moves into a worktree in the root that the list does not have, and when a shell command ends or a pane gets focus in a worktree on the list, at most one time in 2 seconds. A worktree that the plugin makes or tears down changes the list at once. After a branch switch, a new shell gets the new branch after the next refresh. A shell keeps the variables it started with.
+
 ## Work with omp
 
 When omp is on `PATH` and `TERN_WT_HOME` is not set, `tern-wt` shares omp's default worktree root, usually `~/.omp/wt`. It resolves the root as omp 18.8.6 does: `$OMP_WORKTREE_DIR`, else the omp setting `worktree.base`, else the `wt` folder of the omp data folder. omp removes the spaces at the two ends of each override, a leading `~` becomes the home folder, and a value that is still relative does not count. The omp data folder is `~/.omp`, or `~/$PI_CONFIG_DIR`, with `profiles/<profile>` added for the profile in `OMP_PROFILE` or `PI_PROFILE`. On Linux and macOS, `$XDG_DATA_HOME/omp` replaces it when that folder is on disk (`$XDG_DATA_HOME/omp/profiles/<profile>` for a profile). `tern-wt` reads the omp settings with `omp config list --json` run in `/`, so the config of a project does not move the root.
 
 - A tern-managed worktree is at `<root>/<repo>/<slug>`, two levels below the root, where `<repo>` is the folder name of the main checkout.
-- Each other worktree in the root is omp-owned, for example the `<n>-<hash>` folder of a pull request checkout or the folder of a `/wt` session. `list` does not show omp-owned worktrees, `branches` marks them with `owner: "omp"`, `create` opens them where they are, and `remove` refuses them with `not_managed`.
+- Each other worktree in the root is omp-owned, for example the `<n>-<hash>` folder of a pull request checkout or the folder of a `/wt` session. `list` shows omp-owned worktrees only with `--all`, `branches` marks them with `owner: "omp"`, `create` opens them where they are, and `remove` refuses them with `not_managed`.
 - `create` finds an omp-owned worktree by its branch. omp checks out each pull request on the branch `pr-<n>`, so `create --pr <n>` reuses that checkout. For a pull request from the same repository, it does so when no worktree has the head branch and the git config key `branch.pr-<n>.ompPrHeadRef` that omp writes, when set, names that head branch.
 
 When omp is on disk but `omp config list --json` fails in `/`, the worktree root is unknown, so `create`, `remove`, `list` and `branches` fail with `omp_failed` rather than use a different root. `tern-wt` uses `~/.tern-wt/worktrees` only when no omp binary is on disk.
@@ -161,7 +171,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 - `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
-- `list`: lists the tern-managed worktrees.
+- `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
 - `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.
 - `resolve`: gives the repository root, name and owner of each directory.
 - `repos`: lists the GitHub repositories of your user and organizations.

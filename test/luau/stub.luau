@@ -10,6 +10,7 @@ local DATA_DIR = "/plugin-data"
 
 export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean? }
 export type Run = { argv: { string }, cb: (result: any, cx: any) -> () }
+export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
 export type Options = {
 	file: string?,
 	env: { [string]: string }?,
@@ -25,7 +26,9 @@ export type Harness = {
 	runs: { Run },
 	kv: { [string]: any },
 	clock: number,
+	timers: { Timer },
 	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
+	tick: (self: Harness, ms: number) -> (),
 }
 
 local Stub = {}
@@ -157,8 +160,28 @@ function Stub.load(opts: Options): Harness
 		runs = {},
 		kv = opts.kv or {},
 		clock = 0,
+		timers = {},
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
 			answer(self, verb, stdout, status, cx or defaultCx or lastCx)
+		end,
+		-- Moves the fake clock by `ms` and fires each timer that is then due, earliest first.
+		tick = function(self: Harness, ms: number)
+			self.clock += ms
+			while true do
+				local due: number? = nil
+				for i, timer in self.timers do
+					if timer.at <= self.clock and (due == nil or timer.at < self.timers[due].at) then
+						due = i
+					end
+				end
+				if due == nil then
+					return
+				end
+				local timer = table.remove(self.timers, due) :: Timer
+				if not timer.cancelled then
+					timer.fn(defaultCx or lastCx)
+				end
+			end
 		end,
 	}
 
@@ -191,8 +214,9 @@ function Stub.load(opts: Options): Harness
 			get = function(key: string): any
 				return h.kv[key]
 			end,
+			-- Stores a JSON copy, as Tern's kv.json does, so windows that share `kv` never share a table.
 			set = function(key: string, value: any)
-				h.kv[key] = value
+				h.kv[key] = if value == nil then nil else serde.decode("json", serde.encode("json", value))
 			end,
 		},
 		command = function(spec: any)
@@ -227,6 +251,15 @@ function Stub.load(opts: Options): Harness
 		},
 		now = function(): number
 			return h.clock
+		end,
+		timer = function(ms: number, fn: (cx: any) -> ()): any
+			local timer: Timer = { at = h.clock + ms, fn = fn, cancelled = false }
+			table.insert(h.timers, timer)
+			return {
+				cancel = function(_self: any)
+					timer.cancelled = true
+				end,
+			}
 		end,
 	}
 

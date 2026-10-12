@@ -40,9 +40,9 @@ describe('list command', () => {
     await expect(run([])).resolves.toStrictEqual({
       root: worktreeRootDir(),
       worktrees: [
-        { branch: 'feature/x', dirty: false, path: clean, repo: repo.dir },
-        { branch: null, dirty: false, path: detached, repo: repo.dir },
-        { branch: 'feature/y', dirty: true, path: dirty, repo: other.dir },
+        { branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: clean, repo: repo.dir },
+        { branch: null, changed: 0, dirty: false, owner: 'tern', path: detached, repo: repo.dir },
+        { branch: 'feature/y', changed: 1, dirty: true, owner: 'tern', path: dirty, repo: other.dir },
       ],
     });
   });
@@ -54,13 +54,45 @@ describe('list command', () => {
     await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
   });
 
+  it('does not look inside the checkout at the root of --repo', async () => {
+    const clone = path.join(worktreeRootDir(), 'aoyama');
+    await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
+    const inner = path.join(clone, 'feature-x');
+    await git(clone, 'worktree', 'add', '--quiet', '-b', 'feature/x', inner, 'origin/main');
+    const index = await git(inner, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
+    writeFileSync(index.trim(), 'not an index');
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
+  });
+
+  it('counts each changed file once', async () => {
+    const dir = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    writeFileSync(path.join(dir, 'staged.txt'), 'x\n');
+    await git(dir, 'add', 'staged.txt');
+    writeFileSync(path.join(dir, 'staged.txt'), 'y\n');
+    writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
+    await expect(run([])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      worktrees: [{ branch: 'feature/x', changed: 2, dirty: true, owner: 'tern', path: dir, repo: repo.dir }],
+    });
+  });
+
+  it('adds nothing with --all when the root is not the omp root', async () => {
+    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', path.join(worktreeRootDir(), '7-abc1234'), 'origin/main');
+    await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', path.join(worktreeRootDir(), 'aoyama', 'plain', 'feature-z'), 'origin/main');
+    await expect(run(['--all'])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
+    });
+  });
+
   it('lists only the worktrees of --repo', async () => {
     const other = await tmpRepo('maui');
     const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
     await addWorktree(other, 'feature-y', '-b', 'feature/y');
     await expect(run(['--repo', mine])).resolves.toStrictEqual({
       root: worktreeRootDir(),
-      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
 
@@ -70,7 +102,7 @@ describe('list command', () => {
     await addWorktree(twin, 'feature-y', '-b', 'feature/y');
     await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
       root: worktreeRootDir(),
-      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
 
@@ -83,7 +115,7 @@ describe('list command', () => {
     await expect(run([])).rejects.toMatchObject({ code: 'git_failed' });
     await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
       root: worktreeRootDir(),
-      worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }],
+      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
 
@@ -94,7 +126,67 @@ describe('list command', () => {
     await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', mine, 'origin/main');
     await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', path.join(base, '7-abc1234'), 'origin/main');
     await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', path.join(base, 'sandbox', 'feature-z'), 'origin/main');
-    await expect(run([])).resolves.toStrictEqual({ root: base, worktrees: [{ branch: 'feature/x', dirty: false, path: mine, repo: repo.dir }] });
+    await expect(run([])).resolves.toStrictEqual({
+      root: base,
+      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
+    });
+  });
+
+  describe('with --all in the omp root', () => {
+    let base: string;
+
+    beforeEach(() => {
+      base = tempDir('omp-wt');
+      useOmp({ base, clone: false });
+    });
+
+    it('also lists the omp-owned worktrees at any depth, with a null branch for a detached HEAD', async () => {
+      const mine = path.join(base, 'aoyama', 'feature-x');
+      const shallow = path.join(base, '7-abc1234');
+      const detached = path.join(base, '9-def5678');
+      const deep = path.join(base, 'sandbox', 'feature-z');
+      const deeper = path.join(base, 'sandbox', 'deep', 'feature-w');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/x', mine, 'origin/main');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', shallow, 'origin/main');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '--detach', detached, 'origin/main');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', deep, 'origin/main');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/2', deeper, 'origin/main');
+      writeFileSync(path.join(deep, 'junk.txt'), 'x\n');
+      await expect(run(['--all'])).resolves.toStrictEqual({
+        root: base,
+        worktrees: [
+          { branch: 'pr-7', changed: 0, dirty: false, owner: 'omp', path: shallow, repo: repo.dir },
+          { branch: null, changed: 0, dirty: false, owner: 'omp', path: detached, repo: repo.dir },
+          { branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir },
+          { branch: 'wt/2', changed: 0, dirty: false, owner: 'omp', path: deeper, repo: repo.dir },
+          { branch: 'wt/1', changed: 1, dirty: true, owner: 'omp', path: deep, repo: repo.dir },
+        ],
+      });
+    });
+
+    it('does not look inside a worktree or a main checkout', async () => {
+      const outer = path.join(base, '7-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', outer, 'origin/main');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'inner', path.join(outer, 'inner'), 'origin/main');
+      const clone = path.join(base, 'clone');
+      await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
+      await git(clone, 'worktree', 'add', '--quiet', '-b', 'nested', path.join(clone, 'nested'), 'origin/main');
+      await expect(run(['--all'])).resolves.toStrictEqual({
+        root: base,
+        worktrees: [{ branch: 'pr-7', changed: 1, dirty: true, owner: 'omp', path: outer, repo: repo.dir }],
+      });
+    });
+
+    it('lists only the worktrees of --repo', async () => {
+      const other = await tmpRepo('maui');
+      const mine = path.join(base, '7-abc1234');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', mine, 'origin/main');
+      await git(other.dir, 'worktree', 'add', '--quiet', '-b', 'pr-8', path.join(base, '8-def5678'), 'origin/main');
+      await expect(run(['--all', '--repo', repo.dir])).resolves.toStrictEqual({
+        root: base,
+        worktrees: [{ branch: 'pr-7', changed: 0, dirty: false, owner: 'omp', path: mine, repo: repo.dir }],
+      });
+    });
   });
 
   it('fails closed with omp_failed when omp fails, and does not list ~/.tern-wt/worktrees', async () => {
