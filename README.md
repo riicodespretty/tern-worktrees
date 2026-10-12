@@ -94,7 +94,7 @@ Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not st
 When you close a worktree tab, a picker opens with the placeholder `Closing worktree tab · <path>`. It shows two items. Keep worktree is the first item, so Enter keeps the worktree:
 
 - Keep worktree: closes the tab and keeps the worktree.
-- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Its dim text says what the teardown policy does with the branch. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
+- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Its dim text says what the teardown policy does with the branch, from `tern-wt config` when the picker opens. When the options file is invalid, it has no dim text. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
 
 Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys. To select an item, type to filter the list or use the arrow keys. Then press Enter. When the picker fails to open, a toast shows the error. The tab closes, and the worktree stays.
 
@@ -121,6 +121,7 @@ A shell that starts in a folder that is not in the worktree root gets none of th
 
 - A Tern window starts.
 - A pane moves into a worktree in the root that is not on the list.
+- A tab or pane opens in a worktree in the root that is not on the list, for example a tab from `tern-wt create` in a shell. After the refresh, a close of that tab opens the teardown picker when the worktree is tern-managed.
 - A shell command ends, or a pane gets focus, in a worktree on the list.
 
 A refresh from a pane or a shell command runs at most one time in 2 seconds. When the plugin makes or tears down a worktree, the list changes immediately. After a branch switch, a new shell gets the new branch after the next refresh. A shell keeps the variables it started with.
@@ -193,7 +194,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 [`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) is the reference for each command: its arguments, its output fields, the next step for each error code, and the rules agents follow for teardown. The commands:
 
-- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
+- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. Its `owner` field is `tern` or `omp`. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
 - `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.
@@ -201,6 +202,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 - `repos`: lists the GitHub repositories of your user and organizations.
 - `clone`: clones a GitHub repository to the clone root.
 - `new-repo`: makes a GitHub repository, then clones it.
+- `config`: prints the options file with each default filled in.
 - `tern-wt setup`: links the plugin, the CLI and the skill.
 
 Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `branch_in_main_checkout`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `omp_failed`, `tern_failed`.

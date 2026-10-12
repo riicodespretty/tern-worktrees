@@ -4,13 +4,27 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
-local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+local ENV = { HOME = "/home/u" }
 local WORKTREE = "/wt/worktrees/app/feat"
 local OTHER = "/wt/worktrees/app/fix"
-local FILES = {
-	[WORKTREE .. "/.git"] = "gitdir: /src/app/.git/worktrees/feat\n",
-	[OTHER .. "/.git"] = "gitdir: /src/app/.git/worktrees/fix\n",
-}
+local FILES = { [WORKTREE .. "/.git"] = "", [OTHER .. "/.git"] = "" }
+
+-- The kept worktree root and an index with WORKTREE and OTHER as managed worktrees.
+local function managed_kv(): { [string]: any }
+	return {
+		worktreeRoot = "/wt/worktrees",
+		worktreeIndex = {
+			[WORKTREE] = { main = "/r/app", branch = "feat", changed = 0, owner = "tern" },
+			[OTHER] = { main = "/r/app", branch = "fix", changed = 0, owner = "tern" },
+		},
+	}
+end
+
+-- A `tern-wt config` answer with the teardown policy `teardown`.
+local function config_answer(teardown: string): string
+	return `\{"teardown":"{teardown}","cloneRoot":"/home/u/Developer","hotkeys":\{"new":["cmd+shift+w"]},"setup":\{}}`
+end
+local CONFIG = config_answer("worktree+merged-branch")
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
 local ELSEWHERE =
@@ -35,10 +49,11 @@ local function item_by_id(request: any, id: string): any
 	error("no item " .. id)
 end
 
--- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE.
-local function open_relocate(): (Stub.Harness, any)
+-- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE. `kv` defaults to a kept
+-- worktree root of /wt/worktrees.
+local function open_relocate(kv: { [string]: any }?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local plugin = Stub.load({ env = ENV })
+	local plugin = Stub.load({ env = ENV, kv = kv or { worktreeRoot = "/wt/worktrees" } })
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
@@ -49,11 +64,15 @@ local function open_relocate(): (Stub.Harness, any)
 	return plugin, cx
 end
 
--- Presses the close key on the last tab of WORKTREE.
-local function close_worktree_tab(): (Stub.Harness, any)
+-- Presses the close key on the last tab of WORKTREE, and answers the `config` run of the picker with `config` and
+-- `status` (default CONFIG and 0).
+local function close_worktree_tab(config: string?, status: number?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
+	eq(#cx.asked, 0, "pickers and prompts opened before config answers")
+	eq(table.concat(argv_lines(plugin, "config"), ";"), "config", "config calls")
+	plugin:answer("config", config or CONFIG, status, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(cx.asked[1].kind, "pick", "request kind")
 	return plugin, cx
@@ -88,6 +107,11 @@ test("relocate asks with one Relocate item", function()
 	eq(opts.items[1].id, "relocate", "items[1].id")
 	eq(opts.items[1].label, "Relocate to …/worktrees/app/x", "items[1].label")
 	eq(opts.items[1].icon, "folder", "items[1].icon")
+end)
+
+test("without a worktree root the Relocate item shows the whole target path", function()
+	local _, cx = open_relocate({})
+	eq(cx.asked[2].opts.items[1].label, "Relocate to /wt/worktrees/app/x", "items[1].label")
 end)
 
 test("a worktree outside the root replaces the create toast before the relocate picker", function()
@@ -127,6 +151,17 @@ test("closing a worktree tab lists Keep worktree first, then Tear down", functio
 	eq(opts.items[2].id, "teardown", "items[2].id")
 	eq(opts.items[2].label, "Tear down", "items[2].label")
 	eq(opts.items[2].detail, "removes worktree, deletes branch if merged", "items[2].detail")
+end)
+
+test("the Tear down item shows the teardown policy that tern-wt config gives", function()
+	local _, cx = close_worktree_tab(config_answer("worktree+branch"))
+	eq(cx.asked[1].opts.items[2].detail, "removes worktree, deletes branch", "items[2].detail")
+end)
+
+test("a failed tern-wt config still opens the close-tab picker, and the Tear down item has no detail", function()
+	local _, cx = close_worktree_tab('{"error":{"code":"config_invalid","message":"bad"}}', 1)
+	eq(cx.asked[1].opts.items[2].id, "teardown", "items[2].id")
+	eq(cx.asked[1].opts.items[2].detail, nil, "items[2].detail")
 end)
 
 test("dismissing the close-tab picker sends no remove and keeps the tab", function()
@@ -172,10 +207,11 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 		{ pane = 1, tab = 1, cwd = WORKTREE },
 		{ pane = 2, tab = 1, cwd = OTHER },
 	}, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)
+	plugin:answer("config", CONFIG, 0, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(cx.asked[1].opts.placeholder, "Worktree tab closed · …/worktrees/app/feat", "placeholder")
 	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
@@ -190,10 +226,11 @@ end)
 
 test("Keep worktree in the Worktree tab closed picker says only that it keeps the worktree", function()
 	local live = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE } }, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)
+	plugin:answer("config", CONFIG, 0, cx)
 	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
 	eq(cx.asked[1].opts.items[1].detail, "keeps the worktree", "items[1].detail")
 end)

@@ -43,8 +43,9 @@ When omp is installed and the omp setting `worktree.clone` is true in the reposi
 
 For a new worktree, `create` opens the tab and waits a maximum of 30 s for its shell prompt. Then it types the setup commands of the repository into the tab (see [Options file](#options-file)). The commands run in the tab, and `create` does not wait for them to complete.
 
-Output: `{"path", "branch", "repo", "status", "carried", "setup", "tab", "warnings"}`.
+Output: `{"path", "branch", "repo", "owner", "status", "carried", "setup", "tab", "warnings"}`.
 
+- `owner`: `tern` for a tern-managed worktree, `omp` for an omp-owned worktree, as in `list`. A reused omp-owned worktree and the omp checkout of a pull request give `omp`.
 - `status`: `created`, `reused` or `relocated`. For an omp-owned worktree, `reused` with its `path`.
 - `carried`: the ignored files, as paths in the worktree, that a rebuilt relocation copied into the new worktree. Empty otherwise. When the new worktree has a file at that path, the copy stays in the temporary folder, with a `not carried:` warning.
 - `setup`: `{"line", "typed"}`, or null. `line` holds the setup commands of the repository, with `&&` between them. `typed` is true when `create` typed the line into the tab it opened. `setup` is null unless `status` is `created`, `origin` is a GitHub URL, and the options file lists commands for its name with owner. When the tab was open before, no prompt shows in 30 s, or Tern fails, `typed` is false with a `setup not run:` warning, and the worktree stays.
@@ -103,6 +104,12 @@ Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clon
 `tern-wt new-repo <owner/name> --visibility private|public`
 
 Makes a GitHub repository with a README, then clones it. It checks the clone path first, so a `path_conflict` makes no repository. The name with owner follows the rule of `clone`. Run it only when the user asks for a new repository. Output: `{"root", "nameWithOwner"}`.
+
+### `config`
+
+`tern-wt config`
+
+Output: the options file with each default filled in, `{"teardown", "cloneRoot", "hotkeys": {"new"}, "setup"}`. See [Options file](#options-file). An invalid file gives `config_invalid`, as for each command.
 
 ### `tern-wt setup`
 

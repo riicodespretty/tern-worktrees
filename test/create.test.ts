@@ -79,10 +79,10 @@ describe('create command', () => {
     it('creates a tracking worktree for a remote branch, then reuses it', async () => {
       const target = managedPath('feature-x');
       const created = await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
-      expect(created).toStrictEqual({ branch: 'feature/x', carried: [], path: target, repo: repo.dir, setup: null, status: 'created', tab: null, warnings: [] });
+      expect(created).toStrictEqual({ branch: 'feature/x', carried: [], owner: 'tern', path: target, repo: repo.dir, setup: null, status: 'created', tab: null, warnings: [] });
       await expect(currentBranch(target)).resolves.toBe('feature/x');
       await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
-      await expect(run(['--repo', target, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'reused', warnings: [] });
+      await expect(run(['--repo', target, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ owner: 'tern', path: target, status: 'reused', warnings: [] });
     });
 
     it('checks out an existing local branch', async () => {
@@ -259,6 +259,7 @@ describe('create command', () => {
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual({
         branch: 'feature/x',
         carried: [],
+        owner: 'tern',
         path: target,
         repo: repo.dir,
         setup: null,
@@ -383,6 +384,7 @@ describe('create command', () => {
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toStrictEqual({
         branch: 'feature/x',
         carried: [],
+        owner: 'omp',
         path: ompOwned,
         repo: repo.dir,
         setup: null,
@@ -416,6 +418,7 @@ describe('create command', () => {
         await expect(run(['--repo', repo.dir, '--pr', '7'])).resolves.toStrictEqual({
           branch: 'pr-7',
           carried: [],
+          owner: 'omp',
           path: ompCheckout(),
           repo: repo.dir,
           setup: null,
@@ -428,7 +431,7 @@ describe('create command', () => {
       });
 
       it('reuses the omp checkout on pr-<n> without ompPrHeadRef', async () => {
-        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', path: ompCheckout(), status: 'reused' });
+        await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', owner: 'omp', path: ompCheckout(), status: 'reused' });
       });
 
       it('adds a worktree when ompPrHeadRef names another branch', async () => {

@@ -75,7 +75,7 @@ describe('create command', () => {
 
     it('moves a worktree into the root', async () => {
       const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ status: 'relocated', warnings: [] });
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--relocate', '--no-tab'])).resolves.toMatchObject({ owner: 'tern', status: 'relocated', warnings: [] });
       expect(existsSync(old)).toBeFalsy();
       await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
     });

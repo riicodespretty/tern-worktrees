@@ -4,7 +4,7 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
-local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+local ENV = { HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
 local LINE = "npm ci && npm test"
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
@@ -15,7 +15,7 @@ local NO_TAB = "setup not run: no tab opened"
 
 -- The `create` answer for branch x, with `setup` as its JSON value.
 local function created(setup: string): string
-	return `\{"branch":"x","carried":[],"path":"{PATH}","repo":"/r/app","setup":{setup},"status":"created","warnings":[]}`
+	return `\{"branch":"x","carried":[],"owner":"tern","path":"{PATH}","repo":"/r/app","setup":{setup},"status":"created","warnings":[]}`
 end
 
 local UNTYPED = created(`\{"line":"{LINE}","typed":false}`)
@@ -356,7 +356,7 @@ test("a create toast starts its title with a capital and keeps a short path whol
 	create_x(
 		plugin,
 		cx,
-		`\{"branch":"x","carried":[],"path":"{PATH}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
+		`\{"branch":"x","carried":[],"owner":"tern","path":"{PATH}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
 	)
 	local toast = create_toast(cx)
 	eq(toast.title, "Reused\u{A0}worktree", "title")
@@ -369,7 +369,7 @@ test("a create toast cuts a long detail at its start and keeps its end", functio
 	create_x(
 		plugin,
 		cx,
-		`\{"branch":"x","carried":[],"path":"{long}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
+		`\{"branch":"x","carried":[],"owner":"tern","path":"{long}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
 	)
 	local detail = create_toast(cx).detail
 	eq(utf8.len(detail), 50, "detail length")

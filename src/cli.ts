@@ -8,9 +8,9 @@ export interface CliResult {
   stderr: string;
 }
 
-/** A command module: `run(args)` returns the JSON result of the command. */
+/** A command module: `run(args)` returns the JSON result of the command, or a Promise of it. */
 export interface CommandModule {
-  run: (args: string[]) => Promise<object>;
+  run: (args: string[]) => object | Promise<object>;
 }
 
 /** Finds the command module for a command name. */

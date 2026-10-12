@@ -5,7 +5,7 @@ local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
-local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+local ENV = { HOME = "/home/u" }
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
 "prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],

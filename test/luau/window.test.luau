@@ -4,54 +4,122 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
+local ENV = { HOME = "/home/u" }
+local ROOT = "/wt/worktrees"
 local WORKTREE = "/wt/worktrees/app/feat"
+local CONFIG = '{"teardown":"worktree+merged-branch","cloneRoot":"/home/u/Developer","hotkeys":{"new":["cmd+shift+w"]},'
+	.. '"setup":{}}'
 
-local function load_worktree_of(mainRepo: string): Stub.Harness
-	return Stub.load({
-		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },
-		files = { [WORKTREE .. "/.git"] = `gitdir: /src/{mainRepo}/.git/worktrees/feat\n` },
-	})
+type OwnerCase = {
+	what: string,
+	entry: { [string]: any },
+	panes: { Stub.Pane },
+	exists: boolean,
+	asks: boolean,
+}
+
+local function entry_with(owner: string?): { [string]: any }
+	return { main = "/r/app", branch = "feat", changed = 0, owner = owner }
 end
 
-test("close_tab asks once for the last tab on a managed worktree", function()
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = load_worktree_of("app")
-	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
-	eq(#cx.asked, 1, "pickers and prompts opened")
-	eq(cx.asked[1].kind, "pick", "request kind")
-end)
-
-test("close_tab does not ask about a worktree of another repository", function()
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = load_worktree_of("other")
-	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
-	eq(#cx.asked, 0, "pickers and prompts opened")
-end)
-
-test("close_tab does not ask about a worktree that a pane in another tab still uses", function()
-	local cx = Stub.cx({
-		{ pane = 1, tab = 1, cwd = WORKTREE .. "/src" },
-		{ pane = 2, tab = 2, cwd = WORKTREE },
-	}, 1)
-	local plugin = load_worktree_of("app")
-	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
-	eq(#cx.asked, 0, "pickers and prompts opened")
-end)
+for _, case in
+	{
+		{
+			what = "owner tern",
+			entry = entry_with("tern"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE } },
+			exists = true,
+			asks = true,
+		},
+		{
+			what = "owner tern and a cwd nested in the worktree",
+			entry = entry_with("tern"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } },
+			exists = true,
+			asks = true,
+		},
+		{
+			what = "owner omp",
+			entry = entry_with("omp"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE } },
+			exists = true,
+			asks = false,
+		},
+		{
+			what = "no owner",
+			entry = entry_with(nil),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE } },
+			exists = true,
+			asks = false,
+		},
+		{
+			what = "an unknown owner",
+			entry = entry_with("orca"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE } },
+			exists = true,
+			asks = false,
+		},
+		{
+			what = "owner tern and a deleted folder",
+			entry = entry_with("tern"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE } },
+			exists = false,
+			asks = false,
+		},
+		{
+			what = "owner tern and a pane of another tab in the worktree",
+			entry = entry_with("tern"),
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE .. "/src" }, { pane = 2, tab = 2, cwd = WORKTREE } },
+			exists = true,
+			asks = false,
+		},
+	} :: { OwnerCase }
+do
+	test(`close_tab {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
+		local cx = Stub.cx(case.panes, 1)
+		local plugin = Stub.load({
+			env = ENV,
+			files = if case.exists then { [WORKTREE .. "/.git"] = "" } else {},
+			kv = { worktreeRoot = ROOT, worktreeIndex = { [WORKTREE] = case.entry } },
+		})
+		eq(plugin.overrides.close_tab(cx), case.asks, "close_tab result")
+		plugin:answer("config", CONFIG, 0, cx)
+		eq(#cx.asked, if case.asks then 1 else 0, "pickers and prompts opened")
+	end)
+end
 
 test("window_start reads the worktree root from the list output", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app/feat" } }, 1)
-	local plugin = Stub.load({
-		env = { HOME = "/home/u" },
-		files = { ["/r/app/feat/.git"] = "gitdir: /src/app/.git/worktrees/feat\n" },
-	})
+	local plugin = Stub.load({ env = ENV, files = { ["/r/app/feat/.git"] = "" } })
 	plugin.handlers.window_start(cx)
-	plugin:answer("list", '{"root":"/r/","worktrees":[]}')
+	plugin:answer(
+		"list",
+		'{"root":"/r/","worktrees":[{"path":"/r/app/feat","repo":"/src/app","branch":"feat","dirty":false,'
+			.. '"changed":0,"owner":"tern"}]}'
+	)
 	eq(plugin.kv.worktreeRoot, "/r", "remembered worktree root")
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
+	plugin:answer("config", CONFIG, 0, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 end)
 
-local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+test("without a kept worktree root the window half has no ~/.tern-wt/worktrees root", function()
+	local OLD = "/home/u/.tern-wt/worktrees/app/x"
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = OLD } }, 1)
+	local plugin = Stub.load({ env = ENV, files = { [OLD .. "/.git"] = "gitdir: /src/app/.git/worktrees/x\n" } })
+	eq(plugin:status(OLD), nil, "segments in the old default root")
+	plugin.handlers.cwd({ pane = 1, path = OLD }, cx)
+	local lists = 0
+	for _, run in plugin.runs do
+		if run.argv[2] == "list" then
+			lists += 1
+		end
+	end
+	eq(lists, 0, "list runs for a cwd in the old default root")
+	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
+	eq(#cx.asked, 0, "pickers and prompts opened")
+end)
+
 local FEAT = "/wt/worktrees/app/feat"
 local OMP = "/wt/7-abc1234"
 local LISTED = '{"root":"/wt/worktrees","worktrees":['
@@ -59,8 +127,8 @@ local LISTED = '{"root":"/wt/worktrees","worktrees":['
 	.. '{"path":"/wt/7-abc1234","repo":"/r/app","branch":null,"dirty":false,"changed":0,"owner":"omp"}]}'
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
-local CREATED =
-	'{"branch":"x","carried":[],"path":"/wt/worktrees/app/x","repo":"/r/app","status":"created","warnings":[]}'
+local CREATED = '{"branch":"x","carried":[],"owner":"tern","path":"/wt/worktrees/app/x","repo":"/r/app",'
+	.. '"status":"created","warnings":[]}'
 
 local function argv_lines(plugin: Stub.Harness, verb: string): { string }
 	local found: { string } = {}
@@ -105,10 +173,12 @@ test("window_start writes the worktree index from list --all", function()
 	eq(feat.main, "/r/app", "main of feat")
 	eq(feat.branch, "feat", "branch of feat")
 	eq(feat.changed, 3, "changed of feat")
+	eq(feat.owner, "tern", "owner of feat")
 	local omp = plugin.kv.worktreeIndex[OMP]
 	eq(omp.main, "/r/app", "main of the omp-owned worktree")
 	eq(omp.branch, nil, "branch of the detached omp-owned worktree")
 	eq(omp.changed, 0, "changed of the omp-owned worktree")
+	eq(omp.owner, "omp", "owner of the omp-owned worktree")
 end)
 
 test("a create answer writes the index entry before new_tab runs", function()
@@ -126,7 +196,102 @@ test("a create answer writes the index entry before new_tab runs", function()
 	eq(seen.main, "/r/app", "main")
 	eq(seen.branch, "x", "branch")
 	eq(seen.changed, 0, "changed")
+	eq(seen.owner, "tern", "owner")
 end)
+
+-- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
+-- `owner`.
+local function pickers_after_close_of_created_tab(owner: string): number
+	local X = "/wt/worktrees/app/x"
+	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
+	local cx = Stub.cx(panes, 1)
+	cx.layout.new_tab = function(_self: any, opts: any): number?
+		table.insert(panes, { pane = 2, tab = 2, cwd = opts.cwd })
+		return 2
+	end
+	cx.layout.name_tab = function(_self: any, _tab: number, _name: string) end
+	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
+	pick_branch_x(plugin, cx)
+	plugin:answer(
+		"create",
+		`\{"branch":"x","carried":[],"owner":"{owner}","path":"{X}","repo":"/r/app","status":"created","warnings":[]}`,
+		0,
+		cx
+	)
+	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	local before = #after.asked
+	plugin.handlers.tab_closed({ tab = 2 }, after)
+	plugin:answer("config", CONFIG, 0, after)
+	return #after.asked - before
+end
+
+test("a create answer with owner tern makes a worktree tab, and owner omp does not", function()
+	eq(pickers_after_close_of_created_tab("tern"), 1, "pickers after a close of the tab of owner tern")
+	eq(pickers_after_close_of_created_tab("omp"), 0, "pickers after a close of the tab of owner omp")
+end)
+
+test("a tab that the plugin did not open becomes a worktree tab after one list --all", function()
+	local X = "/wt/worktrees/app/x"
+	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
+	local cx = Stub.cx(panes, 1)
+	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
+	plugin.handlers.window_start(cx)
+	plugin:answer("list", LISTED, 0, cx)
+	plugin:tick(2000)
+	table.insert(panes, { pane = 2, tab = 2, cwd = X })
+	plugin.handlers.tab_created({ tab = 2 }, cx)
+	eq(#argv_lines(plugin, "list"), 1, "list runs after the tab opened")
+	plugin:answer(
+		"list",
+		'{"root":"/wt/worktrees","worktrees":[{"path":"/wt/worktrees/app/x","repo":"/r/app","branch":"x",'
+			.. '"dirty":false,"changed":0,"owner":"tern"}]}',
+		0,
+		cx
+	)
+	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	plugin.handlers.tab_closed({ tab = 2 }, after)
+	plugin:answer("config", CONFIG, 0, after)
+	eq(#after.asked, 1, "pickers after a close of the tab")
+end)
+
+test("a pane in the repository folder of the worktree root starts no repeating list --all", function()
+	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
+	local cx = Stub.cx(panes, 1)
+	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+	plugin.handlers.window_start(cx)
+	plugin:answer("list", LISTED, 0, cx)
+	plugin:tick(2000)
+	table.insert(panes, { pane = 2, tab = 2, cwd = ROOT .. "/app" })
+	plugin.handlers.tab_created({ tab = 2 }, cx)
+	plugin:answer("list", LISTED, 0, cx)
+	plugin:tick(2000)
+	plugin:tick(2000)
+	eq(#argv_lines(plugin, "list"), 0, "list runs after two ticks of 2 s")
+end)
+
+for _, event in { "tab_created", "pane_created" } do
+	for _, case in
+		{
+			{ what = "only in indexed worktrees", cwds = { FEAT, FEAT .. "/src" } },
+			{ what = "only outside the worktree root", cwds = { "/home/u", "/tmp/x" } },
+		}
+	do
+		test(`{event} with new panes {case.what} starts no list --all`, function()
+			local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
+			local cx = Stub.cx(panes, 1)
+			local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+			plugin.handlers.window_start(cx)
+			plugin:answer("list", LISTED, 0, cx)
+			plugin:tick(2000)
+			for i, cwd in case.cwds do
+				table.insert(panes, { pane = i + 1, tab = 2, cwd = cwd })
+			end
+			plugin.handlers[event]({ tab = 2 }, cx)
+			plugin:tick(2000)
+			eq(#argv_lines(plugin, "list"), 0, "list runs")
+		end)
+	end
+end
 
 test("command_finished events within 2 s start one list --all and one trailing run", function()
 	local plugin, cx = started(FEAT .. "/src")
@@ -229,10 +394,11 @@ end)
 
 test("a teardown from the close-tab picker deletes the index entry", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = FEAT .. "/src" } }, 1)
-	local plugin = Stub.load({ env = ENV, files = { [FEAT .. "/.git"] = "gitdir: /r/app/.git/worktrees/feat\n" } })
+	local plugin = Stub.load({ env = ENV, files = { [FEAT .. "/.git"] = "" } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", LISTED, 0, cx)
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
+	plugin:answer("config", CONFIG, 0, cx)
 	for _, it in cx.asked[1].opts.items do
 		if it.id == "teardown" then
 			cx.asked[1].next(it, nil, cx)
@@ -272,7 +438,7 @@ local function create_in(plugin: Stub.Harness, cx: any, branch: string, path: st
 	end
 	plugin:answer(
 		"create",
-		`\{"branch":"{branch}","carried":[],"path":"{path}","repo":"/r/app","status":"created","warnings":[]}`,
+		`\{"branch":"{branch}","carried":[],"owner":"tern","path":"{path}","repo":"/r/app","status":"created","warnings":[]}`,
 		0,
 		cx
 	)

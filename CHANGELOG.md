@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Feature
+
+- Add `tern-wt config`, which prints the options file with each default filled in
+- Add `owner`, `tern` or `omp`, to the output of `create`
+
+### Fix
+
+- Read the teardown policy of the close-tab picker from `tern-wt config`. An invalid options file gives no detail line, not a policy that the CLI rejects
+- Get the worktree root only from the CLI in the Tern window. With omp installed, the window no longer uses `~/.tern-wt/worktrees` before the first `tern-wt list --all` answers
+- Count a tab that `tern-wt create` opened from a shell as a worktree tab after one refresh. Its close then offers the teardown picker
+
 ## [0.1.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.1.0 "2026-10-10")
 
 ### Feature

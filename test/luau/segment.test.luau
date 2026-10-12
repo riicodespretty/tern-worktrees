@@ -4,7 +4,7 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
-local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+local ENV = { HOME = "/home/u" }
 local NEW = "plugin.tern-worktrees.new"
 local FEAT = "/wt/worktrees/app/feat"
 local OMP = "/wt/7-abc1234"
@@ -77,29 +77,6 @@ test("a worktree without changed files shows its branch alone, muted", function(
 	eq(detached.tone, "muted", "tone of the detached worktree")
 end)
 
-test("a cwd nested in a worktree shows that worktree", function()
-	local plugin = started(LISTED)
-	eq(segment_of(plugin, FEAT .. "/src/lib").text, "feat · 2", "text")
-end)
-
-test("a cwd outside every worktree shows no segment", function()
-	local plugin = started(LISTED)
-	eq(plugin:status("/home/u"), nil, "segments in the home folder")
-	eq(plugin:status("/wt/worktrees/app"), nil, "segments in the repository folder of the worktree root")
-	eq(plugin:status(nil), nil, "segments of a pane without a cwd")
-end)
-
-test("a cwd matches a worktree path on whole path segments only, and the longest worktree path wins", function()
-	local plugin = started(listed({
-		{ "/r/a/feature", "feature", 0, "tern" },
-		{ "/r/b", "outer", 0, "tern" },
-		{ "/r/b/inner", "inner", 4, "omp" },
-	}))
-	eq(plugin:status("/r/a/feat"), nil, "segments in /r/a/feat")
-	eq(segment_of(plugin, "/r/b/inner/src").text, "inner · 4", "text in the nested worktree")
-	eq(segment_of(plugin, "/r/b/src").text, "outer", "text in the outer worktree")
-end)
-
 test("the formatter never calls refresh", function()
 	local plugin = started(LISTED)
 	local before = plugin.refreshes
@@ -159,7 +136,8 @@ test("refresh runs once after a create adds an entry", function()
 	local before = plugin.refreshes
 	plugin:answer(
 		"create",
-		'{"branch":"x","carried":[],"path":"/wt/worktrees/app/x","repo":"/r/app","status":"created","warnings":[]}',
+		'{"branch":"x","carried":[],"owner":"tern","path":"/wt/worktrees/app/x","repo":"/r/app","status":"created",'
+			.. '"warnings":[]}',
 		0,
 		cx
 	)

@@ -9,7 +9,7 @@ import { defaultBranch, ghMust, ghMustWith, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
 import { ompSettings, ompWorktreeAdd } from '../omp.ts';
 import { isUnder, worktreeOwner, worktreePath, worktreeRoot } from '../paths.ts';
-import type { WorktreeRoot } from '../paths.ts';
+import type { WorktreeOwner, WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { nameWithOwner } from '../repo-ref.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
@@ -20,6 +20,9 @@ export type CreateStatus = 'created' | 'relocated' | 'reused';
 /** How long `create` waits for the shell prompt of the tab it opened before it types the setup commands. */
 const SETUP_PROMPT_SECONDS = 30;
 
+/** Who owns the worktree that `create` gives: a worktree in the worktree root always has an owner. */
+type Owner = Exclude<WorktreeOwner, null>;
+
 /** The Tern tab that shows the worktree. */
 export interface CreatedTab {
   block: number;
@@ -29,11 +32,13 @@ export interface CreatedTab {
 
 /**
  * The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise.
+ * `owner` is `tern` for a tern-managed worktree and `omp` for an omp-owned one.
  * `setup` holds the setup commands of a new worktree as one `line`. `typed` is true when `create` typed the line into the tab that it opened. `setup` is null for a reused or relocated worktree, and for a repository without setup commands.
  */
 export interface CreateResult {
   branch: string;
   carried: string[];
+  owner: Owner;
   path: string;
   repo: string;
   setup: { line: string; typed: boolean } | null;
@@ -82,8 +87,10 @@ interface Placement {
   relocate: boolean;
 }
 
+/** `owner` is the {@link worktreeOwner} of `path`. */
 interface Placed {
   branch: string;
+  owner: Owner;
   path: string;
   status: CreateStatus;
 }
@@ -334,7 +341,7 @@ const reuseOmpPrCheckout = async (ctx: Context, target: Target, listed: Worktree
     return null;
   }
   const headRef = await gitRun(ctx.root, 'config', '--get', `branch.${branch}.ompPrHeadRef`);
-  return headRef.status !== 0 || headRef.stdout.trim() === target.branch ? { branch, path: found.path, status: 'reused' } : null;
+  return headRef.status !== 0 || headRef.stdout.trim() === target.branch ? { branch, owner: 'omp', path: found.path, status: 'reused' } : null;
 };
 
 const placeWorktree = async (ctx: Context, target: Target, placement: Placement): Promise<Placed> => {
@@ -350,11 +357,11 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
       return reused;
     }
     await addWorktree(ctx, target, placement.isNew, ctx.clone);
-    return { branch: target.branch, path: target.path, status: 'created' };
+    return { branch: target.branch, owner: 'tern', path: target.path, status: 'created' };
   }
   const samePath = isUnder(existing.path, target.path) && isUnder(target.path, existing.path);
   if (samePath || worktreeOwner(ctx.wtRoot, ctx.root, existing.path) === 'omp') {
-    return { branch: target.branch, path: samePath ? target.path : existing.path, status: 'reused' };
+    return { branch: target.branch, owner: samePath ? 'tern' : 'omp', path: samePath ? target.path : existing.path, status: 'reused' };
   }
   if (existing.main) {
     throw new CliError('branch_in_main_checkout', `${target.branch} is checked out in the main checkout at ${existing.path}`, { existing: existing.path });
@@ -366,7 +373,7 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
     });
   }
   await relocate(ctx, target, existing);
-  return { branch: target.branch, path: target.path, status: 'relocated' };
+  return { branch: target.branch, owner: 'tern', path: target.path, status: 'relocated' };
 };
 
 const updateSubmodules = async (ctx: Context, dir: string): Promise<void> => {
@@ -470,5 +477,5 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   const tab = options['no-tab'] ? null : await tryOpenTab(ctx, { ...target, branch: placed.branch, path: placed.path });
   const line = await setupLine(ctx, placed.status);
   const setup = line === null ? null : { line, typed: await typeSetup(ctx, line, tab) };
-  return { branch: placed.branch, carried, path: placed.path, repo: root, setup, status: placed.status, tab, warnings: ctx.warnings };
+  return { branch: placed.branch, carried, owner: placed.owner, path: placed.path, repo: root, setup, status: placed.status, tab, warnings: ctx.warnings };
 };

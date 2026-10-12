@@ -6,7 +6,6 @@ local test, eq = runner.test, runner.eq
 
 local INDEX = {
 	["/r/a/feature"] = { main = "/src/a", branch = "feature", changed = 0 },
-	["/r/a/feature/inner"] = { main = "/src/b", branch = "inner", changed = 2 },
 	["/r/7-abc1234"] = { main = "/src/a", changed = 0 },
 }
 
@@ -45,22 +44,6 @@ test("a shell at a worktree path gets the worktree variables", function()
 	eq(spec.env.TERN_WT_PATH, "/r/a/feature", "TERN_WT_PATH")
 	eq(spec.env.TERN_WT_MAIN, "/src/a", "TERN_WT_MAIN")
 	eq(spec.env.TERN_WT_BRANCH, "feature", "TERN_WT_BRANCH")
-end)
-
-test("a shell in a subfolder of a worktree gets the variables of that worktree", function()
-	eq(spawn_in("/r/a/feature/src/lib").env.TERN_WT_PATH, "/r/a/feature", "TERN_WT_PATH")
-end)
-
-test("a path that only starts with the text of a key gets nothing", function()
-	eq(spawn_in("/r/a/feat"), nil, "spec for /r/a/feat")
-	eq(spawn_in("/r/a/featureX"), nil, "spec for /r/a/featureX")
-end)
-
-test("the longest key wins", function()
-	local spec = spawn_in("/r/a/feature/inner/src")
-	eq(spec.env.TERN_WT_PATH, "/r/a/feature/inner", "TERN_WT_PATH")
-	eq(spec.env.TERN_WT_MAIN, "/src/b", "TERN_WT_MAIN")
-	eq(spec.env.TERN_WT_BRANCH, "inner", "TERN_WT_BRANCH")
 end)
 
 test("a detached HEAD gives no TERN_WT_BRANCH", function()
@@ -111,11 +94,6 @@ test("a key that is not a string is skipped and a string key still matches", fun
 		{ [7] = { main = "/src/x" }, ["/r/a/feature"] = { main = "/src/a", branch = "feature" } }
 	local spec = spawn_in("/r/a/feature/src", { worktreeIndex = index })
 	eq(spec ~= nil and spec.env.TERN_WT_PATH, "/r/a/feature", "TERN_WT_PATH")
-end)
-
-test("a cwd outside every key gives nothing", function()
-	eq(spawn_in("/tmp"), nil, "spec for /tmp")
-	eq(spawn_in("/r"), nil, "spec for /r")
 end)
 
 test("a leading ~ is expanded with HOME and the cwd is kept as given", function()

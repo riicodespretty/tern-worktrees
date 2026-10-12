@@ -14,21 +14,17 @@ local function without_trailing_slash(dir: string): string
 	return (string.gsub(dir, "/+$", ""))
 end
 
-local function initial_root(): string
-	local home = env("TERN_WT_HOME")
-	if home ~= nil then
-		return without_trailing_slash(home) .. "/worktrees"
-	end
+-- The worktree root that a `list --all` answer gave last, kept in kv, or nil until the first answer.
+local function remembered_root(): string?
 	local ok, remembered = pcall(tern.kv.get, ROOT_KEY)
 	if ok and type(remembered) == "string" and remembered ~= "" then
 		return without_trailing_slash(remembered)
 	end
-	return (env("HOME") or "") .. "/.tern-wt/worktrees"
+	return nil
 end
 
-local ROOT = initial_root()
+local ROOT: string? = remembered_root()
 local DEFAULT_KEYS = { "cmd+shift+w" }
-local DEFAULT_TEARDOWN = "worktree+merged-branch"
 local POLICY = {
 	worktree = "removes worktree, keeps branch",
 	["worktree+merged-branch"] = "removes worktree, deletes branch if merged",
@@ -50,6 +46,7 @@ type SetupLine = { line: string, typed: boolean }
 type CreateResult = {
 	branch: string,
 	carried: { string },
+	owner: "tern" | "omp",
 	path: string,
 	repo: string,
 	setup: SetupLine?,
@@ -63,7 +60,8 @@ type ResolveResult = { repos: { ResolvedDir } }
 type RemoveResult = { removed: string, branch: string?, branchDeleted: boolean?, warnings: { string } }
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
-type IndexEntry = { main: string, branch: string?, changed: number }
+type ConfigResult = { teardown: string }
+type IndexEntry = { main: string, branch: string?, changed: number, owner: "tern" | "omp" }
 type RootState = {
 	rows: { string }?,
 	prs: { PullRequest }?,
@@ -76,7 +74,6 @@ type SessionIndex = {
 	byTab: { [number]: SessionInfo },
 	current: SessionInfo?,
 }
-type Config = { hotkeys: { new: { string } }, teardown: string }
 type Repo = { root: string, name: string }
 
 local startCount = 0
@@ -188,20 +185,6 @@ local listAgain = false
 local refreshPending = false
 local listStartedAt: number? = nil
 
-local function entry_at(cwd: string?): IndexEntry?
-	local found: string? = nil
-	for path in pairs(worktreeIndex) do
-		if is_under(cwd, path) and (found == nil or #path > #found) then
-			found = path
-		end
-	end
-	return if found ~= nil then worktreeIndex[found] else nil
-end
-
-local function in_index(cwd: string?): boolean
-	return entry_at(cwd) ~= nil
-end
-
 -- Whether `a` and `b` differ in what a worktree segment shows: a worktree, its branch or its number of changed files.
 local function segments_differ(a: { [string]: IndexEntry? }, b: { [string]: IndexEntry? }): boolean
 	for path, entry in pairs(a) do
@@ -239,6 +222,47 @@ local function set_entry(path: string, entry: IndexEntry?)
 	write_index(merged)
 end
 
+-- The worktree index entry of `cwd` and its path: the longest index path that is `cwd` or a parent folder of it.
+local function index_lookup(cwd: string?): (string?, IndexEntry?)
+	local found: string? = nil
+	for path in pairs(worktreeIndex) do
+		if is_under(cwd, path) and (found == nil or #path > #found) then
+			found = path
+		end
+	end
+	return found, if found ~= nil then worktreeIndex[found] else nil
+end
+
+-- The path of the managed worktree of `cwd`: the index path of `cwd` when its entry has owner `tern`.
+local function managed_worktree(cwd: string?): string?
+	local path, entry = index_lookup(cwd)
+	return if entry ~= nil and entry.owner == "tern" then path else nil
+end
+
+-- Writes the managed worktrees of each tab with panes into `managed`, from the worktree index in memory.
+local function rebuild_managed(cx: WindowCx)
+	flush(cx)
+	local found: { [number]: { string } } = {}
+	for _, pane in ipairs(cx.session:panes()) do
+		local tab = pane.tab
+		if tab ~= nil then
+			local paths = found[tab] or {}
+			found[tab] = paths
+			local path = managed_worktree(pane.cwd)
+			if path ~= nil and table.find(paths, path) == nil then
+				table.insert(paths, path)
+			end
+		end
+	end
+	for tab, paths in pairs(found) do
+		if #paths > 0 then
+			managed[tab] = paths
+		else
+			managed[tab] = nil
+		end
+	end
+end
+
 local function apply_list(res: ListResult, startedAt: number)
 	local fresh: { [string]: IndexEntry? } = {}
 	for _, w in ipairs(res.worktrees or {}) do
@@ -247,6 +271,7 @@ local function apply_list(res: ListResult, startedAt: number)
 				main = w.repo,
 				branch = if type(w.branch) == "string" then w.branch else nil,
 				changed = if type(w.changed) == "number" then w.changed else 0,
+				owner = if w.owner == "tern" then "tern" else "omp",
 			}
 		end
 	end
@@ -271,6 +296,7 @@ local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 		listing = false
 		if err == nil then
 			apply_list(res, startedAt)
+			rebuild_managed(cx2)
 		end
 		cb(if err == nil then res else nil, cx2)
 		if listAgain then
@@ -306,26 +332,6 @@ local function basename(path: string): string
 	return string.match(path, "([^/]+)/*$") or path
 end
 
-local function managed_path(cwd: string?): string?
-	if cwd == nil or string.sub(cwd, 1, #ROOT + 1) ~= ROOT .. "/" then
-		return nil
-	end
-	local repo, slug = string.match(string.sub(cwd, #ROOT + 2), "^([^/]+)/([^/]+)")
-	if repo == nil or slug == nil then
-		return nil
-	end
-	local path = ROOT .. "/" .. repo .. "/" .. slug
-	local ok, gitFile = pcall(tern.fs.read, path .. "/.git", 4096)
-	if not ok then
-		return nil
-	end
-	local mainCheckout = string.match(gitFile, "^gitdir:%s*(.-)/%.git/worktrees/")
-	if mainCheckout == nil or basename(mainCheckout) ~= repo then
-		return nil
-	end
-	return path
-end
-
 local function warn_config()
 	if not configWarned then
 		configWarned = true
@@ -333,18 +339,18 @@ local function warn_config()
 	end
 end
 
-local function config(): Config
-	local defaults: Config = { hotkeys = { new = DEFAULT_KEYS }, teardown = DEFAULT_TEARDOWN }
+-- The hotkeys of the New worktree tab command, from the options file.
+local function new_tab_keys(): { string }
 	local path = tern.plugin.data .. "/config.json"
 	if not tern.fs.exists(path) then
-		return defaults
+		return DEFAULT_KEYS
 	end
 	local ok, decoded = pcall(function()
 		return tern.json.decode(tern.fs.read(path))
 	end)
 	if not ok or type(decoded) ~= "table" then
 		warn_config()
-		return defaults
+		return DEFAULT_KEYS
 	end
 	local hotkeys = decoded.hotkeys
 	if hotkeys ~= nil and type(hotkeys) ~= "table" then
@@ -376,10 +382,7 @@ local function config(): Config
 			newKeys = valid
 		end
 	end
-	return {
-		hotkeys = { new = newKeys },
-		teardown = if type(decoded.teardown) == "string" then decoded.teardown else DEFAULT_TEARDOWN,
-	}
+	return newKeys
 end
 
 local function join_or_nil(list: any, sep: string): string?
@@ -431,7 +434,7 @@ local function tab_paths(cx: WindowCx, tab: number): { string }
 	local paths: { string } = {}
 	for _, pane in ipairs(cx.session:panes()) do
 		if pane.tab == tab then
-			local path = managed_path(pane.cwd)
+			local path = managed_worktree(pane.cwd)
 			if path ~= nil and table.find(paths, path) == nil then
 				table.insert(paths, path)
 			end
@@ -474,38 +477,16 @@ local function pane_under(cx: WindowCx, path: string, exceptTab: number?): boole
 	return false
 end
 
-local function rebuild_managed(cx: WindowCx)
-	flush(cx)
-	local found: { [number]: { string } } = {}
-	for _, pane in ipairs(cx.session:panes()) do
-		local tab = pane.tab
-		if tab ~= nil then
-			local paths = found[tab] or {}
-			found[tab] = paths
-			local path = managed_path(pane.cwd)
-			if path ~= nil and table.find(paths, path) == nil then
-				table.insert(paths, path)
-			end
-		end
-	end
-	for tab, paths in pairs(found) do
-		if #paths > 0 then
-			managed[tab] = paths
-		else
-			managed[tab] = nil
-		end
-	end
-end
-
 local MAX_PATH = 72
 
 local function short_path(path: string): string
 	local home = env("HOME")
 	local short = path
+	local root = ROOT
 	if home ~= nil and string.sub(path, 1, #home + 1) == home .. "/" then
 		short = "~" .. string.sub(path, #home + 1)
-	elseif string.sub(path, 1, #ROOT + 1) == ROOT .. "/" then
-		short = "…/worktrees" .. string.sub(path, #ROOT + 1)
+	elseif root ~= nil and string.sub(path, 1, #root + 1) == root .. "/" then
+		short = "…/worktrees" .. string.sub(path, #root + 1)
 	end
 	local length = utf8.len(short) or #short
 	if length <= MAX_PATH then
@@ -751,7 +732,7 @@ end
 -- that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
 local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	local path = res.path
-	set_entry(path, { main = res.repo, branch = res.branch, changed = 0 })
+	set_entry(path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
 	local tab: number? = nil
 	local index = session_index(cx)
 	local parked: number? = nil
@@ -837,7 +818,7 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	if tab ~= nil and tab ~= reused then
 		cx.layout:name_tab(tab, res.branch)
 	end
-	if tab ~= nil and managed_path(path) == path then
+	if tab ~= nil and res.owner == "tern" then
 		local paths = managed[tab] or {}
 		managed[tab] = paths
 		if table.find(paths, path) == nil then
@@ -1576,7 +1557,7 @@ local function run_remove(
 	end)
 end
 
-local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, index: number)
+local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, index: number, teardownDetail: string?)
 	local path = paths[index]
 	if path == nil then
 		if tab ~= nil then
@@ -1585,7 +1566,7 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		return
 	end
 	local function advance(cx2: WindowCx)
-		confirm_teardown(cx2, tab, paths, index + 1)
+		confirm_teardown(cx2, tab, paths, index + 1, teardownDetail)
 	end
 	local function stop(cx2: WindowCx)
 		if tab == nil then
@@ -1598,7 +1579,6 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		end
 		advance(cx2)
 	end
-	local policy = config().teardown
 	local placeholderPrefix = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
 	local keepDetail = if tab ~= nil then "closes the tab, keeps the worktree" else "keeps the worktree"
 	-- `choose` already toasts a pick error. A pick error counts as Keep, so the tab closes even when the picker fails.
@@ -1610,7 +1590,7 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 			{
 				id = "teardown",
 				label = "Tear down",
-				detail = POLICY[policy] or ("Teardown policy: " .. policy),
+				detail = teardownDetail,
 				icon = "trash",
 			},
 		},
@@ -1625,20 +1605,28 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	end)
 end
 
+-- Opens the teardown picker for `paths` with the teardown policy from `tern-wt config` as the detail of the Tear down
+-- item. When `config` fails, the item has no detail line.
+local function ask_teardown(cx: WindowCx, tab: number?, paths: { string })
+	cli({ "config" }, function(res: ConfigResult, err, cx2)
+		confirm_teardown(cx2, tab, paths, 1, if err == nil then POLICY[res.teardown] else nil)
+	end)
+end
+
 local function intercept(cx: WindowCx, tab: number?): boolean
 	if tab == nil then
 		return false
 	end
 	local paths: { string } = {}
 	for _, path in ipairs(tab_paths(cx, tab)) do
-		if not pane_under(cx, path, tab) then
+		if tern.fs.exists(path) and not pane_under(cx, path, tab) then
 			table.insert(paths, path)
 		end
 	end
 	if #paths == 0 then
 		return false
 	end
-	confirm_teardown(cx, tab, paths, 1)
+	ask_teardown(cx, tab, paths)
 	return true
 end
 
@@ -1646,7 +1634,7 @@ tern.command({
 	id = "new",
 	title = "New worktree tab",
 	icon = "branch",
-	keys = config().hotkeys.new,
+	keys = new_tab_keys(),
 	run = start,
 })
 
@@ -1654,7 +1642,7 @@ tern.command({
 -- reads only the worktree index. Tern disables a formatter that takes more than 4 ms, and `tern.chrome.refresh`
 -- raises an error when a formatter calls it.
 tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
-	local entry = entry_at(pane.cwd)
+	local _, entry = index_lookup(pane.cwd)
 	if entry == nil then
 		return nil
 	end
@@ -1701,15 +1689,11 @@ tern.on("window_start", function(cx: WindowCx)
 			refresh(cx2, repo.root)
 		end
 	end)
-	list_all(function(res, cx2)
+	list_all(function(res, _cx2)
 		local learned = if res ~= nil and type(res.root) == "string" then without_trailing_slash(res.root) else nil
 		if learned ~= nil and learned ~= "" and learned ~= ROOT then
 			ROOT = learned
-			if env("TERN_WT_HOME") == nil then
-				pcall(tern.kv.set, ROOT_KEY, ROOT)
-			end
-			table.clear(managed)
-			rebuild_managed(cx2)
+			pcall(tern.kv.set, ROOT_KEY, learned)
 		end
 	end)
 end)
@@ -1717,6 +1701,16 @@ end)
 for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
 		rebuild_managed(cx)
+		local root = ROOT
+		if root == nil then
+			return
+		end
+		for _, pane in ipairs(cx.session:panes()) do
+			if is_under(pane.cwd, root) and index_lookup(pane.cwd) == nil then
+				refresh_index()
+				return
+			end
+		end
 	end)
 end
 
@@ -1726,7 +1720,8 @@ tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
 	if ev.pane == cx.session:focused() then
 		refresh_dir(cx, ev.path)
 	end
-	if is_under(ev.path, ROOT) and not in_index(ev.path) then
+	local root = ROOT
+	if root ~= nil and is_under(ev.path, root) and index_lookup(ev.path) == nil then
 		refresh_index()
 	end
 end)
@@ -1738,7 +1733,7 @@ tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
 		if ev.pane == cx.session:focused() then
 			refresh_dir(cx, pane.cwd)
 		end
-		if in_index(pane.cwd) then
+		if index_lookup(pane.cwd) ~= nil then
 			refresh_index()
 		end
 	end
@@ -1751,7 +1746,7 @@ tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
 		cwd = if pane ~= nil then pane.cwd else nil
 	end
 	refresh_dir(cx, cwd)
-	if in_index(cwd) then
+	if index_lookup(cwd) ~= nil then
 		refresh_index()
 	end
 end)
@@ -1775,7 +1770,7 @@ tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)
 		handled[path] = nil
 	end
 	if #open > 0 then
-		confirm_teardown(cx, nil, open, 1)
+		ask_teardown(cx, nil, open)
 	end
 end)
 
