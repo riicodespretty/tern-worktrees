@@ -2,10 +2,10 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
 import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
-import type { GithubRepoRef } from '../github.ts';
 import { worktreeOwner, worktreeRoot } from '../paths.ts';
 import type { WorktreeOwner } from '../paths.ts';
 import { CliError } from '../proc.ts';
+import type { GithubRepoRef } from '../repo-ref.ts';
 
 /** An open pull request of the repository. */
 export interface PullRequest {

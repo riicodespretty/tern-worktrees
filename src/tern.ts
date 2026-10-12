@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from './git.ts';
 import { envVar, isUnder, PLUGIN_ID, ternConfigDir } from './paths.ts';
-import { must } from './proc.ts';
+import { CliError, must, run } from './proc.ts';
 
 /** A pane of a Tern tab, as `tern ls --json` prints it. */
 export interface TernBlock {
@@ -79,6 +79,24 @@ export const focus = async (block: number): Promise<void> => {
 /** Closes `block`. */
 export const close = async (block: number): Promise<void> => {
   await tern(['close', String(block)]);
+};
+
+/** Types `line` and Enter into the shell of `block`. Unlike the other calls, it passes no `--json`, so `tern run` gets only the line to type. */
+export const typeInto = async (block: number, line: string): Promise<void> => {
+  await must([ternBin(), 'run', String(block), line], 'tern_failed');
+};
+
+/** Waits a maximum of `seconds` for the shell of `block` to show its prompt. Gives true at the prompt and false on a timeout (exit 124). Throws `tern_failed` on a different exit status. */
+export const waitForPrompt = async (block: number, seconds: number): Promise<boolean> => {
+  const bin = ternBin();
+  const result = await run([bin, 'wait', String(block), '--until', 'prompt', '--timeout', String(seconds)]);
+  if (result.status === 124) {
+    return false;
+  }
+  if (result.status !== 0) {
+    throw new CliError('tern_failed', result.stderr.trim() || `${bin} exited ${result.status}`);
+  }
+  return true;
 };
 
 const placedBlocks = (listing: TernListing): PlacedBlock[] => listing.sessions.flatMap(session => session.tabs.flatMap(tab => tab.blocks.map(block => ({ block, session, tab }))));

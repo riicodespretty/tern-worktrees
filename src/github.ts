@@ -4,12 +4,8 @@ import { loadConfig } from './config.ts';
 import { gitMust, gitRun, isCheckoutTop, originUrl } from './git.ts';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
-
-/** The GitHub owner and name of a repository. */
-export interface GithubRepoRef {
-  owner: string;
-  name: string;
-}
+import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
+import type { GithubRepoRef } from './repo-ref.ts';
 
 /** The path of the clone of a GitHub repository. `cloned` is true when this call ran `gh repo clone`, and false when it reused a clone that was there before. */
 export interface GithubClone {
@@ -32,12 +28,7 @@ export interface GhPullRequest {
   isCrossRepository: boolean;
 }
 
-const NAME_WITH_OWNER = /^(?<owner>[A-Za-z0-9][A-Za-z0-9._-]*)\/(?<name>(?!\.\.?$)[A-Za-z0-9._][A-Za-z0-9._-]*)$/u;
-
 const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)\/(?<name>[^/]+?)(?:\.git)?$/u;
-
-/** The `<owner>/<name>` form of `repoRef`, the name that `gh` uses for a repository. */
-export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owner}/${repoRef.name}`;
 
 /** Runs `gh <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when gh fails. */
 export const ghRun = async (...args: string[]): Promise<RunResult> => await run(['gh', ...args]);
@@ -96,12 +87,6 @@ export const defaultBranch = async (root: string, { offline = false }: { offline
   }
   const current = await gitMust(root, 'branch', '--show-current');
   return current.trim();
-};
-
-/** Reads `<owner>/<name>` from `text`, or gives null when `text` is not a valid `<owner>/<name>`. */
-export const parseRepoRef = (text: string): GithubRepoRef | null => {
-  const groups = NAME_WITH_OWNER.exec(text)?.groups;
-  return groups ? { name: groups.name, owner: groups.owner } : null;
 };
 
 /** Reads the one `<owner/name>` positional of `command`, or throws `bad_args`. */

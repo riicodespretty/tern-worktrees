@@ -78,15 +78,8 @@ describe('create command', () => {
   describe('branches', () => {
     it('creates a tracking worktree for a remote branch, then reuses it', async () => {
       const target = managedPath('feature-x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual({
-        branch: 'feature/x',
-        carried: [],
-        path: target,
-        repo: repo.dir,
-        status: 'created',
-        tab: null,
-        warnings: [],
-      });
+      const created = await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
+      expect(created).toStrictEqual({ branch: 'feature/x', carried: [], path: target, repo: repo.dir, setup: null, status: 'created', tab: null, warnings: [] });
       await expect(currentBranch(target)).resolves.toBe('feature/x');
       await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
       await expect(run(['--repo', target, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ path: target, status: 'reused', warnings: [] });
@@ -268,6 +261,7 @@ describe('create command', () => {
         carried: [],
         path: target,
         repo: repo.dir,
+        setup: null,
         status: 'created',
         tab: null,
         warnings: [],
@@ -391,6 +385,7 @@ describe('create command', () => {
         carried: [],
         path: ompOwned,
         repo: repo.dir,
+        setup: null,
         status: 'reused',
         tab: { block: 42, opened: true, session: 'work' },
         warnings: [],
@@ -423,6 +418,7 @@ describe('create command', () => {
           carried: [],
           path: ompCheckout(),
           repo: repo.dir,
+          setup: null,
           status: 'reused',
           tab: { block: 42, opened: true, session: 'work' },
           warnings: [],

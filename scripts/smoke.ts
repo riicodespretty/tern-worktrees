@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -9,15 +9,18 @@ import type { ListResult } from '../src/commands/list.ts';
 import { run } from '../src/proc.ts';
 import { blocksUnder, ternBin } from '../src/tern.ts';
 import { buildRepo, gitWith } from './repo-fixture.ts';
+import type { RepoFixture } from './repo-fixture.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
 const smokeName = `twt-smoke-${Math.floor(Date.now() / 1000)}`;
 const tempRoot = mkdtempSync(path.join(realpathSync(tmpdir()), 'twt-smoke-'));
 const env = {
+  GIT_ALLOW_PROTOCOL: 'file',
   GIT_AUTHOR_EMAIL: 'smoke@example.com',
   GIT_AUTHOR_NAME: 'Smoke',
   GIT_COMMITTER_EMAIL: 'smoke@example.com',
   GIT_COMMITTER_NAME: 'Smoke',
+  GIT_TERMINAL_PROMPT: '0',
   TERN_CONFIG_DIR: path.join(tempRoot, 'tern-config'),
   TERN_DAEMON_SOCKET: path.join(tempRoot, 'tern.sock'),
   TERN_PLUGIN_DATA: path.join(tempRoot, 'plugin-data'),
@@ -41,19 +44,22 @@ const cli = async <T>(...args: string[]): Promise<T> => {
   return JSON.parse(result.stdout) as T;
 };
 
-const makeClone = async (): Promise<string> => {
+const makeClone = async (): Promise<RepoFixture> => {
   const repo = await buildRepo(git, tempRoot, smokeName, 'smoke\n');
   await repo.pushBranch('feature/x');
-  return repo.dir;
+  return repo;
 };
 
-const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, attempts = 50): Promise<void> => {
+const POLL_MS = 100;
+
+/** Calls `ready` at an interval of {@link POLL_MS} until it gives true, at most `attempts` times. `seconds` is that wait, for the failure message. */
+const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, attempts = 50, seconds = (attempts * POLL_MS) / 1000): Promise<void> => {
   if (await ready()) {
     return;
   }
-  check(attempts > 1, `${what} after 5s`);
-  await sleep(100);
-  await waitFor(ready, what, attempts - 1);
+  check(attempts > 1, `${what} after ${seconds}s`);
+  await sleep(POLL_MS);
+  await waitFor(ready, what, attempts - 1, seconds);
 };
 
 const waitForBlock = async (dir: string): Promise<void> => {
@@ -63,17 +69,31 @@ const waitForBlock = async (dir: string): Promise<void> => {
   }, `no block under ${dir}`);
 };
 
+/**
+ * The clone gets a GitHub origin URL, so the options file gives it setup commands. `GIT_ALLOW_PROTOCOL` makes the fetch of that URL fail at once,
+ * and `create` then uses the `origin/feature/x` that the clone has. `remove` runs with the bare origin again, so it runs no `gh`.
+ */
 const smoke = async (): Promise<void> => {
-  const clone = await makeClone();
+  const repo = await makeClone();
+  const clone = repo.dir;
+  await git(clone, 'remote', 'set-url', 'origin', 'https://github.com/smoke/twt-smoke.git');
+  writeFileSync(path.join(env.TERN_PLUGIN_DATA, 'config.json'), JSON.stringify({ setup: { 'smoke/twt-smoke': ['touch .setup-ran'] } }));
   const created = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(created.status === 'created', `create: status ${created.status}, not created`);
   check(created.tab?.opened === true, 'create: the tab did not open');
+  check(created.setup?.typed === true, `create: setup ${JSON.stringify(created.setup)}, not typed; warnings ${created.warnings.join('; ')}`);
   await waitForBlock(created.path);
+  const marker = path.join(created.path, '.setup-ran');
+  await waitFor(() => existsSync(marker), `no ${marker}`, 300);
+  process.stdout.write(`setup commands ran: ${marker}\n`);
+  rmSync(marker);
   const reused = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(reused.status === 'reused', `create again: status ${reused.status}, not reused`);
   check(reused.tab?.opened === false, 'create again: a new tab opened');
+  check(reused.setup === null, `create again: setup ${JSON.stringify(reused.setup)}, not null`);
   const listed = await cli<ListResult>('list');
   check(listed.worktrees.length === 1, `list: ${listed.worktrees.length} worktrees, not 1`);
+  await git(clone, 'remote', 'set-url', 'origin', repo.origin);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);
   const blocksLeft = await blocksUnder(created.path);

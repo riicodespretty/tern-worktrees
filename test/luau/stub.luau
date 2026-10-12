@@ -8,7 +8,7 @@ local serde = require("@lune/serde")
 local PLUGIN_DIR = "/plugin"
 local DATA_DIR = "/plugin-data"
 
-export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean? }
+export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean?, at_prompt: boolean? }
 export type Run = { argv: { string }, cb: (result: any, cx: any) -> () }
 export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
 export type Options = {
@@ -41,7 +41,7 @@ local lastCx: any = nil
 
 -- Returns a fake WindowCx over `panes`. Every `pick` and `prompt` request lands in `cx.asked`, with its
 -- options in `opts` and its `:next` callback in `next`, which the test calls with `(result, err, cx)` to
--- answer it.
+-- answer it. Each `cx:run(pane, text)` lands in `cx.typed`.
 function Stub.cx(panes: { Pane }, focused: number?): any
 	local asked: { any } = {}
 
@@ -78,6 +78,7 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 	local cx: any = {
 		asked = asked,
 		toasts = {},
+		typed = {},
 		commands = {},
 		session = {
 			panes = function(_self: any): { Pane }
@@ -125,6 +126,10 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 
 	function cx.command(self: any, id: string)
 		table.insert(self.commands, id)
+	end
+
+	function cx.run(self: any, pane: number, text: string)
+		table.insert(self.typed, { pane = pane, text = text })
 	end
 
 	function cx.pick(_self: any, opts: any): any

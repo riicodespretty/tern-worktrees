@@ -84,6 +84,7 @@ export const useSandbox = (): Sandbox => {
   vi.stubEnv('FAKE_TERN_DIR', sandbox.ternDir);
   vi.stubEnv('FAKE_TERN_LOG', sandbox.ternLog);
   vi.stubEnv('FAKE_TERN_FAIL', '');
+  vi.stubEnv('FAKE_TERN_WAIT_STATUS', '');
   vi.stubEnv('FAKE_GH_DIR', sandbox.ghDir);
   vi.stubEnv('FAKE_GH_LOG', sandbox.ghLog);
   vi.stubEnv('TERN_WT_OMP', path.join(root, 'no-omp'));

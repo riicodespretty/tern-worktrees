@@ -2,18 +2,23 @@ import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { loadConfig } from '../config.ts';
 import { fetchOrigin, gitMust, gitRun, gitSucceeds, hardToRebuild, hasOrigin, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
-import { defaultBranch, ghMust, ghMustWith, nameWithOwner, originRepo } from '../github.ts';
+import { defaultBranch, ghMust, ghMustWith, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
 import { ompSettings, ompWorktreeAdd } from '../omp.ts';
 import { isUnder, worktreeOwner, worktreePath, worktreeRoot } from '../paths.ts';
 import type { WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
-import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo } from '../tern.ts';
+import { nameWithOwner } from '../repo-ref.ts';
+import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
 
 /** How `create` got the worktree. */
 export type CreateStatus = 'created' | 'relocated' | 'reused';
+
+/** How long `create` waits for the shell prompt of the tab it opened before it types the setup commands. */
+const SETUP_PROMPT_SECONDS = 30;
 
 /** The Tern tab that shows the worktree. */
 export interface CreatedTab {
@@ -22,12 +27,16 @@ export interface CreatedTab {
   session: string;
 }
 
-/** The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise. */
+/**
+ * The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise.
+ * `setup` is the setup commands of a new worktree as one `line`, with `typed` true when `create` typed it into the tab it opened. It is null for a reused or relocated worktree, and for a repository without setup commands.
+ */
 export interface CreateResult {
   branch: string;
   carried: string[];
   path: string;
   repo: string;
+  setup: { line: string; typed: boolean } | null;
   status: CreateStatus;
   tab: CreatedTab | null;
   warnings: string[];
@@ -384,6 +393,39 @@ const tryOpenTab = async (ctx: Context, target: Target): Promise<CreatedTab | nu
   }
 };
 
+/** The setup commands of the repository as one line, with ` && ` between them. Null unless the worktree is new and the options file lists commands for the name with owner of its GitHub origin. */
+const setupLine = async (ctx: Context, status: CreateStatus): Promise<string | null> => {
+  const repoRef = status === 'created' ? await originRepo(ctx.root) : null;
+  const commands = repoRef === null ? [] : (loadConfig().setup[nameWithOwner(repoRef).toLowerCase()] ?? []);
+  return commands.length === 0 ? null : commands.join(' && ');
+};
+
+/**
+ * Types `line` into the tab that `create` opened once its shell shows the prompt, and tells if it did. Without a tab it adds no warning: the caller types the line.
+ * A tab that was open before, no prompt in {@link SETUP_PROMPT_SECONDS} and a Tern failure each add a warning and keep the worktree.
+ */
+const typeSetup = async (ctx: Context, line: string, tab: CreatedTab | null): Promise<boolean> => {
+  if (tab === null) {
+    return false;
+  }
+  if (!tab.opened) {
+    ctx.warnings.push('setup not run: the tab was open before');
+    return false;
+  }
+  try {
+    if (!(await waitForPrompt(tab.block, SETUP_PROMPT_SECONDS))) {
+      ctx.warnings.push(`setup not run: no shell prompt in ${SETUP_PROMPT_SECONDS} s`);
+      return false;
+    }
+    await typeInto(tab.block, line);
+    return true;
+  } catch (error) {
+    // SAFETY: `waitForPrompt` and `typeInto` throw a CliError only.
+    ctx.warnings.push(`setup not run: ${(error as CliError).message}`);
+    return false;
+  }
+};
+
 /**
  * `create --repo <dir> (--branch <name> [--new] | --pr <number>) [--relocate] [--no-tab]`:
  * creates or reuses the tern-managed worktree of a branch or pull request, and opens or focuses its Tern tab.
@@ -423,5 +465,7 @@ export const run = async (args: string[]): Promise<CreateResult> => {
     throw withStaging(error as Error, ctx.carry.staging);
   }
   const tab = options['no-tab'] ? null : await tryOpenTab(ctx, { ...target, branch: placed.branch, path: placed.path });
-  return { branch: placed.branch, carried, path: placed.path, repo: root, status: placed.status, tab, warnings: ctx.warnings };
+  const line = await setupLine(ctx, placed.status);
+  const setup = line === null ? null : { line, typed: await typeSetup(ctx, line, tab) };
+  return { branch: placed.branch, carried, path: placed.path, repo: root, setup, status: placed.status, tab, warnings: ctx.warnings };
 };

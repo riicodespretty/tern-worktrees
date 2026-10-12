@@ -20,5 +20,8 @@ plugin)
 		printf '%s\n' "$3" >"$TERN_CONFIG_DIR/plugins/tern-worktrees.path"
 	fi
 	;;
+wait)
+	exit "${FAKE_TERN_WAIT_STATUS:-0}"
+	;;
 esac
 exit 0

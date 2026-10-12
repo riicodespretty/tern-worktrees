@@ -17,16 +17,16 @@ Each tern-managed worktree lives in the worktree root, at `<root>/<repo>/<slug>`
 
 ## Install
 
-Use one of the two routes. `setup` reports `path_conflict` when Tern holds the plugin from a different folder.
+Use one of the two routes. `tern-wt setup` reports `path_conflict` when Tern holds the plugin from a different folder.
 
-### With `setup`
+### With `tern-wt setup`
 
 ```sh
 gh repo clone riicodespretty/tern-worktrees ~/Developer/riicodespretty/tern-worktrees
 ~/Developer/riicodespretty/tern-worktrees/bin/tern-wt setup
 ```
 
-`setup` links the plugin into Tern, `~/.local/bin/tern-wt` to the CLI, and `~/.omp/agent/skills/tern-worktrees` to the skill. A second run keeps each link as it is.
+`tern-wt setup` links the plugin into Tern, `~/.local/bin/tern-wt` to the CLI, and `~/.omp/agent/skills/tern-worktrees` to the skill. A second run keeps each link as it is.
 
 ### With `tern plugin install`
 
@@ -145,19 +145,23 @@ The options file is `config.json` in the first of these folders:
 
 Each key in the file replaces its default:
 
-| Key           | Default                    | Value                                                                                                                                                        |
-| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch. |
-| `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                       |
-| `hotkeys.new` | `["cmd+shift+w"]`          | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                |
+| Key           | Default                    | Value                                                                                                                                                              |
+| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch.       |
+| `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                             |
+| `hotkeys.new` | `["cmd+shift+w"]`          | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                      |
+| `setup`       | `{}`                       | The setup commands of each repository: its name with owner, in lowercase or not, maps to a list of shell commands without line breaks. An empty list runs nothing. |
 
 A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
+
+For a new worktree only, `tern-wt` types the commands of its repository into the new worktree tab as one line, with `&&` between them. The name with owner comes from the GitHub URL of `origin`, so a repository without a GitHub origin gets no setup commands. `tern-wt` waits a maximum of 30 s for the shell prompt of the tab before it types the line. When the tab was open before or no prompt shows, the commands do not run, and a toast or a `create` warning shows why.
 
 ```json
 {
   "teardown": "worktree",
   "cloneRoot": "~/src",
-  "hotkeys": { "new": ["cmd+shift+w", "ctrl+b>w"] }
+  "hotkeys": { "new": ["cmd+shift+w", "ctrl+b>w"] },
+  "setup": { "virtusize/aoyama": ["npm ci", "npm run build"] }
 }
 ```
 
@@ -177,7 +181,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 [`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) is the reference for each command: its arguments, its output fields, the next step for each error code, and the rules agents follow for teardown. The commands:
 
-- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab.
+- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. Its `setup` field holds the setup commands of a new worktree, which it types into the tab it opened.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
 - `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.
@@ -185,11 +189,11 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 - `repos`: lists the GitHub repositories of your user and organizations.
 - `clone`: clones a GitHub repository to the clone root.
 - `new-repo`: makes a GitHub repository, then clones it.
-- `setup`: links the plugin, the CLI and the skill.
+- `tern-wt setup`: links the plugin, the CLI and the skill.
 
 Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `branch_in_main_checkout`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `omp_failed`, `tern_failed`.
 
-The plugin also gives Carly the exports `create`, `list` and `remove`, which run the CLI commands of the same names.
+The plugin also gives Carly the exports `create`, `list` and `remove`, which run the CLI commands of the same names. For a new worktree with setup commands, the `create` export replies when the plugin typed them into the tab or gave up, at most 30 s after the tab opened, so `setup.typed` and `warnings` mean what they mean in the CLI output.
 
 ## Design and glossary
 

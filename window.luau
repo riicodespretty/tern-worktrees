@@ -46,11 +46,13 @@ type BranchesResult = {
 	worktrees: { BranchWorktree },
 	warnings: { string },
 }
+type SetupLine = { line: string, typed: boolean }
 type CreateResult = {
 	branch: string,
 	carried: { string },
 	path: string,
 	repo: string,
+	setup: SetupLine?,
 	status: string,
 	warnings: { string },
 }
@@ -695,7 +697,9 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	end)
 end
 
-local function open_tab(cx: WindowCx, res: CreateResult)
+-- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or nil when it
+-- focused or unparked a pane that was there before.
+local function open_tab(cx: WindowCx, res: CreateResult): number?
 	local path = res.path
 	set_entry(path, { main = res.repo, branch = res.branch, changed = 0 })
 	local tab: number? = nil
@@ -764,13 +768,20 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			end
 		end
 	end
+	local shell: number? = nil
 	if tab == nil then
 		if freshTab ~= nil then
 			tab = freshTab
+			for _, pane in ipairs(cx.session:panes()) do
+				if pane.tab == freshTab then
+					shell = pane.pane
+					break
+				end
+			end
 		elseif sid ~= nil then
 			switch_to_session(cx, index, sid)
-			local pane = cx.layout:new_tab({ cwd = path })
-			tab = if pane ~= nil then cx.session:tab_of(pane) else nil
+			shell = cx.layout:new_tab({ cwd = path })
+			tab = if shell ~= nil then cx.session:tab_of(shell) else nil
 		end
 	end
 	if tab ~= nil and tab ~= reused then
@@ -783,6 +794,62 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 			table.insert(paths, path)
 		end
 	end
+	return shell
+end
+
+local SETUP_POLL_MS = 200
+local SETUP_PROMPT_MS = 30000
+
+-- Types the setup commands of `setup` into the shell `pane` once it shows its prompt, polling every
+-- SETUP_POLL_MS for up to SETUP_PROMPT_MS. It does nothing when `create` typed them already, and stops when
+-- the pane is gone. A nil `pane` means the tab was open before, so it only shows the line in a toast.
+-- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
+-- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
+local function type_setup(
+	cx: WindowCx,
+	pane: number?,
+	setup: SetupLine?,
+	done: ((typed: boolean, warning: string?) -> ())?
+)
+	local function finish(typed: boolean, warning: string?)
+		if done ~= nil then
+			done(typed, warning)
+		end
+	end
+	if setup == nil or setup.typed then
+		finish(setup ~= nil, nil)
+		return
+	end
+	local line = setup.line
+	local function give_up(cx2: WindowCx, warning: string)
+		cx2:toast("error", warning, line)
+		finish(false, warning)
+	end
+	if pane == nil then
+		give_up(cx, "setup not run: the tab was open before")
+		return
+	end
+	local deadline = tern.now() + SETUP_PROMPT_MS
+	local function poll(cx2: WindowCx?)
+		if cx2 == nil then
+			finish(false, nil)
+			return
+		end
+		local info = cx2.session:pane(pane)
+		if info == nil then
+			finish(false, nil)
+			return
+		end
+		if info.at_prompt then
+			cx2:run(pane, line .. "\r")
+			finish(true, nil)
+		elseif tern.now() >= deadline then
+			give_up(cx2, "setup not run: no shell prompt in 30 s")
+		else
+			tern.timer(SETUP_POLL_MS, poll)
+		end
+	end
+	poll(cx)
 end
 
 local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx: WindowCx) -> ())?)
@@ -822,7 +889,7 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 			end
 			return
 		end
-		open_tab(cx2, res)
+		type_setup(cx2, open_tab(cx2, res), res.setup)
 		after_change(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
@@ -1478,8 +1545,8 @@ local function reply_to<T>(call: any): CliCb<T>
 end
 
 tern.carly.export("create", {
-	sig = "(repo: string, branch: string, new: boolean?) -> {path: string, status: string}",
-	doc = "Create or reuse a worktree for branch in repo (a dir inside the repo) and open it as a tab.",
+	sig = "(repo: string, branch: string, new: boolean?) -> {branch: string, carried: {string}, path: string, repo: string, setup: {line: string, typed: boolean}?, status: string, warnings: {string}}",
+	doc = "Create or reuse a worktree for branch in repo (a dir inside the repo) and open it as a tab. For a new worktree, setup is the line of setup commands of its repository: the reply comes once the tab's shell prompt shows and the line is typed (typed true), or once that is given up after at most 30 s (typed false, with a setup not run warning).",
 }, function(...: any): ...any
 	local args, _cx, call = export_args(...)
 	local repo, branch, isNew = args[1], args[2], args[3]
@@ -1494,8 +1561,9 @@ tern.carly.export("create", {
 		call:fail(err_text(err))
 	end, function(res: CreateResult, cx2)
 		resolve_sessions(cx2, function(cx3)
+			local pane: number? = nil
 			local ok, openErr = pcall(function()
-				open_tab(cx3, res)
+				pane = open_tab(cx3, res)
 			end)
 			if not ok then
 				res.warnings = res.warnings or {}
@@ -1504,7 +1572,19 @@ tern.carly.export("create", {
 			if type(res.repo) == "string" then
 				after_change(cx3, res.repo)
 			end
-			call:reply(res)
+			local setup = res.setup
+			if not ok or setup == nil then
+				call:reply(res)
+				return
+			end
+			type_setup(cx3, pane, setup, function(typed, warning)
+				setup.typed = typed
+				if warning ~= nil then
+					res.warnings = res.warnings or {}
+					table.insert(res.warnings, warning)
+				end
+				call:reply(res)
+			end)
 		end)
 	end)
 	return call:wait(120000)

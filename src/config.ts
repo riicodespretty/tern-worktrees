@@ -3,20 +3,27 @@ import path from 'node:path';
 import { isJsonObject, isString } from './json.ts';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
+import { parseRepoRef } from './repo-ref.ts';
 
 /** What closing a worktree tab removes: the worktree only, the worktree and its branch when merged, or the worktree and its branch. */
 export type Teardown = 'worktree' | 'worktree+merged-branch' | 'worktree+branch';
+
+/** The setup commands of each repository, keyed by its name with owner in lowercase. */
+export type SetupCommands = Record<string, string[]>;
 
 /** The plugin settings from `config.json` in the plugin data directory. */
 export interface Config {
   teardown: Teardown;
   cloneRoot: string;
   hotkeys: { new: string[] };
+  setup: SetupCommands;
 }
 
 const TEARDOWNS: readonly Teardown[] = ['worktree', 'worktree+merged-branch', 'worktree+branch'];
 
 const DEFAULT_NEW_TAB_HOTKEYS: readonly string[] = ['cmd+shift+w'];
+
+const EXPECTED_OBJECT = 'expected an object';
 
 type Fail = (key: string, reason: string) => never;
 
@@ -24,6 +31,7 @@ interface RawOptions {
   teardown?: unknown;
   cloneRoot?: unknown;
   hotkeys?: unknown;
+  setup?: unknown;
 }
 
 interface RawHotkeys {
@@ -31,6 +39,8 @@ interface RawHotkeys {
 }
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
+
+const isCommandList = (value: unknown): value is string[] => isStringList(value) && value.every(command => command !== '');
 
 const rejectUnknownKeys = (keys: string[], known: readonly string[], prefix: string, fail: Fail): void => {
   const unknownKey = keys.find(key => !known.includes(key));
@@ -62,7 +72,7 @@ const readNewTabHotkeys = (raw: RawOptions, fail: Fail): string[] => {
     return [...DEFAULT_NEW_TAB_HOTKEYS];
   }
   if (!isJsonObject(raw.hotkeys)) {
-    return fail('hotkeys', 'expected an object');
+    return fail('hotkeys', EXPECTED_OBJECT);
   }
   rejectUnknownKeys(Object.keys(raw.hotkeys), ['new'], 'hotkeys.', fail);
   const hotkeys: RawHotkeys = raw.hotkeys;
@@ -72,6 +82,36 @@ const readNewTabHotkeys = (raw: RawOptions, fail: Fail): string[] => {
   return isStringList(hotkeys.new) ? hotkeys.new : fail('hotkeys.new', 'expected an array of strings');
 };
 
+const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
+  if (!('setup' in raw)) {
+    return {};
+  }
+  if (!isJsonObject(raw.setup)) {
+    return fail('setup', EXPECTED_OBJECT);
+  }
+  const keys = new Map<string, string>();
+  return Object.fromEntries(
+    Object.entries(raw.setup).map(([key, commands]) => {
+      if (parseRepoRef(key) === null) {
+        fail(`setup.${key}`, 'expected <owner>/<name>');
+      }
+      if (!isCommandList(commands)) {
+        return fail(`setup.${key}`, 'expected an array of non-empty strings');
+      }
+      if (commands.some(command => /[\n\r]/u.test(command))) {
+        fail(`setup.${key}`, 'expected commands without line breaks');
+      }
+      const lower = key.toLowerCase();
+      const other = keys.get(lower);
+      if (other !== undefined) {
+        fail(`setup.${key}`, `duplicates setup.${other}`);
+      }
+      keys.set(lower, key);
+      return [lower, commands] as const;
+    }),
+  );
+};
+
 const decode = (file: string, fail: Fail): RawOptions => {
   let decoded: unknown;
   try {
@@ -79,7 +119,7 @@ const decode = (file: string, fail: Fail): RawOptions => {
   } catch (error) {
     return fail('(root)', error instanceof SyntaxError ? `invalid JSON: ${String(error)}` : `cannot read: ${String(error)}`);
   }
-  return isJsonObject(decoded) ? decoded : fail('(root)', 'expected an object');
+  return isJsonObject(decoded) ? decoded : fail('(root)', EXPECTED_OBJECT);
 };
 
 /**
@@ -92,10 +132,11 @@ export const loadConfig = (): Config => {
     throw new CliError('config_invalid', `${file}: ${key}: ${reason}`);
   };
   const raw = existsSync(file) ? decode(file, fail) : {};
-  rejectUnknownKeys(Object.keys(raw), ['teardown', 'cloneRoot', 'hotkeys'], '', fail);
+  rejectUnknownKeys(Object.keys(raw), ['teardown', 'cloneRoot', 'hotkeys', 'setup'], '', fail);
   return {
     cloneRoot: readCloneRoot(raw, fail),
     hotkeys: { new: readNewTabHotkeys(raw, fail) },
+    setup: readSetup(raw, fail),
     teardown: readTeardown(raw, fail),
   };
 };

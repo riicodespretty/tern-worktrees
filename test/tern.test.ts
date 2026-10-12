@@ -3,7 +3,22 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { repoRoot } from '../src/git.ts';
 import type { TernBlock } from '../src/tern.ts';
-import { blocksUnder, close, focus, ls, newSession, newTab, pluginLink, pluginLinked, rename, sessionForRepo, TERN_APP_BIN, ternBin } from '../src/tern.ts';
+import {
+  blocksUnder,
+  close,
+  focus,
+  ls,
+  newSession,
+  newTab,
+  pluginLink,
+  pluginLinked,
+  rename,
+  sessionForRepo,
+  TERN_APP_BIN,
+  ternBin,
+  typeInto,
+  waitForPrompt,
+} from '../src/tern.ts';
 import type { Sandbox } from './helpers.ts';
 import { FIXTURE_BIN, tempDir, ternLog, tmpRepo, useSandbox, writeTernListing } from './helpers.ts';
 
@@ -49,6 +64,25 @@ describe('tern', () => {
       expect(ternLog()).toStrictEqual(['rename 42 feature/x --json', 'focus 42 --json', 'close 42 --json']);
     });
 
+    it('types a line into a block without --json', async () => {
+      await typeInto(42, 'npm ci && npm test');
+      expect(ternLog()).toStrictEqual(['run 42 npm ci && npm test']);
+    });
+
+    it.each([
+      ['0', true],
+      ['124', false],
+    ])('waits for the prompt and gives exit %s as %s', async (status, expected) => {
+      vi.stubEnv('FAKE_TERN_WAIT_STATUS', status);
+      await expect(waitForPrompt(42, 30)).resolves.toBe(expected);
+      expect(ternLog()).toStrictEqual(['wait 42 --until prompt --timeout 30']);
+    });
+
+    it('raises tern_failed when wait exits with another status', async () => {
+      vi.stubEnv('FAKE_TERN_WAIT_STATUS', '2');
+      await expect(waitForPrompt(42, 30)).rejects.toMatchObject({ code: 'tern_failed', message: `${path.join(FIXTURE_BIN, 'tern')} exited 2` });
+    });
+
     it.each([
       [
         'close',
@@ -70,6 +104,13 @@ describe('tern', () => {
           await focus(1);
         },
       ],
+      [
+        'run',
+        async () => {
+          await typeInto(1, 'npm ci');
+        },
+      ],
+      ['wait', async () => await waitForPrompt(1, 30)],
       ['ls', async () => await ls()],
     ])('raises tern_failed when %s fails', async (verb, call) => {
       vi.stubEnv('FAKE_TERN_FAIL', verb);

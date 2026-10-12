@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { clonePath, ghMust, ghTry, parseRepoRef } from '../github.ts';
+import { clonePath, ghMust, ghTry } from '../github.ts';
+import { parseRepoRef } from '../repo-ref.ts';
 
 /** A GitHub repository. `local` is its clone in the clone root, or null when the clone path has no clone of this repository. */
 export interface GithubRepo {

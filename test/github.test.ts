@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { cloneDestination, defaultBranch, ghMust, ghRun, ghTry, listPullRequests, nameWithOwner, originRepo } from '../src/github.ts';
+import { cloneDestination, defaultBranch, ghMust, ghRun, ghTry, listPullRequests, originRepo } from '../src/github.ts';
+import { nameWithOwner } from '../src/repo-ref.ts';
 import type { Sandbox } from './helpers.ts';
 import { ghDefaultBranchFixture, ghFixture, ghLog, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 

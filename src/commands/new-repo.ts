@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
-import { cloneDestination, cloneRepo, ghMust, nameWithOwner, parseNameWithOwner } from '../github.ts';
+import { cloneDestination, cloneRepo, ghMust, parseNameWithOwner } from '../github.ts';
 import { CliError } from '../proc.ts';
+import { nameWithOwner } from '../repo-ref.ts';
 
 /** The clone of a new GitHub repository. */
 export interface NewRepoResult {

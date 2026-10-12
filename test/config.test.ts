@@ -28,7 +28,7 @@ describe('config', () => {
 
   describe(loadConfig, () => {
     it('gives the defaults without a file', () => {
-      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' });
+      expect(loadConfig()).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree+merged-branch' });
     });
 
     it('gives fresh default arrays', () => {
@@ -41,15 +41,24 @@ describe('config', () => {
     });
 
     it.each([
-      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree' }],
-      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
+      ['{"teardown":"worktree"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree' }],
+      ['{"teardown":"worktree+merged-branch"}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree+merged-branch' }],
       [
         '{"cloneRoot":"/src","hotkeys":{"new":["ctrl+g","alt+w"]},"teardown":"worktree+branch"}',
-        { cloneRoot: '/src', hotkeys: { new: ['ctrl+g', 'alt+w'] }, teardown: 'worktree+branch' },
+        { cloneRoot: '/src', hotkeys: { new: ['ctrl+g', 'alt+w'] }, setup: {}, teardown: 'worktree+branch' },
       ],
-      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
-      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, teardown: 'worktree+merged-branch' }],
-      ['{"hotkeys":{"new":[]}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: [] }, teardown: 'worktree+merged-branch' }],
+      ['{"cloneRoot":"~/src"}', { cloneRoot: '/home/me/src', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree+merged-branch' }],
+      ['{"hotkeys":{}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree+merged-branch' }],
+      ['{"hotkeys":{"new":[]}}', { cloneRoot: '/home/me/Developer', hotkeys: { new: [] }, setup: {}, teardown: 'worktree+merged-branch' }],
+      [
+        '{"setup":{"Virtusize/Aoyama":["npm ci","npm test"],"me/empty":[]}}',
+        {
+          cloneRoot: '/home/me/Developer',
+          hotkeys: { new: ['cmd+shift+w'] },
+          setup: { 'me/empty': [], 'virtusize/aoyama': ['npm ci', 'npm test'] },
+          teardown: 'worktree+merged-branch',
+        },
+      ],
     ])('overrides only the keys in %s', (text, expected) => {
       write(text);
       expect(loadConfig()).toStrictEqual(expected);
@@ -91,6 +100,17 @@ describe('config', () => {
       ['{"hotkeys":{"new":"ctrl+b>w"}}', 'hotkeys.new: expected an array of strings'],
       ['{"hotkeys":{"new":["ctrl+b>w",2]}}', 'hotkeys.new: expected an array of strings'],
       ['{"hotkeys":{"new":[],"close":[]}}', 'hotkeys.close: unknown key'],
+      ['{"setup":[]}', 'setup: expected an object'],
+      ['{"setup":null}', 'setup: expected an object'],
+      ['{"setup":"npm ci"}', 'setup: expected an object'],
+      ['{"setup":{"aoyama":["npm ci"]}}', 'setup.aoyama: expected <owner>/<name>'],
+      ['{"setup":{"me/aoyama/x":["npm ci"]}}', 'setup.me/aoyama/x: expected <owner>/<name>'],
+      ['{"setup":{"me/aoyama":"npm ci"}}', 'setup.me/aoyama: expected an array of non-empty strings'],
+      ['{"setup":{"me/aoyama":["npm ci",3]}}', 'setup.me/aoyama: expected an array of non-empty strings'],
+      ['{"setup":{"me/aoyama":["npm ci",""]}}', 'setup.me/aoyama: expected an array of non-empty strings'],
+      ['{"setup":{"me/aoyama":["npm ci\\nnpm test"]}}', 'setup.me/aoyama: expected commands without line breaks'],
+      ['{"setup":{"me/aoyama":["npm ci","npm test\\r"]}}', 'setup.me/aoyama: expected commands without line breaks'],
+      ['{"setup":{"Me/Aoyama":["npm ci"],"me/aoyama":["npm test"]}}', 'setup.me/aoyama: duplicates setup.Me/Aoyama'],
       ['{"teardown":"worktree","extra":true}', 'extra: unknown key'],
     ])('rejects %s', (text, reason) => {
       write(text);
