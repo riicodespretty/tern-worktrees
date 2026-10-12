@@ -90,6 +90,11 @@ test("relocate asks with one Relocate item", function()
 	eq(opts.items[1].icon, "folder", "items[1].icon")
 end)
 
+test("a worktree outside the root replaces the create toast before the relocate picker", function()
+	local _, cx = open_relocate()
+	eq(cx.toasts[#cx.toasts].title, "Worktree of x is outside the worktree root", "toast title")
+end)
+
 test("dismissing relocate sends no create", function()
 	local plugin, cx = open_relocate()
 	cx.asked[2].next(nil, nil, cx)
@@ -267,6 +272,38 @@ test("Force delete shows a deleting toast, then a Deleted worktree toast", funct
 	eq(#cx.toasts, 2, "toasts after remove answers")
 	eq(cx.toasts[2].level, "success", "done toast level")
 	eq(cx.toasts[2].title, "Deleted\u{A0}worktree", "done toast title")
+end)
+
+local function deleted_toast(answer: string): any
+	local plugin, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item_by_id(cx.asked[2], "force"), nil, cx)
+	plugin:answer("remove", answer, 0, cx)
+	return cx.toasts[#cx.toasts]
+end
+
+test("the Deleted worktree toast says in its title what happened to the branch", function()
+	local kept = deleted_toast(
+		'{"removed":"'
+			.. WORKTREE
+			.. '","branch":"feat","branchDeleted":false,'
+			.. '"warnings":["kept local branch feat: not merged","fetch failed: fatal: transport \'https\' not allowed"]}'
+	)
+	eq(kept.title, "Deleted\u{A0}worktree, kept branch feat: not merged", "kept title")
+	eq(kept.detail, "fetch failed", "kept detail")
+	local deleted = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":true,"warnings":[]}')
+	eq(deleted.title, "Deleted\u{A0}worktree and branch feat", "deleted title")
+	eq(deleted.detail, nil, "deleted detail")
+	local policy = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":false,"warnings":[]}')
+	eq(policy.title, "Deleted\u{A0}worktree, kept branch feat", "policy title")
+	local detached = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":null,"branchDeleted":false,"warnings":[]}')
+	eq(detached.title, "Deleted\u{A0}worktree", "detached title")
+	local failed = deleted_toast(
+		'{"removed":"'
+			.. WORKTREE
+			.. '","branch":"feat","branchDeleted":false,"warnings":["branch feat not deleted: error: in use"]}'
+	)
+	eq(failed.title, "Deleted\u{A0}worktree, kept branch feat", "failed title")
+	eq(failed.detail, "branch feat not deleted", "failed detail")
 end)
 
 test("dismissing the failed teardown sends nothing and keeps the tab", function()

@@ -60,7 +60,7 @@ type GithubRepo = { nameWithOwner: string, description: string? }
 type ReposResult = { owners: { string }, repos: { GithubRepo } }
 type ResolvedDir = { dir: string, root: string?, name: string? }
 type ResolveResult = { repos: { ResolvedDir } }
-type RemoveResult = { removed: string, branch: string?, warnings: { string } }
+type RemoveResult = { removed: string, branch: string?, branchDeleted: boolean?, warnings: { string } }
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
 type IndexEntry = { main: string, branch: string?, changed: number }
@@ -931,6 +931,7 @@ local function create(
 				retry(cx2)
 			elseif err.code == "worktree_exists_elsewhere" then
 				local existing = tostring(err.existing)
+				cx2:toast("info", "Worktree of " .. name .. " is outside the worktree root")
 				choose(cx2, {
 					placeholder = "Worktree of this branch is at " .. short_path(existing),
 					items = {
@@ -1503,6 +1504,35 @@ local function start(cx: WindowCx)
 	end)
 end
 
+local KEPT_NOT_MERGED = "kept local branch "
+
+local function deleted_title(res: RemoveResult): string
+	local title = "Deleted" .. NO_BREAK_SPACE .. "worktree"
+	local branch = res.branch
+	if type(branch) ~= "string" then
+		return title
+	end
+	if res.branchDeleted then
+		return title .. " and branch " .. branch
+	end
+	for _, w in ipairs(res.warnings or {}) do
+		if w == KEPT_NOT_MERGED .. branch .. ": not merged" then
+			return title .. ", kept branch " .. branch .. ": not merged"
+		end
+	end
+	return title .. ", kept branch " .. branch
+end
+
+local function short_warnings(warnings: { string }?): string?
+	local parts: { string } = {}
+	for _, w in ipairs(warnings or {}) do
+		if string.sub(w, 1, #KEPT_NOT_MERGED) ~= KEPT_NOT_MERGED then
+			table.insert(parts, string.match(w, "^(.-): ") or w)
+		end
+	end
+	return if #parts > 0 then table.concat(parts, "; ") else nil
+end
+
 local function run_remove(
 	cx: WindowCx,
 	path: string,
@@ -1539,11 +1569,7 @@ local function run_remove(
 			end)
 			return
 		end
-		cx2:toast(
-			"success",
-			"Deleted" .. NO_BREAK_SPACE .. "worktree",
-			join_or_nil(res.warnings, "; ") or short_path(path)
-		)
+		cx2:toast("success", deleted_title(res), short_warnings(res.warnings))
 		set_entry(res.removed, nil)
 		after_change(cx2)
 		done(cx2)

@@ -98,6 +98,8 @@ When you close a worktree tab, a picker opens with the placeholder `Closing work
 
 Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys. To select an item, type to filter the list or use the arrow keys. Then press Enter. When the picker fails to open, a toast shows the error. The tab closes, and the worktree stays.
 
+After a teardown, the toast title tells you what the teardown did with the branch: `Deleted worktree and branch <branch>`, `Deleted worktree, kept branch <branch>: not merged`, or `Deleted worktree, kept branch <branch>`. Its second line names the steps that failed, for example `fetch failed`.
+
 When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can hide Keep worktree, so check the selected item before you press Enter.
 
 When the teardown fails, for example because of uncommitted changes, a new file that git does not track, or an ignored `.env` file, an error toast gives the cause, `Teardown failed: <cause>`. For a worktree with work to lose, the cause lists the files, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the cause adds `and <n> more`. A second picker then shows the same `Teardown failed: <cause>` in its placeholder, for example `Teardown failed: 1 file with work to lose: ?? .setup-ran`, and offers:
