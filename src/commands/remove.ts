@@ -56,6 +56,14 @@ const warnOnCliError = async <T>(ctx: Context, label: string, fallback: T, actio
   }
 };
 
+/** Throws `dirty_worktree` when the worktree has {@link worktreeLosses} or `ignored` holds a hard-to-rebuild file. */
+const stopOnLosses = async (ctx: Context, ignored: string[]): Promise<void> => {
+  const files = [...(await worktreeLosses(ctx.target)), ...ignored.map(file => `!! ${file}`)];
+  if (files.length > 0) {
+    throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
+  }
+};
+
 const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
   if (force) {
     const forcedRemoval = await gitRun(ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target);
@@ -65,19 +73,13 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
     }
     return;
   }
-  const ignored = await hardToRebuildChanges(ctx.target, ctx.root);
-  if (ignored.length === 0) {
-    const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
-    if (removal.status === 0) {
-      return;
-    }
-    if (!removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
-      throw new CliError('git_failed', removal.stderr.trim());
-    }
+  await stopOnLosses(ctx, await hardToRebuildChanges(ctx.target, ctx.root));
+  const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
+  if (removal.status === 0) {
+    return;
   }
-  const files = [...(await worktreeLosses(ctx.target)), ...ignored.map(file => `!! ${file}`)];
-  if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
+  if (!removal.stderr.includes('working trees containing submodules cannot be moved or removed')) {
+    throw new CliError('git_failed', removal.stderr.trim());
   }
   await gitMust(ctx.root, 'worktree', 'remove', '--force', ctx.target);
 };

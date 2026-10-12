@@ -200,15 +200,13 @@ end)
 test("a failed teardown toasts the files, ignored ones first in the 10", function()
 	local _, cx = fail_teardown(DIRTY)
 	local toast = cx.toasts[#cx.toasts]
+	local reason = "15 files with work to lose:  M c1,  M c2,  M c3,  M c4,  M c5,  M c6,  M c7; "
+		.. "ignored, hard to rebuild: i1, i2, i3; and 5 more"
 	eq(toast.level, "error", "toast level")
-	eq(toast.title, "Teardown failed: …/worktrees/app/feat", "toast title")
-	eq(
-		toast.detail,
-		"15 files with work to lose:  M c1,  M c2,  M c3,  M c4,  M c5,  M c6,  M c7; "
-			.. "ignored, hard to rebuild: i1, i2, i3; and 5 more",
-		"toast detail"
-	)
+	eq(toast.title, "Teardown failed: feat", "toast title")
+	eq(toast.detail, reason, "toast detail")
 	local opts = cx.asked[2].opts
+	eq(opts.placeholder, "Teardown failed · feat · " .. reason, "placeholder")
 	eq(#opts.items, 2, "items")
 	eq(opts.items[1].id, "retry", "items[1].id")
 	eq(opts.items[1].label, "Retry", "items[1].label")
@@ -217,19 +215,30 @@ test("a failed teardown toasts the files, ignored ones first in the 10", functio
 	eq(opts.items[2].detail, "discards uncommitted work", "items[2].detail")
 end)
 
-test("a failed teardown toasts the shortened message and the saved files", function()
+test("the failed-teardown picker names the file that stops the teardown, not the worktree path", function()
 	local _, cx = fail_teardown(
-		'{"error":{"code":"git_failed","message":"cannot remove '
+		'{"error":{"code":"dirty_worktree","message":"'
 			.. WORKTREE
-			.. '","staging":"'
+			.. ' has work that removing it would lose","existing":"'
+			.. WORKTREE
+			.. '","files":["?? .setup-ran"]}}'
+	)
+	local placeholder = cx.asked[2].opts.placeholder
+	eq(placeholder, "Teardown failed · feat · 1 file with work to lose: ?? .setup-ran", "placeholder")
+	eq(string.find(placeholder, "/", 1, true), nil, "a slash in the placeholder")
+end)
+
+test("a failed teardown names the worktree by its folder in the git message and keeps the saved files path", function()
+	local _, cx = fail_teardown(
+		'{"error":{"code":"git_failed","message":"fatal: \''
+			.. WORKTREE
+			.. '\' is locked","staging":"'
 			.. WORKTREE
 			.. '.carry"}}'
 	)
-	eq(
-		cx.toasts[#cx.toasts].detail,
-		"cannot remove …/worktrees/app/feat · Saved files: …/worktrees/app/feat.carry",
-		"toast detail"
-	)
+	local reason = "fatal: 'feat' is locked · Saved files: …/worktrees/app/feat.carry"
+	eq(cx.toasts[#cx.toasts].detail, reason, "toast detail")
+	eq(cx.asked[2].opts.placeholder, "Teardown failed · feat · " .. reason, "placeholder")
 end)
 
 test("Retry sends remove again", function()

@@ -614,10 +614,12 @@ local function dirty_summary(shown: DirtyListing): string
 	return total .. noun .. " with work to lose: " .. table.concat(parts, "; ")
 end
 
+-- The reason of a failed `remove` of the worktree at `path`: the files with work to lose of a `dirty_worktree`, else
+-- the message with the folder name of the worktree in place of `path`, then the saved files when there are some.
 local function failure_message(err: any, path: string): string
 	local summary = if err.code == "dirty_worktree" then dirty_summary(list_dirty_files(err.files)) else ""
 	local parts: { string } = {
-		if summary ~= "" then summary else replace_plain(tostring(err.message), path, short_path(path)),
+		if summary ~= "" then summary else replace_plain(tostring(err.message), path, basename(path)),
 	}
 	local saved = staging_line(err)
 	if saved ~= nil then
@@ -1301,9 +1303,11 @@ local function run_remove(
 	end
 	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
-			cx2:toast("error", "Teardown failed: " .. short_path(path), failure_message(err, path))
+			local name = basename(path)
+			local reason = failure_message(err, path)
+			cx2:toast("error", "Teardown failed: " .. name, reason)
 			choose(cx2, {
-				placeholder = "Teardown failed · " .. short_path(path),
+				placeholder = "Teardown failed · " .. name .. " · " .. reason,
 				icon = "branch",
 				items = {
 					{ id = "retry", label = "Retry" },

@@ -238,21 +238,25 @@ describe('remove command', () => {
   });
 
   describe('failures and --force', () => {
-    it('keeps a dirty worktree and its tabs without --force', async () => {
+    it('keeps a worktree with an untracked file and its tabs without --force', async () => {
       const dir = await addFeature();
       writeTernLs({ work: [dir] });
-      writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed' });
-      await expect(run([dir])).rejects.toThrow(/contains modified or untracked files.*\S$/su);
-      expect(existsSync(path.join(dir, 'junk.txt'))).toBeTruthy();
-      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
+      writeFileSync(path.join(dir, '.setup-ran'), 'x\n');
+      await expect(run([dir])).rejects.toMatchObject({
+        code: 'dirty_worktree',
+        extra: { existing: dir, files: ['?? .setup-ran'] },
+        message: `${dir} has work that removing it would lose`,
+      });
+      await expect(run([dir, '--keep-tab'])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? .setup-ran'] } });
+      expect(existsSync(path.join(dir, '.setup-ran'))).toBeTruthy();
+      expect(ternLog()).toStrictEqual(['ls --json']);
     });
 
     it('keeps an untracked file that status.showUntrackedFiles hides', async () => {
       const dir = await addFeature();
       await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
       writeFileSync(path.join(dir, 'draft.txt'), 'draft\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed' });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? draft.txt'] } });
       expect(readFileSync(path.join(dir, 'draft.txt'), 'utf-8')).toBe('draft\n');
     });
 
@@ -279,10 +283,16 @@ describe('remove command', () => {
     it('does not force a locked worktree without --force', async () => {
       const dir = await addFeature();
       await git(repo.dir, 'worktree', 'lock', dir);
-      writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
       const failure = run([dir]);
       await expect(failure).rejects.toMatchObject({ code: 'git_failed' });
       await expect(failure).rejects.toThrow(/locked/u);
+      expect(existsSync(dir)).toBeTruthy();
+    });
+
+    it('reports the trimmed refusal of git for a clean worktree and does not force it', async () => {
+      const dir = await addFeature();
+      await gitShim(`if [ "$5 $6" = "worktree remove" ]; then printf 'fatal: refused\\n\\n' >&2; exit 1; fi`);
+      await expect(run([dir])).rejects.toMatchObject({ code: 'git_failed', message: 'fatal: refused' });
       expect(existsSync(dir)).toBeTruthy();
     });
 
