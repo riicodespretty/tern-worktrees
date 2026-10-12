@@ -27,15 +27,19 @@ jobs:
         run: |
           gh release download --repo JohnnyMorganz/StyLua --pattern stylua-linux-x86_64.zip --dir "$RUNNER_TEMP/luau"
           gh release download --repo JohnnyMorganz/luau-lsp --pattern luau-lsp-linux-x86_64.zip --dir "$RUNNER_TEMP/luau"
+          gh release download v0.11.0 --repo lune-org/lune --pattern lune-0.11.0-linux-x86_64.zip --dir "$RUNNER_TEMP/luau"
           mkdir -p "$HOME/.local/bin"
           unzip -o "$RUNNER_TEMP/luau/stylua-linux-x86_64.zip" -d "$HOME/.local/bin"
           unzip -o "$RUNNER_TEMP/luau/luau-lsp-linux-x86_64.zip" -d "$HOME/.local/bin"
-          chmod +x "$HOME/.local/bin/stylua" "$HOME/.local/bin/luau-lsp"
+          unzip -o "$RUNNER_TEMP/luau/lune-0.11.0-linux-x86_64.zip" -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/stylua" "$HOME/.local/bin/luau-lsp" "$HOME/.local/bin/lune"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - run: vp check
 
       - run: vp run check:luau
+
+      - run: vp run test:luau
 
       - run: vp run lint:prose
 

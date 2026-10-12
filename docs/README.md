@@ -139,7 +139,9 @@ When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) 
 
 ## Development
 
-The gates are `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage`, with coverage at 100%. `vp run test.mutation` runs the mutation tests. It isolates `HOME`, the Tern config folder and the Tern daemon socket, so no mutant touches the real machine. `vp run smoke` tests the CLI against a Tern session daemon of its own, with its own config folder and socket, so it does not touch the Tern that you use.
+The gates are `vp check`, `vp run check:luau`, `vp run test:luau`, `vp run lint:prose` and `vp test --coverage`, with coverage at 100%. `vp run test.mutation` runs the mutation tests. It isolates `HOME`, the Tern config folder and the Tern daemon socket, so no mutant touches the real machine. `vp run smoke` tests the CLI against a Tern session daemon of its own, with its own config folder and socket, so it does not touch the Tern that you use.
+
+`vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). They load `window.luau` unchanged against a stand-in for `tern` in `test/luau/stub.luau`, so they need no Tern. `vp run check:luau` also checks the types of these tests, and it needs lune for the types of its modules. Homebrew has lune 0.10.5, so install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform, and put the `lune` binary on your `PATH`.
 
 `tern plugin types types` refreshes `types/tern.d.luau`.
 

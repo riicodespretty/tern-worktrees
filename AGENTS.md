@@ -30,7 +30,7 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## Gates
 
-Run `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage` before each commit. Run `vp run test.mutation -- --mutate <files>` for mutation tests on the files that you changed.
+Run `vp check`, `vp run check:luau`, `vp run test:luau`, `vp run lint:prose` and `vp test --coverage` before each commit. Run `vp run test.mutation -- --mutate <files>` for mutation tests on the files that you changed.
 
 ## Agent skills
 
