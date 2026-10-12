@@ -166,13 +166,19 @@ local listAgain = false
 local refreshPending = false
 local listStartedAt: number? = nil
 
-local function in_index(cwd: string?): boolean
+-- The worktree index entry of the worktree that holds `cwd`. When worktree paths nest, the longest path wins.
+local function entry_at(cwd: string?): IndexEntry?
+	local found: string? = nil
 	for path in pairs(worktreeIndex) do
-		if is_under(cwd, path) then
-			return true
+		if is_under(cwd, path) and (found == nil or #path > #found) then
+			found = path
 		end
 	end
-	return false
+	return if found ~= nil then worktreeIndex[found] else nil
+end
+
+local function in_index(cwd: string?): boolean
+	return entry_at(cwd) ~= nil
 end
 
 -- Whether `a` and `b` differ in what a worktree segment shows: a worktree, its branch or its number of changed files.
@@ -492,30 +498,34 @@ local function short_path(path: string): string
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
--- `choose` wraps `cx:pick`, and `prompt_text` wraps `cx:prompt`. Each `:next` callback returns at once when its `cx`
--- is nil. Else it shows `err`, when set, in an error toast, then calls `cb`.
-local function choose(cx: WindowCx, opts: PickOptions, cb: (item: PickItem?, cx: WindowCx, err: string?) -> ())
-	cx:pick(opts):next(function(item: PickItem?, err: string?, cx2: WindowCx?)
-		if cx2 == nil then
+-- The `:next` callback of a `cx:pick` or `cx:prompt` request. It returns at once when its `cx` is nil. Else it shows
+-- `err`, when set, in an error toast titled `title`, then calls `cb`.
+local function settle<T>(
+	title: string,
+	cb: (result: T?, cx: WindowCx, err: string?) -> ()
+): (result: T?, err: string?, cx: WindowCx?) -> ()
+	return function(result: T?, err: string?, cx: WindowCx?)
+		if cx == nil then
 			return
 		end
 		if err ~= nil then
-			cx2:toast("error", "Picker failed", err)
+			cx:toast("error", title, err)
 		end
-		cb(item, cx2, err)
-	end)
+		cb(result, cx, err)
+	end
 end
 
+-- `choose` asks with `cx:pick`, and calls `cb` with the id of the picked item, or nil when the user dismissed the
+-- picker or the pick failed.
+local function choose(cx: WindowCx, opts: PickOptions, cb: (id: string?, cx: WindowCx, err: string?) -> ())
+	cx:pick(opts):next(settle("Picker failed", function(item: PickItem?, cx2: WindowCx, err: string?)
+		cb(if err == nil and item ~= nil then item.id else nil, cx2, err)
+	end))
+end
+
+-- `prompt_text` asks with `cx:prompt`, and calls `cb` with the typed text.
 local function prompt_text(cx: WindowCx, opts: PromptOptions, cb: (text: string?, cx: WindowCx, err: string?) -> ())
-	cx:prompt(opts):next(function(text: string?, err: string?, cx2: WindowCx?)
-		if cx2 == nil then
-			return
-		end
-		if err ~= nil then
-			cx2:toast("error", "Prompt failed", err)
-		end
-		cb(text, cx2, err)
-	end)
+	cx:prompt(opts):next(settle("Prompt failed", cb))
 end
 
 local MAX_LISTED_FILES = 10
@@ -849,7 +859,7 @@ local function type_setup(
 			cx2:run(pane, line .. "\r")
 			finish(true, nil)
 		elseif tern.now() >= deadline then
-			give_up(cx2, "setup not run: no shell prompt in 30 s")
+			give_up(cx2, "setup not run: no shell prompt in " .. SETUP_PROMPT_MS // 1000 .. " s")
 		else
 			tern.timer(SETUP_POLL_MS, poll)
 		end
@@ -878,8 +888,8 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 							icon = "folder",
 						},
 					},
-				}, function(item, cx3, pickErr)
-					if pickErr == nil and item ~= nil and item.id == "relocate" then
+				}, function(id, cx3)
+					if id == "relocate" then
 						local again = table.clone(extra)
 						table.insert(again, "--relocate")
 						create(cx3, root, again)
@@ -1106,11 +1116,10 @@ local function branch_picker(cx: WindowCx, root: string)
 		choose(
 			cx2,
 			{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
-			function(item, cx3, err)
-				if err ~= nil or item == nil then
+			function(id, cx3)
+				if id == nil then
 					return
 				end
-				local id: string = item.id
 				local branch = string.match(id, "^b:(.*)$")
 				local pr = string.match(id, "^pr:(.*)$")
 				if id == "new" then
@@ -1150,8 +1159,8 @@ local function github_picker(cx: WindowCx)
 			icon = "globe",
 			action = "clone",
 			items = items,
-		}, function(item, _, err)
-			local nameWithOwner = if err == nil and item ~= nil then string.match(item.id, "^gh:(.*)$") else nil
+		}, function(id)
+			local nameWithOwner = if id ~= nil then string.match(id, "^gh:(.*)$") else nil
 			if nameWithOwner == nil then
 				return
 			end
@@ -1179,9 +1188,9 @@ local function ask_visibility(cx: WindowCx, owner: string, name: string)
 			{ id = "private", label = "Private", icon = "lock" },
 			{ id = "public", label = "Public", icon = "globe" },
 		},
-	}, function(item, _, err)
-		if err == nil and item ~= nil then
-			make_repo(owner, name, item.id)
+	}, function(id)
+		if id ~= nil then
+			make_repo(owner, name, id)
 		end
 	end)
 end
@@ -1210,9 +1219,9 @@ local function ask_owner(cx: WindowCx, ownerNames: { string })
 	choose(
 		cx,
 		{ placeholder = "Search owners", icon = "user", action = "choose", items = owners },
-		function(item, ownerCx, err)
-			if err == nil and item ~= nil then
-				ask_name(ownerCx, item.id)
+		function(id, ownerCx)
+			if id ~= nil then
+				ask_name(ownerCx, id)
 			end
 		end
 	)
@@ -1240,11 +1249,10 @@ repo_picker = function(cx: WindowCx)
 	choose(
 		cx,
 		{ placeholder = "Search repositories", icon = "folder", action = "open", items = items },
-		function(item, cx2, err)
-			if err ~= nil or item == nil then
+		function(id, cx2)
+			if id == nil then
 				return
 			end
-			local id: string = item.id
 			local root = string.match(id, "^local:(.*)$")
 			if root ~= nil then
 				branch_picker(cx2, root)
@@ -1296,10 +1304,10 @@ local function run_remove(
 					{ id = "retry", label = "Retry" },
 					{ id = "force", label = "Force delete", detail = "discards uncommitted work" },
 				},
-			}, function(item, cx3, pickErr)
-				if pickErr == nil and item ~= nil and item.id == "retry" then
+			}, function(id, cx3)
+				if id == "retry" then
 					run_remove(cx3, path, false, done, stop)
-				elseif pickErr == nil and item ~= nil and item.id == "force" then
+				elseif id == "force" then
 					run_remove(cx3, path, true, done, stop)
 				else
 					stop(cx3)
@@ -1318,13 +1326,13 @@ local function run_remove(
 	end)
 end
 
-local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, index: number): boolean
+local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, index: number)
 	local path = paths[index]
 	if path == nil then
 		if tab ~= nil then
 			close_tab(cx, tab)
 		end
-		return true
+		return
 	end
 	local function advance(cx2: WindowCx)
 		confirm_teardown(cx2, tab, paths, index + 1)
@@ -1334,7 +1342,7 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 			advance(cx2)
 		end
 	end
-	local function keep(cx2: WindowCx)
+	local function mark_handled_then_next(cx2: WindowCx)
 		if tab ~= nil then
 			handled[path] = true
 		end
@@ -1350,21 +1358,15 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 			{ id = "keep", label = "Keep worktree", detail = "closes the tab, keeps the worktree" },
 			{ id = "teardown", label = "Tear down", detail = POLICY[policy] or ("Teardown policy: " .. policy) },
 		},
-	}, function(item, cx2, pickErr)
-		if pickErr == nil and item ~= nil and item.id == "teardown" then
-			run_remove(cx2, path, false, function(cx3)
-				if tab ~= nil then
-					handled[path] = true
-				end
-				advance(cx3)
-			end, stop)
-		elseif pickErr ~= nil or (item ~= nil and item.id == "keep") then
-			keep(cx2)
+	}, function(id, cx2, pickErr)
+		if id == "teardown" then
+			run_remove(cx2, path, false, mark_handled_then_next, stop)
+		elseif pickErr ~= nil or id == "keep" then
+			mark_handled_then_next(cx2)
 		else
 			stop(cx2)
 		end
 	end)
-	return true
 end
 
 local function intercept(cx: WindowCx, tab: number?): boolean
@@ -1380,7 +1382,8 @@ local function intercept(cx: WindowCx, tab: number?): boolean
 	if #paths == 0 then
 		return false
 	end
-	return confirm_teardown(cx, tab, paths, 1)
+	confirm_teardown(cx, tab, paths, 1)
+	return true
 end
 
 tern.command({
@@ -1395,13 +1398,7 @@ tern.command({
 -- reads only the worktree index. Tern disables a formatter that takes more than 4 ms, and `tern.chrome.refresh`
 -- raises an error when a formatter calls it.
 tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
-	local longest: string? = nil
-	for path in pairs(worktreeIndex) do
-		if is_under(pane.cwd, path) and (longest == nil or #path > #longest) then
-			longest = path
-		end
-	end
-	local entry = if longest ~= nil then worktreeIndex[longest] else nil
+	local entry = entry_at(pane.cwd)
 	if entry == nil then
 		return nil
 	end

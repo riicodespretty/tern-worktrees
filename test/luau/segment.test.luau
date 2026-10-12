@@ -1,8 +1,8 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
 local NEW = "plugin.tern-worktrees.new"
@@ -49,7 +49,7 @@ local function segment_of(plugin: Stub.Harness, cwd: string): any
 	return segments[1]
 end
 
-test("a tern-owned worktree shows its branch and its number of changed files", function()
+test("a managed worktree shows its branch and its number of changed files", function()
 	local plugin = started(LISTED)
 	local seg = segment_of(plugin, FEAT)
 	eq(seg.text, "feat · 2", "text")
@@ -186,4 +186,4 @@ do
 	end)
 end
 
-harness.finish()
+runner.finish()

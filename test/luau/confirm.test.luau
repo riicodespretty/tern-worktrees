@@ -1,8 +1,8 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
 local WORKTREE = "/wt/worktrees/app/feat"
@@ -44,8 +44,8 @@ local function open_relocate(): (Stub.Harness, any)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", ELSEWHERE, 1, cx)
-	eq(#cx.asked, 2, "dialogs opened")
-	eq(cx.asked[2].kind, "pick", "dialog kind")
+	eq(#cx.asked, 2, "pickers and prompts opened")
+	eq(cx.asked[2].kind, "pick", "request kind")
 	return plugin, cx
 end
 
@@ -54,8 +54,8 @@ local function close_worktree_tab(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
 	local plugin = Stub.load({ env = ENV, files = FILES })
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
-	eq(#cx.asked, 1, "dialogs opened")
-	eq(cx.asked[1].kind, "pick", "dialog kind")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(cx.asked[1].kind, "pick", "request kind")
 	return plugin, cx
 end
 
@@ -64,8 +64,8 @@ local function fail_teardown(stdout: string): (Stub.Harness, any)
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(item_by_id(cx.asked[1], "teardown"), nil, cx)
 	plugin:answer("remove", stdout, 1, cx)
-	eq(#cx.asked, 2, "dialogs opened")
-	eq(cx.asked[2].kind, "pick", "dialog kind")
+	eq(#cx.asked, 2, "pickers and prompts opened")
+	eq(cx.asked[2].kind, "pick", "request kind")
 	return plugin, cx
 end
 
@@ -175,12 +175,12 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(cx.asked[1].opts.placeholder, "Worktree tab closed · …/worktrees/app/feat", "placeholder")
 	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
 	cx.asked[1].next(nil, nil, cx)
-	eq(#cx.asked, 2, "dialogs opened")
-	eq(cx.asked[2].kind, "pick", "dialog kind")
+	eq(#cx.asked, 2, "pickers and prompts opened")
+	eq(cx.asked[2].kind, "pick", "request kind")
 	eq(cx.asked[2].opts.placeholder, "Worktree tab closed · …/worktrees/app/fix", "placeholder")
 	cx.asked[2].next(nil, nil, cx)
 	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
@@ -259,4 +259,4 @@ test("a failed-teardown pick err with Retry picked sends nothing", function()
 	eq(#cx.commands, 0, "commands run")
 end)
 
-harness.finish()
+runner.finish()

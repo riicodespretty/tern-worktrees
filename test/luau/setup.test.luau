@@ -1,8 +1,8 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
@@ -291,4 +291,4 @@ test("a Carly create into a tab that was open before replies at once with the wa
 	eq(#cx.typed, 0, "typed")
 end)
 
-harness.finish()
+runner.finish()

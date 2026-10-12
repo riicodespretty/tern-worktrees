@@ -7,9 +7,9 @@ local function show(value: any): string
 	return if type(value) == "string" then string.format("%q", value) else tostring(value)
 end
 
-local Harness = {}
+local Runner = {}
 
-function Harness.test(name: string, fn: () -> ())
+function Runner.test(name: string, fn: () -> ())
 	count += 1
 	local ok: boolean, err: any = pcall(fn)
 	if ok then
@@ -20,17 +20,17 @@ function Harness.test(name: string, fn: () -> ())
 	end
 end
 
-function Harness.eq(actual: any, expected: any, label: string)
+function Runner.eq(actual: any, expected: any, label: string)
 	if actual ~= expected then
 		error(label .. ": expected " .. show(expected) .. ", got " .. show(actual), 2)
 	end
 end
 
-function Harness.finish()
+function Runner.finish()
 	print(string.format("%d tests, %d failed", count, failures))
 	if failures > 0 then
 		error(string.format("%d of %d tests failed", failures, count), 0)
 	end
 end
 
-return Harness
+return Runner

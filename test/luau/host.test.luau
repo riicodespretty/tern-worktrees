@@ -1,8 +1,8 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local INDEX = {
 	["/r/a/feature"] = { main = "/src/a", branch = "feature", changed = 0 },
@@ -124,4 +124,4 @@ test("a leading ~ is expanded with HOME and the cwd is kept as given", function(
 	eq(spec.cwd, "~/a/feature", "cwd")
 end)
 
-harness.finish()
+runner.finish()

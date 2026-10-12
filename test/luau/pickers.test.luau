@@ -1,8 +1,8 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
@@ -46,8 +46,8 @@ local function open_branch_picker(): (Stub.Harness, any)
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
-	eq(#cx.asked, 1, "dialogs opened")
-	eq(cx.asked[1].kind, "pick", "dialog kind")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(cx.asked[1].kind, "pick", "request kind")
 	return plugin, cx
 end
 
@@ -56,8 +56,8 @@ local function open_repo_picker(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1 } }, 1)
 	local plugin = Stub.load({ env = ENV })
 	plugin.commands.new.run(cx)
-	eq(#cx.asked, 1, "dialogs opened")
-	eq(cx.asked[1].kind, "pick", "dialog kind")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(cx.asked[1].kind, "pick", "request kind")
 	return plugin, cx
 end
 
@@ -65,8 +65,8 @@ local function choose_new_branch(): (Stub.Harness, any)
 	local plugin, cx = open_branch_picker()
 	local picker = cx.asked[1]
 	picker.next(item_by_id(picker, "new"), nil, cx)
-	eq(#cx.asked, 2, "dialogs opened")
-	eq(cx.asked[2].kind, "prompt", "dialog kind")
+	eq(#cx.asked, 2, "pickers and prompts opened")
+	eq(cx.asked[2].kind, "prompt", "request kind")
 	return plugin, cx
 end
 
@@ -112,14 +112,14 @@ test("dismissing the branch picker runs nothing", function()
 	local plugin, cx = open_branch_picker()
 	cx.asked[1].next(nil, nil, cx)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 end)
 
 test("Other repo opens the repo picker", function()
 	local _, cx = open_branch_picker()
 	local picker = cx.asked[1]
 	picker.next(item_by_id(picker, "other"), nil, cx)
-	eq(#cx.asked, 2, "dialogs opened")
+	eq(#cx.asked, 2, "pickers and prompts opened")
 	eq(cx.asked[2].opts.placeholder, "Search repositories", "placeholder")
 end)
 
@@ -176,8 +176,8 @@ test("New branch shows the CLI's bad_args reason and prompts again with the name
 	local last = cx.toasts[#cx.toasts]
 	eq(last.level, "error", "toast level")
 	eq(last.title, "invalid branch name: bad..name", "toast title")
-	eq(#cx.asked, 3, "dialogs opened")
-	eq(cx.asked[3].kind, "prompt", "dialog kind")
+	eq(#cx.asked, 3, "pickers and prompts opened")
+	eq(cx.asked[3].kind, "prompt", "request kind")
 	eq(cx.asked[3].opts.value, "bad..name", "prefilled name")
 	eq(cx.asked[3].opts.placeholder, "New branch from main in app", "placeholder")
 end)
@@ -187,7 +187,7 @@ test("New branch shows another CLI error and prompts no more", function()
 	cx.asked[2].next("feat", nil, cx)
 	plugin:answer("create", '{"error":{"code":"git_failed","message":"fetch failed"}}', 1, cx)
 	eq(cx.toasts[#cx.toasts].title, "fetch failed", "toast title")
-	eq(#cx.asked, 2, "dialogs opened")
+	eq(#cx.asked, 2, "pickers and prompts opened")
 end)
 
 test("New branch runs no create when the prompt is dismissed or empty", function()
@@ -196,7 +196,7 @@ test("New branch runs no create when the prompt is dismissed or empty", function
 	cx.asked[2].next("", nil, cx)
 	cx.asked[2].next("feat", nil, nil)
 	eq(#argv_lines(plugin, "create"), 0, "create calls")
-	eq(#cx.asked, 2, "dialogs opened")
+	eq(#cx.asked, 2, "pickers and prompts opened")
 end)
 
 test("the repo picker groups open sessions and GitHub", function()
@@ -213,7 +213,7 @@ test("GitHub repositories open a clone picker grouped by owner", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(item_by_id(cx.asked[1], "github"), nil, cx)
 	plugin:answer("repos", '{"owners":["o"],"repos":[{"nameWithOwner":"o/a","description":"An app"}]}', 0, cx)
-	eq(#cx.asked, 2, "dialogs opened")
+	eq(#cx.asked, 2, "pickers and prompts opened")
 	local opts = cx.asked[2].opts
 	eq(opts.placeholder, "Search GitHub repositories", "placeholder")
 	eq(opts.icon, "globe", "icon")
@@ -227,7 +227,7 @@ test("an empty GitHub repository list opens no picker", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(item_by_id(cx.asked[1], "github"), nil, cx)
 	plugin:answer("repos", '{"owners":["o"],"repos":[]}', 0, cx)
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 	local last = cx.toasts[#cx.toasts]
 	eq(last.level, "info", "toast level")
 	eq(last.title, "No GitHub repositories", "toast title")
@@ -237,7 +237,7 @@ test("an empty owner list opens no picker", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(item_by_id(cx.asked[1], "newrepo"), nil, cx)
 	plugin:answer("repos", '{"owners":[],"repos":[]}', 0, cx)
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(#cx.toasts, 1, "toasts")
 end)
 
@@ -255,7 +255,7 @@ test("owner, name and visibility create the repository", function()
 	owner.next(item_by_id(owner, "o"), nil, cx)
 
 	local name = cx.asked[3]
-	eq(name.kind, "prompt", "name dialog kind")
+	eq(name.kind, "prompt", "name request kind")
 	same(
 		name.opts,
 		{ placeholder = "Name of the new repository under o", icon = "folder-plus", action = "continue" },
@@ -280,7 +280,7 @@ test("an empty repository name ends the flow", function()
 	cx.asked[2].next(item_by_id(cx.asked[2], "o"), nil, cx)
 	cx.asked[3].next("", nil, cx)
 	cx.asked[3].next(nil, nil, cx)
-	eq(#cx.asked, 3, "dialogs opened")
+	eq(#cx.asked, 3, "pickers and prompts opened")
 end)
 
 test("dismissing or failing the GitHub repository picker clones nothing", function()
@@ -312,17 +312,17 @@ test("dismissing or failing the repo picker runs nothing", function()
 	cx.asked[1].next(item_by_id(cx.asked[1], "github"), "gone", cx)
 	cx.asked[1].next(item_by_id(cx.asked[1], "newrepo"), "gone", cx)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 end)
 
 test("a bad_args error of a chosen branch shows a toast and prompts nothing", function()
 	local plugin, cx = open_branch_picker()
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", '{"error":{"code":"bad_args","message":"bad branch name x"}}', 1, cx)
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 	local last = cx.toasts[#cx.toasts]
 	eq(last.level, "error", "toast level")
 	eq(last.title, "bad branch name x", "toast title")
 end)
 
-harness.finish()
+runner.finish()

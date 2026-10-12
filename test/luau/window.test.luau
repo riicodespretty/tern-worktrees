@@ -1,30 +1,32 @@
 --!strict
 
 local Stub = require("./stub")
-local harness = require("./harness")
-local test, eq = harness.test, harness.eq
+local runner = require("./runner")
+local test, eq = runner.test, runner.eq
 
 local WORKTREE = "/wt/worktrees/app/feat"
 
+-- Loads window.luau with WORKTREE as a worktree whose main checkout is /src/<mainRepo>.
+local function load_worktree_of(mainRepo: string): Stub.Harness
+	return Stub.load({
+		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },
+		files = { [WORKTREE .. "/.git"] = `gitdir: /src/{mainRepo}/.git/worktrees/feat\n` },
+	})
+end
+
 test("close_tab asks once for the last tab on a managed worktree", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = Stub.load({
-		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },
-		files = { [WORKTREE .. "/.git"] = "gitdir: /src/app/.git/worktrees/feat\n" },
-	})
+	local plugin = load_worktree_of("app")
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
-	eq(#cx.asked, 1, "dialogs opened")
-	eq(cx.asked[1].kind, "pick", "dialog kind")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(cx.asked[1].kind, "pick", "request kind")
 end)
 
 test("close_tab does not ask about a worktree of another repository", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = Stub.load({
-		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },
-		files = { [WORKTREE .. "/.git"] = "gitdir: /src/other/.git/worktrees/feat\n" },
-	})
+	local plugin = load_worktree_of("other")
 	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
-	eq(#cx.asked, 0, "dialogs opened")
+	eq(#cx.asked, 0, "pickers and prompts opened")
 end)
 
 test("close_tab does not ask about a worktree that a pane in another tab still uses", function()
@@ -32,12 +34,9 @@ test("close_tab does not ask about a worktree that a pane in another tab still u
 		{ pane = 1, tab = 1, cwd = WORKTREE .. "/src" },
 		{ pane = 2, tab = 2, cwd = WORKTREE },
 	}, 1)
-	local plugin = Stub.load({
-		env = { TERN_WT_HOME = "/wt", HOME = "/home/u" },
-		files = { [WORKTREE .. "/.git"] = "gitdir: /src/app/.git/worktrees/feat\n" },
-	})
+	local plugin = load_worktree_of("app")
 	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
-	eq(#cx.asked, 0, "dialogs opened")
+	eq(#cx.asked, 0, "pickers and prompts opened")
 end)
 
 test("window_start reads the worktree root from the list output", function()
@@ -50,7 +49,7 @@ test("window_start reads the worktree root from the list output", function()
 	plugin:answer("list", '{"root":"/r/","worktrees":[]}')
 	eq(plugin.kv.worktreeRoot, "/r", "remembered worktree root")
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
-	eq(#cx.asked, 1, "dialogs opened")
+	eq(#cx.asked, 1, "pickers and prompts opened")
 end)
 
 local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
@@ -303,4 +302,4 @@ test("a create or remove in one window keeps the entries that another window wro
 	eq(spec ~= nil and spec.env.TERN_WT_PATH, X, "TERN_WT_PATH of a new shell in X")
 end)
 
-harness.finish()
+runner.finish()
