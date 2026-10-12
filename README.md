@@ -46,13 +46,13 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 
 ### Open a worktree tab
 
-1. Press `cmd+shift+w`. The branch picker opens for the repository of the current session. When the current session has no repository, the repo picker opens first.
-2. Type to filter the open pull requests and the branches. A branch with a worktree shows `worktree` adjacent to its name.
-3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, type its name and press Enter on `Create branch “<name>” from <default>`.
+1. Press `cmd+shift+w`. The branch picker opens over the focused pane, for the repository of the current session. When the current session has no repository, the repo picker opens first.
+2. Type to filter. The branch picker lists `New branch…`, `Other repo…`, the open pull requests, then the branches. A pull request row reads `#<n> <title> · <branch>`, so part of its branch name also finds it. A branch with a worktree shows `worktree` adjacent to its name. Typing filters on the row name only, not on that dim text.
+3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, press Enter on `New branch…`, type its name and press Enter. When `tern-wt` refuses the name, a toast tells why, and the prompt opens again with the name filled in. Escape or an empty name makes no branch.
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
 
-Each dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`. The keys of a list are the keys of the palette: the arrows, Home, End, Page Up, Page Down, Tab and Shift+Tab. One click picks a row. Unlike in the palette, the selection does not follow the pointer, because Tern 0.5.3 sends a plugin no event when the pointer moves. After you move the selection with a key, the row below the pointer gets only a thin ring, so it looks different from the selected row.
+The branch picker, the repo picker and the questions that follow them are Tern's own picker and prompt. Each other dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
 
 ### Open a worktree from the command palette
 
@@ -65,15 +65,15 @@ Press Enter on a row to open its worktree tab, as the branch picker does. The ro
 
 The rows refresh from local refs, with no network traffic. This refresh runs when a shell command ends in a pane of the repository and when one of its panes gets focus. It also runs after the plugin makes or removes a worktree. The fetch from `origin` and the list of open pull requests run at most one time in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
 
-`cmd+shift+w` still opens the dialog. Use it to make a new branch or to select `Other repo…`.
+`cmd+shift+w` still opens the branch picker. Use it for `New branch…` or `Other repo…`.
 
 ### Select a different repository
 
 In the branch picker, select `Other repo…`. The repo picker shows:
 
 - Each repository open in a session, in the `Open sessions` group.
-- `Browse GitHub repos…`, the repositories of your GitHub user and organizations. `tern-wt` clones the one you select to the clone root, or reuses the clone there.
-- `Create new GitHub repo…`, which asks for the owner, the name and the visibility, then makes the repository and clones it.
+- In the `GitHub` group, `Browse GitHub repos…`: the repositories of your GitHub user and organizations, grouped by owner. `tern-wt` clones the one you select to the clone root, or reuses the clone there. When GitHub lists no repository, a toast says so.
+- In the `GitHub` group, `Create new GitHub repo…`, which asks for the owner, the name and the visibility (`Private` or `Public`), then makes the repository and clones it. An empty name ends it.
 
 The branch picker of that repository opens next.
 

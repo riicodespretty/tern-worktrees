@@ -33,12 +33,21 @@ local Stub = {}
 local lastCx: any = nil
 
 -- Returns a fake WindowCx over `panes`. Every dialog request lands in `cx.asked`, through `ask` only.
+-- A `pick` or `prompt` request keeps its options in `opts` and its `:next` callback in `next`, which the
+-- test calls with `(result, err, cx)` to answer it.
 function Stub.cx(panes: { Pane }, focused: number?): any
 	local asked: { any } = {}
 	local nextPane = 1000
 
-	local function ask(request: any)
+	local function ask(request: any): any
 		table.insert(asked, request)
+		return {
+			kind = request.kind,
+			id = #asked,
+			next = function(_self: any, fn: (result: any, err: string?, cx: any) -> ())
+				request.next = fn
+			end,
+		}
 	end
 
 	local function find(id: number): Pane?
@@ -119,6 +128,14 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 
 	function cx.command(self: any, id: string)
 		table.insert(self.commands, id)
+	end
+
+	function cx.pick(_self: any, opts: any): any
+		return ask({ kind = "pick", opts = opts })
+	end
+
+	function cx.prompt(_self: any, opts: any): any
+		return ask({ kind = "prompt", opts = opts })
 	end
 
 	lastCx = cx

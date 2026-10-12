@@ -41,11 +41,9 @@ local POLICY = {
 	["worktree+branch"] = "Tear down removes the worktree and deletes the branch.",
 }
 
--- NOTE: The dialog protocol constants and the Item and Button types below must match the block at the top of host.luau. Change both files together.
+-- NOTE: The dialog protocol constants and the Button type below must match the block at the top of host.luau. Change both files together.
 local TITLE_PREFIX = "twt:"
-local MODE_PICK: "pick" = "pick"
 local MODE_CONFIRM: "confirm" = "confirm"
-local MODE_PROMPT: "prompt" = "prompt"
 local ACTION_SELECT: "select" = "select"
 local ACTION_NEW: "new" = "new"
 local ACTION_BUTTON: "button" = "button"
@@ -61,21 +59,12 @@ type Answer =
 	| { action: typeof(ACTION_TEXT), text: string }
 type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
-type Item = { id: string, label: string, detail: string?, group: string?, icon: string? }
 type ButtonKey = "backspace" | "cmd+backspace"
 type Button = {
 	id: string,
 	label: string,
 	kind: ("primary" | "danger" | typeof(KIND_CANCEL))?,
 	key: ButtonKey?,
-}
-type PickOptions = {
-	title: string,
-	items: { Item },
-	allowNew: boolean?,
-	newLabel: string?,
-	placeholder: string?,
-	verb: string?,
 }
 type ConfirmOptions = {
 	title: string,
@@ -85,15 +74,7 @@ type ConfirmOptions = {
 	buttons: { Button },
 	reveal: boolean?,
 }
-type PickDialog = PickOptions & { mode: typeof(MODE_PICK) }
 type ConfirmDialog = ConfirmOptions & { mode: typeof(MODE_CONFIRM) }
-type PromptDialog = {
-	mode: typeof(MODE_PROMPT),
-	title: string,
-	placeholder: string?,
-	verb: string?,
-}
-type DialogRequest = PickDialog | ConfirmDialog | PromptDialog
 type PullRequest = { number: number, title: string, branch: string }
 type BranchWorktree = { branch: string?, path: string }
 type BranchesResult = {
@@ -462,7 +443,7 @@ local function parse_answer(decoded: any): Answer
 	return { action = ACTION_CANCEL }
 end
 
-local function ask(cx: WindowCx, req: DialogRequest, cb: AnswerCb, reveal: boolean?): boolean
+local function ask(cx: WindowCx, req: ConfirmDialog, cb: AnswerCb, reveal: boolean?): boolean
 	counter += 1
 	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
 	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(req) }, "beside", { focus = false })
@@ -520,11 +501,29 @@ local function confirm(cx: WindowCx, req: ConfirmOptions, cb: AnswerCb): boolean
 	return ask(cx, dialog, cb, req.reveal)
 end
 
-local function pick(cx: WindowCx, req: PickOptions, cb: AnswerCb)
-	local dialog = table.clone(req) :: PickDialog
-	dialog.mode = MODE_PICK
-	dialog.items = tern.json.array(req.items)
-	ask(cx, dialog, cb)
+-- Every `:next` of `cx:pick` and `cx:prompt` returns at once when its `cx` is nil, and toasts `err`.
+local function choose(cx: WindowCx, opts: PickOptions, cb: (item: PickItem?, cx: WindowCx, err: string?) -> ())
+	cx:pick(opts):next(function(item: PickItem?, err: string?, cx2: WindowCx?)
+		if cx2 == nil then
+			return
+		end
+		if err ~= nil then
+			cx2:toast("error", "Picker failed", err)
+		end
+		cb(item, cx2, err)
+	end)
+end
+
+local function ask_text(cx: WindowCx, opts: PromptOptions, cb: (text: string?, cx: WindowCx, err: string?) -> ())
+	cx:prompt(opts):next(function(text: string?, err: string?, cx2: WindowCx?)
+		if cx2 == nil then
+			return
+		end
+		if err ~= nil then
+			cx2:toast("error", "Prompt failed", err)
+		end
+		cb(text, cx2, err)
+	end)
 end
 
 local MAX_LISTED_FILES = 10
@@ -815,14 +814,17 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 	end
 end
 
-local function create(cx: WindowCx, root: string, extra: { string })
+local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx: WindowCx) -> ())?)
 	local args = { "create", "--repo", root, "--no-tab" }
 	for _, a in ipairs(extra) do
 		table.insert(args, a)
 	end
 	cli(args, function(res: CreateResult, err, cx2)
 		if err ~= nil then
-			if err.code == "worktree_exists_elsewhere" then
+			if err.code == "bad_args" and retry ~= nil then
+				cx2:toast("error", tostring(err.message))
+				retry(cx2)
+			elseif err.code == "worktree_exists_elsewhere" then
 				confirm(cx2, {
 					title = "Branch has a worktree elsewhere",
 					path = short_path(tostring(err.existing)),
@@ -1010,61 +1012,80 @@ end
 
 local repo_picker: (cx: WindowCx) -> ()
 
+local function new_branch(cx: WindowCx, root: string, name: string, default: string, value: string?)
+	ask_text(cx, {
+		value = value,
+		placeholder = "New branch from " .. default .. " in " .. name,
+		icon = "branch",
+		action = "create",
+	}, function(text, cx2, err)
+		if err ~= nil or text == nil or text == "" then
+			return
+		end
+		create(cx2, root, { "--branch=" .. text, "--new" }, function(cx3)
+			new_branch(cx3, root, name, default, text)
+		end)
+	end)
+end
+
 local function branch_picker(cx: WindowCx, root: string)
 	local started = startCount
 	cli_or_toast({ "branches", "--repo", root }, function(res: BranchesResult, cx2)
 		if startCount ~= started then
 			return
 		end
+		local name = tostring(res.name)
+		local default = tostring(res.default)
 		local hasWorktree = branches_with_worktree(res)
-		local items: { Item } = { { id = "other", label = "Other repo…", icon = "folder" } }
+		local items: { PickItem } = {
+			{ id = "new", label = "New branch…", detail = "from " .. default, icon = "plus" },
+			{ id = "other", label = "Other repo…", icon = "folder" },
+		}
 		for _, pr in ipairs(res.prs or {}) do
 			table.insert(items, {
 				id = "pr:" .. tostring(pr.number),
-				label = pr_label(pr),
-				detail = pr.branch,
+				label = pr_label(pr) .. " · " .. tostring(pr.branch),
 				group = "Pull requests",
 				icon = "merge",
 			})
 		end
-		for _, name in ipairs(res.branches or {}) do
+		for _, branch in ipairs(res.branches or {}) do
 			table.insert(items, {
-				id = "b:" .. name,
-				label = name,
-				detail = if hasWorktree[name] then "worktree" else nil,
+				id = "b:" .. branch,
+				label = branch,
+				detail = if hasWorktree[branch] then "worktree" else nil,
 				group = "Branches",
 				icon = "branch",
 			})
 		end
-		pick(cx2, {
-			title = tostring(res.name) .. ": choose branch",
-			placeholder = "Search branches in " .. tostring(res.name),
-			items = items,
-			allowNew = true,
-			newLabel = "Create branch “%s” from " .. tostring(res.default),
-		}, function(answer, cx3)
-			if answer.action == ACTION_NEW and answer.text ~= "" then
-				create(cx3, root, { "--branch", answer.text, "--new" })
-			elseif answer.action == ACTION_SELECT then
-				local id = answer.id
+		choose(
+			cx2,
+			{ placeholder = "Search branches in " .. name, icon = "branch", action = "open", items = items },
+			function(item, cx3, err)
+				if err ~= nil or item == nil then
+					return
+				end
+				local id: string = item.id
 				local branch = string.match(id, "^b:(.*)$")
 				local pr = string.match(id, "^pr:(.*)$")
-				if id == "other" then
+				if id == "new" then
+					new_branch(cx3, root, name, default)
+				elseif id == "other" then
 					repo_picker(cx3)
 				elseif branch ~= nil then
-					create(cx3, root, { "--branch", branch })
+					create(cx3, root, { "--branch=" .. branch })
 				elseif pr ~= nil then
 					create(cx3, root, { "--pr", pr })
 				end
 			end
-		end)
+		)
 	end)
 end
 
 local function github_picker(cx: WindowCx)
 	cx:toast("info", "Loading GitHub repos…")
 	cli_or_toast({ "repos" }, function(res: ReposResult, reposCx)
-		local items: { Item } = {}
+		local items: { PickItem } = {}
 		for _, r in ipairs(res.repos or {}) do
 			local nameWithOwner = r.nameWithOwner
 			table.insert(items, {
@@ -1075,13 +1096,17 @@ local function github_picker(cx: WindowCx)
 				icon = "globe",
 			})
 		end
-		pick(reposCx, {
-			title = "Choose GitHub repository",
+		if #items == 0 then
+			reposCx:toast("info", "No GitHub repositories")
+			return
+		end
+		choose(reposCx, {
 			placeholder = "Search GitHub repositories",
-			verb = "clone",
+			icon = "globe",
+			action = "clone",
 			items = items,
-		}, function(answer)
-			local nameWithOwner = if answer.action == ACTION_SELECT then string.match(answer.id, "^gh:(.*)$") else nil
+		}, function(item, _, err)
+			local nameWithOwner = if err == nil and item ~= nil then string.match(item.id, "^gh:(.*)$") else nil
 			if nameWithOwner == nil then
 				return
 			end
@@ -1102,45 +1127,47 @@ local function make_repo(owner: string, name: string, visibility: string)
 end
 
 local function ask_visibility(cx: WindowCx, owner: string, name: string)
-	pick(cx, {
-		title = "Visibility of " .. owner .. "/" .. name,
-		placeholder = "Choose visibility of " .. owner .. "/" .. name,
-		verb = "create",
+	choose(cx, {
+		placeholder = "Visibility of " .. owner .. "/" .. name,
+		action = "create",
 		items = {
-			{ id = "private", label = "private", icon = "lock" },
-			{ id = "public", label = "public", icon = "globe" },
+			{ id = "private", label = "Private", icon = "lock" },
+			{ id = "public", label = "Public", icon = "globe" },
 		},
-	}, function(answer)
-		if answer.action == ACTION_SELECT then
-			make_repo(owner, name, answer.id)
+	}, function(item, _, err)
+		if err == nil and item ~= nil then
+			make_repo(owner, name, item.id)
 		end
 	end)
 end
 
 local function ask_name(cx: WindowCx, owner: string)
-	ask(cx, {
-		mode = MODE_PROMPT,
-		title = "Repository name",
+	ask_text(cx, {
 		placeholder = "Name of the new repository under " .. owner,
-		verb = "continue",
-	}, function(answer, nameCx)
-		if answer.action == ACTION_TEXT and answer.text ~= "" then
-			ask_visibility(nameCx, owner, answer.text)
+		icon = "folder-plus",
+		action = "continue",
+	}, function(text, nameCx, err)
+		if err == nil and text ~= nil and text ~= "" then
+			ask_visibility(nameCx, owner, text)
 		end
 	end)
 end
 
 local function ask_owner(cx: WindowCx, ownerNames: { string })
-	local owners: { Item } = {}
+	local owners: { PickItem } = {}
 	for _, o in ipairs(ownerNames) do
 		table.insert(owners, { id = o, label = o, icon = "user" })
 	end
-	pick(
+	if #owners == 0 then
+		cx:toast("info", "No GitHub owners")
+		return
+	end
+	choose(
 		cx,
-		{ title = "Repository owner", placeholder = "Search owners", verb = "choose", items = owners },
-		function(answer, ownerCx)
-			if answer.action == ACTION_SELECT then
-				ask_name(ownerCx, answer.id)
+		{ placeholder = "Search owners", icon = "user", action = "choose", items = owners },
+		function(item, ownerCx, err)
+			if err == nil and item ~= nil then
+				ask_name(ownerCx, item.id)
 			end
 		end
 	)
@@ -1153,7 +1180,7 @@ local function new_repo(cx: WindowCx)
 end
 
 repo_picker = function(cx: WindowCx)
-	local items: { Item } = {}
+	local items: { PickItem } = {}
 	for _, r in ipairs(localRepos) do
 		table.insert(items, {
 			id = "local:" .. r.root,
@@ -1163,22 +1190,26 @@ repo_picker = function(cx: WindowCx)
 			icon = "folder",
 		})
 	end
-	table.insert(items, { id = "github", label = "Browse GitHub repos…", icon = "globe" })
-	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…", icon = "folder-plus" })
-	pick(cx, { title = "Choose repository", placeholder = "Search repositories", items = items }, function(answer, cx2)
-		local id = if answer.action == ACTION_SELECT then answer.id else nil
-		if id == nil then
-			return
+	table.insert(items, { id = "github", label = "Browse GitHub repos…", group = "GitHub", icon = "globe" })
+	table.insert(items, { id = "newrepo", label = "Create new GitHub repo…", group = "GitHub", icon = "folder-plus" })
+	choose(
+		cx,
+		{ placeholder = "Search repositories", icon = "folder", action = "open", items = items },
+		function(item, cx2, err)
+			if err ~= nil or item == nil then
+				return
+			end
+			local id: string = item.id
+			local root = string.match(id, "^local:(.*)$")
+			if root ~= nil then
+				branch_picker(cx2, root)
+			elseif id == "github" then
+				github_picker(cx2)
+			elseif id == "newrepo" then
+				new_repo(cx2)
+			end
 		end
-		local root = string.match(id, "^local:(.*)$")
-		if root ~= nil then
-			branch_picker(cx2, root)
-		elseif id == "github" then
-			github_picker(cx2)
-		elseif id == "newrepo" then
-			new_repo(cx2)
-		end
-	end)
+	)
 end
 
 local function start(cx: WindowCx)
