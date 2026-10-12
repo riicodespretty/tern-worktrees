@@ -16,9 +16,9 @@ local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
 
-local function argvs(h: Stub.Harness, verb: string): { string }
+local function argv_lines(plugin: Stub.Harness, verb: string): { string }
 	local found: { string } = {}
-	for _, run in h.runs do
+	for _, run in plugin.runs do
 		if run.argv[2] == verb then
 			table.insert(found, table.concat(run.argv, " ", 2))
 		end
@@ -26,7 +26,7 @@ local function argvs(h: Stub.Harness, verb: string): { string }
 	return found
 end
 
-local function item(request: any, id: string): any
+local function item_by_id(request: any, id: string): any
 	for _, it in request.opts.items do
 		if it.id == id then
 			return it
@@ -38,35 +38,35 @@ end
 -- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE.
 local function open_relocate(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local h = Stub.load({ env = ENV })
-	h.commands.new.run(cx)
-	h:answer("resolve", RESOLVED, 0, cx)
-	h:answer("branches", BRANCHES, 0, cx)
-	cx.asked[1].next(item(cx.asked[1], "b:x"), nil, cx)
-	h:answer("create", ELSEWHERE, 1, cx)
+	local plugin = Stub.load({ env = ENV })
+	plugin.commands.new.run(cx)
+	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
+	plugin:answer("create", ELSEWHERE, 1, cx)
 	eq(#cx.asked, 2, "dialogs opened")
 	eq(cx.asked[2].kind, "pick", "dialog kind")
-	return h, cx
+	return plugin, cx
 end
 
 -- Presses the close key on the last tab of WORKTREE.
 local function close_worktree_tab(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local h = Stub.load({ env = ENV, files = FILES })
-	eq(h.overrides.close_tab(cx), true, "close_tab result")
+	local plugin = Stub.load({ env = ENV, files = FILES })
+	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
 	eq(#cx.asked, 1, "dialogs opened")
 	eq(cx.asked[1].kind, "pick", "dialog kind")
-	return h, cx
+	return plugin, cx
 end
 
--- Tears WORKTREE down from the close-tab picker and fails it with `stdout`.
+-- Picks Tear down in the close-tab picker for WORKTREE, then fails its `remove` call with `stdout`.
 local function fail_teardown(stdout: string): (Stub.Harness, any)
-	local h, cx = close_worktree_tab()
-	cx.asked[1].next(item(cx.asked[1], "teardown"), nil, cx)
-	h:answer("remove", stdout, 1, cx)
+	local plugin, cx = close_worktree_tab()
+	cx.asked[1].next(item_by_id(cx.asked[1], "teardown"), nil, cx)
+	plugin:answer("remove", stdout, 1, cx)
 	eq(#cx.asked, 2, "dialogs opened")
 	eq(cx.asked[2].kind, "pick", "dialog kind")
-	return h, cx
+	return plugin, cx
 end
 
 local DIRTY = (function(): string
@@ -91,21 +91,21 @@ test("relocate asks with one Relocate item", function()
 end)
 
 test("dismissing relocate sends no create", function()
-	local h, cx = open_relocate()
+	local plugin, cx = open_relocate()
 	cx.asked[2].next(nil, nil, cx)
-	eq(#argvs(h, "create"), 0, "create calls")
+	eq(#argv_lines(plugin, "create"), 0, "create calls")
 end)
 
 test("a relocate pick err sends no create", function()
-	local h, cx = open_relocate()
-	cx.asked[2].next(item(cx.asked[2], "relocate"), "boom", cx)
-	eq(#argvs(h, "create"), 0, "create calls")
+	local plugin, cx = open_relocate()
+	cx.asked[2].next(item_by_id(cx.asked[2], "relocate"), "boom", cx)
+	eq(#argv_lines(plugin, "create"), 0, "create calls")
 end)
 
 test("Relocate sends create with --relocate", function()
-	local h, cx = open_relocate()
-	cx.asked[2].next(item(cx.asked[2], "relocate"), nil, cx)
-	local creates = argvs(h, "create")
+	local plugin, cx = open_relocate()
+	cx.asked[2].next(item_by_id(cx.asked[2], "relocate"), nil, cx)
+	local creates = argv_lines(plugin, "create")
 	eq(#creates, 1, "create calls")
 	eq(creates[1], "create --repo /r/app --no-tab --branch=x --relocate", "create argv")
 end)
@@ -129,40 +129,40 @@ test("closing a worktree tab lists Keep worktree first, then Tear down", functio
 end)
 
 test("dismissing the close-tab picker sends no remove and keeps the tab", function()
-	local h, cx = close_worktree_tab()
+	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(nil, nil, cx)
-	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
 	eq(#cx.commands, 0, "commands run")
 end)
 
 test("Keep worktree closes the tab and sends no remove", function()
-	local h, cx = close_worktree_tab()
-	cx.asked[1].next(item(cx.asked[1], "keep"), nil, cx)
-	eq(#argvs(h, "remove"), 0, "remove calls")
+	local plugin, cx = close_worktree_tab()
+	cx.asked[1].next(item_by_id(cx.asked[1], "keep"), nil, cx)
+	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
 	eq(#cx.commands, 1, "commands run")
 	eq(cx.commands[1], "close_tab", "command")
 end)
 
 test("Tear down sends remove <path> --keep-tab", function()
-	local h, cx = close_worktree_tab()
-	cx.asked[1].next(item(cx.asked[1], "teardown"), nil, cx)
-	local removes = argvs(h, "remove")
+	local plugin, cx = close_worktree_tab()
+	cx.asked[1].next(item_by_id(cx.asked[1], "teardown"), nil, cx)
+	local removes = argv_lines(plugin, "remove")
 	eq(#removes, 1, "remove calls")
 	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab", "remove argv")
 	eq(#cx.commands, 0, "commands run before remove ends")
 end)
 
 test("a pick err while closing a tab still closes the tab", function()
-	local h, cx = close_worktree_tab()
+	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(nil, "boom", cx)
-	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
 	eq(cx.commands[1], "close_tab", "command")
 end)
 
 test("a pick err with Tear down picked keeps the worktree and closes the tab", function()
-	local h, cx = close_worktree_tab()
-	cx.asked[1].next(item(cx.asked[1], "teardown"), "boom", cx)
-	eq(#argvs(h, "remove"), 0, "remove calls")
+	local plugin, cx = close_worktree_tab()
+	cx.asked[1].next(item_by_id(cx.asked[1], "teardown"), "boom", cx)
+	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
 	eq(cx.commands[1], "close_tab", "command")
 end)
 
@@ -171,10 +171,10 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 		{ pane = 1, tab = 1, cwd = WORKTREE },
 		{ pane = 2, tab = 1, cwd = OTHER },
 	}, 1)
-	local h = Stub.load({ env = ENV, files = FILES })
-	h.handlers.window_start(live)
+	local plugin = Stub.load({ env = ENV, files = FILES })
+	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
-	h.handlers.tab_closed({ tab = 1 }, cx)
+	plugin.handlers.tab_closed({ tab = 1 }, cx)
 	eq(#cx.asked, 1, "dialogs opened")
 	eq(cx.asked[1].opts.placeholder, "Worktree tab closed · …/worktrees/app/feat", "placeholder")
 	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
@@ -183,7 +183,7 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 	eq(cx.asked[2].kind, "pick", "dialog kind")
 	eq(cx.asked[2].opts.placeholder, "Worktree tab closed · …/worktrees/app/fix", "placeholder")
 	cx.asked[2].next(nil, nil, cx)
-	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#argv_lines(plugin, "remove"), 0, "remove calls")
 	eq(#cx.commands, 0, "commands run")
 end)
 
@@ -223,39 +223,39 @@ test("a failed teardown toasts the shortened message and the saved files", funct
 end)
 
 test("Retry sends remove again", function()
-	local h, cx = fail_teardown(DIRTY)
-	cx.asked[2].next(item(cx.asked[2], "retry"), nil, cx)
-	local removes = argvs(h, "remove")
+	local plugin, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item_by_id(cx.asked[2], "retry"), nil, cx)
+	local removes = argv_lines(plugin, "remove")
 	eq(#removes, 1, "remove calls")
 	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab", "remove argv")
 end)
 
 test("Force delete sends remove with --force", function()
-	local h, cx = fail_teardown(DIRTY)
-	cx.asked[2].next(item(cx.asked[2], "force"), nil, cx)
-	local removes = argvs(h, "remove")
+	local plugin, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item_by_id(cx.asked[2], "force"), nil, cx)
+	local removes = argv_lines(plugin, "remove")
 	eq(#removes, 1, "remove calls")
 	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab --force", "remove argv")
 end)
 
 test("dismissing the failed teardown sends nothing and keeps the tab", function()
-	local h, cx = fail_teardown(DIRTY)
+	local plugin, cx = fail_teardown(DIRTY)
 	cx.asked[2].next(nil, nil, cx)
-	eq(#h.runs, 0, "CLI calls")
+	eq(#plugin.runs, 0, "CLI calls")
 	eq(#cx.commands, 0, "commands run")
 end)
 
 test("a failed-teardown pick err with Force delete picked sends nothing", function()
-	local h, cx = fail_teardown(DIRTY)
-	cx.asked[2].next(item(cx.asked[2], "force"), "boom", cx)
-	eq(#h.runs, 0, "CLI calls")
+	local plugin, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item_by_id(cx.asked[2], "force"), "boom", cx)
+	eq(#plugin.runs, 0, "CLI calls")
 	eq(#cx.commands, 0, "commands run")
 end)
 
 test("a failed-teardown pick err with Retry picked sends nothing", function()
-	local h, cx = fail_teardown(DIRTY)
-	cx.asked[2].next(item(cx.asked[2], "retry"), "boom", cx)
-	eq(#h.runs, 0, "CLI calls")
+	local plugin, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item_by_id(cx.asked[2], "retry"), "boom", cx)
+	eq(#plugin.runs, 0, "CLI calls")
 	eq(#cx.commands, 0, "commands run")
 end)
 

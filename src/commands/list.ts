@@ -6,8 +6,8 @@ import { worktreeOwner, worktreeRoot } from '../paths.ts';
 import type { WorktreeRoot } from '../paths.ts';
 
 /**
- * A worktree in the worktree root: its path, its repository, its branch, `dirty`, true when it has uncommitted changes,
- * `changed`, the number of its changed files, and `owner`, `tern` for a tern-managed worktree and `omp` for an omp-owned one.
+ * A worktree in the worktree root, with its path, repository and branch. `dirty` is true when the worktree has uncommitted changes.
+ * `changed` is the number of its changed files. `owner` is `tern` for a tern-managed worktree and `omp` for an omp-owned one.
  */
 export interface ListedWorktree {
   path: string;
@@ -49,15 +49,15 @@ const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Prom
 };
 
 /**
- * `list [--repo <dir>] [--all]`: the tern-managed worktrees of all repositories, or only of the repository that holds `dir`.
- * With `--all`, it also lists the omp-owned worktrees. It does not look in a worktree or a checkout.
+ * `list [--repo <dir>] [--all]`: the tern-managed worktrees of all repositories, or only of the repository that contains `dir`.
+ * With `--all`, it also lists the omp-owned worktrees. It does not look in a worktree or a main checkout.
  */
 export const run = async (args: string[]): Promise<ListResult> => {
   const { all, repo } = parseArgs({ args, options: { all: { default: false, type: 'boolean' }, repo: { type: 'string' } } }).values;
   const root = await worktreeRoot();
   const mainCheckout = repo === undefined ? null : await requireRepoRoot(repo);
-  const start = mainCheckout === null || all ? root.dir : path.join(root.dir, path.basename(mainCheckout));
-  const found = await Promise.all(walk(start).map(async dir => await readWorktree(root, dir, all)));
+  const startDir = mainCheckout === null || all ? root.dir : path.join(root.dir, path.basename(mainCheckout));
+  const found = await Promise.all(walk(startDir).map(async dir => await readWorktree(root, dir, all)));
   return {
     root: root.dir,
     worktrees: found.filter((entry): entry is ListedWorktree => entry !== null && (mainCheckout === null || entry.repo === mainCheckout)),

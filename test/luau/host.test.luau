@@ -22,8 +22,8 @@ local function read_only(list: { string }): { string }
 end
 
 local function spawn_in(cwd: string, kv: { [string]: any }?): any
-	local h = Stub.load({ file = "host.luau", env = { HOME = "/r" }, kv = kv or { worktreeIndex = INDEX } })
-	return h.handlers.spawn({
+	local plugin = Stub.load({ file = "host.luau", env = { HOME = "/r" }, kv = kv or { worktreeIndex = INDEX } })
+	return plugin.handlers.spawn({
 		program = "/bin/zsh",
 		args = read_only({ "-l" }),
 		cwd = cwd,

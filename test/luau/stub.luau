@@ -1,5 +1,5 @@
 --!strict
--- A fake `tern` and a fake WindowCx for running a plugin file under lune.
+-- A fake `tern` and a fake WindowCx, so that lune can run a plugin file.
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -39,9 +39,9 @@ local Stub = {}
 
 local lastCx: any = nil
 
--- Returns a fake WindowCx over `panes`. Every `pick` and `prompt` request lands in `cx.asked`, with its
--- options in `opts` and its `:next` callback in `next`, which the test calls with `(result, err, cx)` to
--- answer it. Each `cx:run(pane, text)` lands in `cx.typed`.
+-- Returns a fake WindowCx for the panes in `panes`. Each `pick` and `prompt` request goes into `cx.asked`. A
+-- request keeps its options in `opts` and its `:next` callback in `next`. To answer a request, the test calls
+-- `next` with `(result, err, cx)`. Each `cx:run(pane, text)` goes into `cx.typed`.
 function Stub.cx(panes: { Pane }, focused: number?): any
 	local asked: { any } = {}
 
@@ -94,13 +94,13 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 			tabs = function(_self: any): { any }
 				local tabs: { any } = {}
 				for _, id in tab_ids() do
-					local count = 0
+					local paneCount = 0
 					for _, p in panes do
 						if p.tab == id then
-							count += 1
+							paneCount += 1
 						end
 					end
-					table.insert(tabs, { id = id, panes = count })
+					table.insert(tabs, { id = id, panes = paneCount })
 				end
 				return tabs
 			end,
@@ -145,24 +145,25 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 end
 
 local function answer(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
-	local due: { Run } = {}
+	local matching: { Run } = {}
 	for i = #self.runs, 1, -1 do
 		if self.runs[i].argv[2] == verb then
-			table.insert(due, 1, table.remove(self.runs, i) :: Run)
+			table.insert(matching, 1, table.remove(self.runs, i) :: Run)
 		end
 	end
-	for _, run in due do
+	for _, run in matching do
 		run.cb({ stdout = stdout, stderr = "", status = status or 0 }, cx)
 	end
 end
 
--- Runs `opts.file` (default window.luau) fresh against a fake `tern`, and returns what it registered.
+-- Loads and runs `opts.file` (default `window.luau`) in a new environment with a fake `tern`. Returns the
+-- commands, overrides, handlers and exports that the file registered, with the fake CLI runs, kv, clock and timers.
 function Stub.load(opts: Options): Harness
 	local env: { [string]: string } = opts.env or {}
 	local files: { [string]: string } = opts.files or {}
 	local defaultCx = opts.cx
 	local formatting = false
-	local h: Harness = {
+	local loaded: Harness = {
 		commands = {},
 		overrides = {},
 		handlers = {},
@@ -179,22 +180,23 @@ function Stub.load(opts: Options): Harness
 		tick = function(self: Harness, ms: number)
 			self.clock += ms
 			while true do
-				local due: number? = nil
+				local dueIndex: number? = nil
 				for i, timer in self.timers do
-					if timer.at <= self.clock and (due == nil or timer.at < self.timers[due].at) then
-						due = i
+					if timer.at <= self.clock and (dueIndex == nil or timer.at < self.timers[dueIndex].at) then
+						dueIndex = i
 					end
 				end
-				if due == nil then
+				if dueIndex == nil then
 					return
 				end
-				local timer = table.remove(self.timers, due) :: Timer
+				local timer = table.remove(self.timers, dueIndex) :: Timer
 				if not timer.cancelled then
 					timer.fn(defaultCx or lastCx)
 				end
 			end
 		end,
-		-- Runs the status formatter for a focused pane in `cwd`. `tern.chrome.refresh` raises while it runs, as in Tern.
+		-- Runs the status formatter for a focused pane in `cwd`. `tern.chrome.refresh` raises an error while the
+		-- formatter runs, as it does in Tern.
 		status = function(self: Harness, cwd: string?): any
 			local formatter = self.formatter
 			assert(formatter ~= nil, "no status formatter registered")
@@ -208,7 +210,7 @@ function Stub.load(opts: Options): Harness
 		end,
 	}
 
-	local fake = {
+	local fakeTern = {
 		plugin = { dir = PLUGIN_DIR, data = DATA_DIR },
 		fs = {
 			read = function(path: string, _max: number?): string
@@ -235,30 +237,30 @@ function Stub.load(opts: Options): Harness
 		end,
 		kv = {
 			get = function(key: string): any
-				return h.kv[key]
+				return loaded.kv[key]
 			end,
 			-- Stores a JSON copy, as Tern's kv.json does, so windows that share `kv` never share a table.
 			set = function(key: string, value: any)
-				h.kv[key] = if value == nil then nil else serde.decode("json", serde.encode("json", value))
+				loaded.kv[key] = if value == nil then nil else serde.decode("json", serde.encode("json", value))
 			end,
 		},
 		command = function(spec: any)
-			h.commands[spec.id] = spec
+			loaded.commands[spec.id] = spec
 		end,
 		override = function(name: string, fn: (cx: any) -> any)
-			h.overrides[name] = fn
+			loaded.overrides[name] = fn
 		end,
 		on = function(name: string, fn: (...any) -> ())
-			h.handlers[name] = fn
+			loaded.handlers[name] = fn
 		end,
 		carly = {
 			export = function(name: string, _meta: any, fn: (...any) -> ...any)
-				h.exports[name] = fn
+				loaded.exports[name] = fn
 			end,
 		},
 		process = {
 			run = function(argv: { string }, _opts: any, cb: (result: any, cx: any) -> ())
-				table.insert(h.runs, { argv = argv, cb = cb })
+				table.insert(loaded.runs, { argv = argv, cb = cb })
 			end,
 		},
 		json = {
@@ -273,11 +275,11 @@ function Stub.load(opts: Options): Harness
 			end,
 		},
 		now = function(): number
-			return h.clock
+			return loaded.clock
 		end,
 		timer = function(ms: number, fn: (cx: any) -> ()): any
-			local timer: Timer = { at = h.clock + ms, fn = fn, cancelled = false }
-			table.insert(h.timers, timer)
+			local timer: Timer = { at = loaded.clock + ms, fn = fn, cancelled = false }
+			table.insert(loaded.timers, timer)
 			return {
 				cancel = function(_self: any)
 					timer.cancelled = true
@@ -286,21 +288,21 @@ function Stub.load(opts: Options): Harness
 		end,
 		chrome = {
 			status = function(fn: (pane: any) -> any)
-				h.formatter = fn
+				loaded.formatter = fn
 			end,
 			refresh = function()
 				if formatting then
 					error("tern.chrome.refresh called from a formatter", 2)
 				end
-				h.refreshes += 1
+				loaded.refreshes += 1
 			end,
 		},
 	}
 
 	local file = opts.file or "window.luau"
-	local environment: { [string]: any } = setmetatable({ tern = fake }, { __index = _G }) :: any
+	local environment: { [string]: any } = setmetatable({ tern = fakeTern }, { __index = _G }) :: any
 	luau.load(fs.readFile(file), { debugName = file, environment = environment })()
-	return h
+	return loaded
 end
 
 return Stub

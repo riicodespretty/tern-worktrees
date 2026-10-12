@@ -35,11 +35,11 @@ The environment variables `TERN_WT_PATH`, `TERN_WT_MAIN` and `TERN_WT_BRANCH` of
 _Avoid_: Worktree env, `TERN_WT_ROOT`
 
 **Worktree segment**:
-The part of the Tern status line that shows the branch of the worktree of the pane with the focus and, when that worktree has changed files, their number.
+The part of the Tern status line that shows the branch of the worktree of the pane with the focus. When that worktree has changed files, the segment also shows the number of changed files.
 _Avoid_: Status badge, branch indicator
 
 **Worktree index**:
-The list of each worktree in the worktree root, with its main checkout, its branch and its number of changed files, that the plugin keeps in Tern for the worktree variables and the worktree segment.
+The list of each worktree in the worktree root, with its main checkout, its branch and its number of changed files. The plugin keeps the list in Tern for the worktree variables and the worktree segment.
 _Avoid_: Worktree cache, worktree map
 
 **Relocate**:

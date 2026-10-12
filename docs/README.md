@@ -13,8 +13,8 @@ A branch can still have an Orca worktree. When the user picks that branch, the p
 The design has three parts:
 
 - `tern-wt`, a Bun and TypeScript CLI in `src/`, the single implementation. Each git and gh step runs in the CLI.
-- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the native pickers and prompts of Tern, turns each answer into a CLI call, and keeps each worktree tab matched to its worktree. It also keeps the worktree rows of the command palette, the worktree index and the worktree segment current, and types the setup commands into a new worktree tab.
-- The host half of the plugin, `host.luau`. It holds only the spawn filter, which gives a new shell in a worktree in the worktree root the worktree variables.
+- The window half of the plugin, `window.luau`, a thin UI over the CLI. It opens the native pickers and prompts of Tern, turns each answer into a CLI call, and keeps each worktree tab matched to its worktree. It also keeps the worktree rows of the command palette, the worktree index and the worktree segment current. It types the setup commands into a new worktree tab.
+- The host half of the plugin, `host.luau`. It holds only the spawn filter. The filter gives the worktree variables to a new shell in a worktree in the worktree root.
 
 The omp skill and the Carly exports give agents the same CLI, so the user and the agents get the same behavior.
 
@@ -61,15 +61,19 @@ One refresh for each repository runs at a time. A trigger during a refresh queue
 
 ### Native pickers and prompts
 
-Each picker, prompt and confirmation of the plugin is a native dialog of Tern: `cx:pick` for a list, and `cx:prompt` for a line of text. The two open over the pane with the focus. In the 0.1.0 release (tag `0.1.0`), the plugin showed its own dialog in a floating block. Tern gives the plugin an incorrect id for a pane with an id generation above `0xfff`: for a pane of generation `0x106d`, the plugin API sees `0x6d`. With that id, the float of the custom dialog failed, and the dialog split the pane. This is a bug in Tern. `cx:pick` and `cx:prompt` work from such a pane. Tern 0.7.1 added them, and the minimum Tern for the plugin is 0.8.0.
+Each picker, prompt and confirmation of the plugin is a native dialog of Tern: `cx:pick` for a list, and `cx:prompt` for a line of text. The two open over the pane with the focus.
 
-A native dialog gives its answer through its `Awaitable`. The `:next` callback gets the answer, an error text and a new `cx`. In `window.luau`, `choose` wraps `cx:pick` and `ask_text` wraps `cx:prompt`. When the callback gets a nil `cx`, they return at once, as the callback of `cli` does. When the callback gets an error, they show the `Picker failed` or `Prompt failed` toast with the error, then give the error to the next step. Escape gives nil. Enter on an empty prompt gives `""`, and the plugin reads it as Escape. Tern keeps the state of an open dialog, so the plugin keeps no record of it and installs no CSS.
+In the 0.1.0 release (tag `0.1.0`), the plugin showed its own dialog in a floating block. Tern gives the plugin an incorrect id for a pane with an id generation above `0xfff`: for a pane of generation `0x106d`, the plugin API sees `0x6d`. With that id, the float of the custom dialog failed, and the dialog split the pane. The incorrect id is a bug in Tern. `cx:pick` and `cx:prompt` work from such a pane. Tern 0.7.1 added them, and the minimum Tern for the plugin is 0.8.0.
 
-`cx:pick` filters on the label of each item only, not on its dim text (`detail`). Thus a pull request item of the branch picker has its branch in its label: `#<n> <title> · <branch>`, and part of the branch name finds it. The `worktree` text of a branch with a worktree is dim text, so a query for `worktree` does not find that branch.
+A native dialog gives its answer through its `Awaitable`. The `:next` callback gets the answer, an error text and a new `cx`. In `window.luau`, `choose` wraps `cx:pick` and `prompt_text` wraps `cx:prompt`. When their callback gets a nil `cx`, it returns immediately, as the callback of `cli` does. When their callback gets an error, it shows the `Picker failed` or `Prompt failed` toast with the error, then gives the error to the next step.
+
+Escape gives nil. Enter on an empty prompt gives `""`, and the plugin reads it as Escape. Tern keeps the state of an open dialog, so the plugin keeps no record of it and installs no CSS.
+
+`cx:pick` filters on the label of each item only, not on its dim text (`detail`). Thus a pull request item of the branch picker has its branch in its label: `#<n> <title> · <branch>`. A query with part of the branch name then finds the item. The `worktree` text of a branch with a worktree is dim text, so a query for `worktree` does not find that branch.
 
 `New branch…` opens a prompt for the name. `cx:prompt` checks nothing while the user types, so the CLI checks the name on Enter. When `create` refuses the name with `bad_args`, a toast tells why, and the prompt opens again with the typed name.
 
-The native picker has no keys of its own for an item. Thus the `⌫` key of Tear down and the `⌘⌫` key of Force delete are gone: the user selects the item and presses Enter. In the pickers that open when a worktree tab closes, Keep worktree is the first item, so Enter keeps the worktree. The custom dialog of a closed tab opened without the focus, but the native picker gets the focus. Thus a key that the user types for a pane goes to the picker, and a typed letter can filter out Keep worktree.
+The native picker has no keys of its own for an item. Thus Tear down has no `⌫` key and Force delete has no `⌘⌫` key: the user selects the item and presses Enter. In the pickers that open when a worktree tab closes, Keep worktree is the first item, so Enter keeps the worktree. The custom dialog of a closed tab opened without the focus, but the native picker gets the focus. Thus a key that the user types for a pane goes to the picker, and a typed letter can hide Keep worktree.
 
 ### Pickers and sessions
 
@@ -94,7 +98,9 @@ A tab with panes in two or more worktrees gets one picker for each worktree, one
 
 A tab that shares its worktree with a different open tab closes with no picker. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no picker.
 
-Tern can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no picker. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
+Tern can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab. Thus, a park that closes the last tab of a worktree opens no picker.
+
+A worktree can have one or more parked panes and no pane in a tab. When the user opens a worktree of this type, the window half calls `unpark` on the first parked pane. The window half puts that pane in a tab of the session of the repository, with the name of the branch:
 
 - When that session has a tab, the window half switches to the session and moves the pane to a new tab.
 - When that session has no tab, because all of its panes are parked, the window half switches to the session, opens a tab, deals the pane into it and closes the shell of that tab.
@@ -102,15 +108,17 @@ Tern can park a pane: the pane goes out of its tab, and its program goes on in t
 
 The window half finds the session of a repository from the folders of the panes in its tabs. A parked pane has no session in the pane list of Tern, so the window half keeps the repository of a session when all of its panes become parked. It loses that record when it loads again, for example after `tern plugin reload`. When it then opens the worktree, and all the panes of the session of the repository are parked, it makes a second session for the repository. When a move fails, the window half parks the pane again and opens a new tab.
 
-When a teardown fails, an error toast names the worktree and tells why. For a worktree with work to lose, the toast lists at most 10 files. The hard-to-rebuild files come first in the count of 10, and the changes fill what is left. The toast gives the changes first, then the hard-to-rebuild files, then `and <n> more` for the files that it does not show. A picker then lists Retry, then Force delete. Escape keeps the worktree, and after the close keys it also keeps the tab. Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
+When a teardown fails, an error toast names the worktree and tells why. For a worktree with work to lose, the toast lists at most 10 files. The hard-to-rebuild files get the first positions in the 10, and the changes fill the positions that are left. The toast gives the changes first, then the hard-to-rebuild files, then `and <n> more` for the files that it does not show.
+
+A picker then lists Retry, then Force delete. Escape keeps the worktree, and after the close keys it also keeps the tab. Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
 
 ### The worktree index
 
-The worktree index lists each worktree in the worktree root, managed and omp-owned, by its path, with its main checkout, its branch and its number of changed files. It comes from `tern-wt list --all`: `--all` adds the omp-owned worktrees, and each worktree in the output has its `owner` and its number of `changed` files. The window half keeps the index in `tern.kv`, with the key `worktreeIndex`. The host half and each window read that key.
+The worktree index lists each worktree in the worktree root, managed and omp-owned, by its path. Each entry gives the main checkout, the branch and the number of changed files of its worktree. It comes from `tern-wt list --all`: `--all` adds the omp-owned worktrees, and each worktree in the output has its `owner` and its number of `changed` files. The window half keeps the index in `tern.kv`, with the key `worktreeIndex`. The host half and each window read that key.
 
 Three writes change the index:
 
-- A `list --all` result replaces the whole index. A `list --all` runs when the window starts. A refresh also runs it when the `cwd` of a pane moves to a folder in the worktree root that the index does not have, and when a pane in an indexed worktree gets focus or ends a shell command. At most one `list --all` runs at a time, and a refresh starts at most one in each 2 s. A refresh in that gap runs one time at its end, from a timer. The result keeps each entry that this window set or deleted after the start of that `list --all`.
+- A `list --all` result replaces the whole index. A `list --all` runs when the window starts. A refresh also runs it when the `cwd` of a pane moves to a folder in the worktree root that the index does not have. A refresh also runs it when a pane in an indexed worktree gets focus or ends a shell command. At most one `list --all` runs at a time, and a refresh starts at most one in each 2 s. A refresh request in that gap waits, and a timer runs it one time at the end of the gap. The new index keeps the value of this window for each entry that this window set or deleted at or after the start of that `list --all`.
 - `open_tab` sets the entry of the worktree before it opens the tab, so the first shell of the tab gets the worktree variables.
 - A teardown that succeeds deletes the entry, also from the Carly `remove` export.
 
@@ -118,7 +126,9 @@ Each window writes the same key. Thus `set_entry` reads `tern.kv` again and chan
 
 ### The spawn filter
 
-`host.luau` holds one handler, the `spawn` filter. Tern runs it before a shell pane starts and waits 50 ms for it, so the filter runs no process and calls no CLI. It reads the worktree index from `tern.kv`, expands a leading `~` in the `cwd` of the shell, and selects the longest path in the index that holds that `cwd`. It then gives the shell `TERN_WT_PATH`, `TERN_WT_MAIN` and `TERN_WT_BRANCH`. A worktree with a detached `HEAD` gets no `TERN_WT_BRANCH`. When `tern.kv` has no index, when no path matches, or when the filter raises an error, it returns nil, and the shell starts with no change. Tern gives the filter `spec.args` and `spec.env` as read-only tables, which `table.clone` refuses, so the filter copies them field by field.
+`host.luau` holds one handler, the `spawn` filter. Tern runs it before a shell pane starts and waits 50 ms for it, so the filter runs no process and calls no CLI.
+
+It reads the worktree index from `tern.kv`, expands a leading `~` in the `cwd` of the shell, and selects the longest path in the index that holds that `cwd`. It then gives the shell `TERN_WT_PATH`, `TERN_WT_MAIN` and `TERN_WT_BRANCH`. A worktree with a detached `HEAD` gets no `TERN_WT_BRANCH`. When `tern.kv` has no index, when no path matches, or when the filter raises an error, it returns nil, and the shell starts with no change. Tern gives the filter `spec.args` and `spec.env` as read-only tables, which `table.clone` refuses, so the filter copies them field by field.
 
 ### The worktree segment
 
@@ -126,10 +136,10 @@ Each window writes the same key. Thus `set_entry` reads `tern.kv` again and chan
 
 ### Setup commands
 
-The options file lists the setup commands in the `setup` key, by the name with owner of a repository. `create` reads them only for a new worktree, with the status `created`, and only when the URL of `origin` names a GitHub repository. It joins the commands into one line with `&&` between them, and gives that line in the `setup` field, with `typed`. Two paths type the line into the shell of the new worktree tab:
+The options file lists the setup commands in the `setup` key, by the name with owner of a repository. `create` reads them only for a new worktree, with the status `created`, and only when the URL of `origin` names a GitHub repository. It joins the commands into one line with `&&` between them. The output gives that line in `setup.line`. Two paths type the line into the shell of the new worktree tab:
 
-- When `create` opens the tab, it waits a maximum of 30 s for the shell prompt with `tern wait <block> --until prompt`, then types the line with `tern run`. `typed` is true when it did.
-- The plugin runs `create --no-tab` and opens the tab itself. `type_setup` then reads `at_prompt` of the new shell pane each 200 ms, for a maximum of 30 s, and types the line with `cx:run`. The Carly `create` export replies only after the line is typed or after the plugin gives up, so `setup.typed` and the warnings tell the agent the result.
+- When `create` opens the tab, it waits a maximum of 30 s for the shell prompt with `tern wait <block> --until prompt`, then types the line with `tern run`. `setup.typed` is true when `create` typed the line.
+- The plugin runs `create --no-tab` and opens the tab itself. `type_setup` then reads `at_prompt` of the new shell pane each 200 ms, for a maximum of 30 s, and types the line with `cx:run`. The Carly `create` export replies only after the plugin types the line or gives up, so `setup.typed` and the warnings tell the agent the result.
 
 When the tab was open before, or when no prompt shows in 30 s, the line does not run. A warning of `create` or a toast of the plugin tells why. The commands run in the shell of the tab, where the user sees them and can stop them.
 
@@ -137,11 +147,13 @@ When the tab was open before, or when no prompt shows in 30 s, the line does not
 
 The gates are `vp check`, `vp run check:luau`, `vp run test:luau`, `vp run lint:prose` and `vp test --coverage`, with coverage at 100%. `vp run test.mutation` runs the mutation tests. It isolates `HOME`, the Tern config folder and the Tern daemon socket, so no mutant touches the real machine. `vp run smoke` tests the CLI against a Tern session daemon of its own, with its own config folder and socket, so it does not touch the Tern that you use.
 
-`vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). They load `window.luau` and `host.luau` unchanged against a stand-in for `tern` in `test/luau/stub.luau`, so they need no Tern. `vp run check:luau` also checks the types of these tests, and it needs lune for the types of its modules. Homebrew has lune 0.10.5, so install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform, and put the `lune` binary on your `PATH`.
+`vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). The tests load `window.luau` and `host.luau` without changes, with the fake `tern` in `test/luau/stub.luau`. Thus, Tern is not necessary for these tests. `vp run check:luau` also checks the types of these tests. Lune is necessary for the types of the `@lune/*` modules.
+
+Homebrew has only lune 0.10.5. Install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform. Put the `lune` binary on your `PATH`.
 
 `tern plugin types types` refreshes `types/tern.d.luau`.
 
-Tern loads a linked plugin again when a file in its folder changes. Each load drops each pending `cx:pick` and `cx:prompt`: its callback does not run, so the step that waits on it does not come. Thus the plugin code and the Luau tests write no file into the plugin folder. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the plugin again and again during a mutation run. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
+Tern loads a linked plugin again when a file in its folder changes. Each load drops each pending `cx:pick` and `cx:prompt`: its callback does not run, so the step that waits on it does not start. Thus the plugin code and the Luau tests write no file into the plugin folder. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the plugin again and again during a mutation run. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
 
 `vp run lint:prose` runs vale from `@vvago/vale`. The install script of that package downloads the vale binary from the GitHub API with no token, and shared CI runners hit the limit for calls with no token, so the install failed with HTTP 403. `patches/@vvago%2Fvale@3.24.0.patch` sends `GITHUB_TOKEN` with that download when it is set, and the setup action gives each CI job its token. A vale update needs a new patch: run `bun patch @vvago/vale`, make the same change, and run `bun patch --commit node_modules/@vvago/vale`.
 

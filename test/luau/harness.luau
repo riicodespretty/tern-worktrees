@@ -20,9 +20,9 @@ function Harness.test(name: string, fn: () -> ())
 	end
 end
 
-function Harness.eq(actual: any, expected: any, what: string)
+function Harness.eq(actual: any, expected: any, label: string)
 	if actual ~= expected then
-		error(what .. ": expected " .. show(expected) .. ", got " .. show(actual), 2)
+		error(label .. ": expected " .. show(expected) .. ", got " .. show(actual), 2)
 	end
 end
 

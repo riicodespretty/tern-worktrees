@@ -29,7 +29,7 @@ export interface CreatedTab {
 
 /**
  * The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise.
- * `setup` is the setup commands of a new worktree as one `line`, with `typed` true when `create` typed it into the tab it opened. It is null for a reused or relocated worktree, and for a repository without setup commands.
+ * `setup` holds the setup commands of a new worktree as one `line`. `typed` is true when `create` typed the line into the tab that it opened. `setup` is null for a reused or relocated worktree, and for a repository without setup commands.
  */
 export interface CreateResult {
   branch: string;
@@ -401,7 +401,7 @@ const setupLine = async (ctx: Context, status: CreateStatus): Promise<string | n
 };
 
 /**
- * Types `line` into the tab that `create` opened once its shell shows the prompt, and tells if it did. Without a tab it adds no warning: the caller types the line.
+ * Types `line` into the tab that `create` opened when its shell shows the prompt. Gives true when it typed the line. Without a tab it adds no warning: the caller types the line.
  * A tab that was open before, no prompt in {@link SETUP_PROMPT_SECONDS} and a Tern failure each add a warning and keep the worktree.
  */
 const typeSetup = async (ctx: Context, line: string, tab: CreatedTab | null): Promise<boolean> => {

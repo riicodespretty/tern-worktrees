@@ -89,7 +89,7 @@ const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
   if (!isJsonObject(raw.setup)) {
     return fail('setup', EXPECTED_OBJECT);
   }
-  const keys = new Map<string, string>();
+  const firstKeyByLower = new Map<string, string>();
   return Object.fromEntries(
     Object.entries(raw.setup).map(([key, commands]) => {
       if (parseRepoRef(key) === null) {
@@ -101,13 +101,13 @@ const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
       if (commands.some(command => /[\n\r]/u.test(command))) {
         fail(`setup.${key}`, 'expected commands without line breaks');
       }
-      const lower = key.toLowerCase();
-      const other = keys.get(lower);
-      if (other !== undefined) {
-        fail(`setup.${key}`, `duplicates setup.${other}`);
+      const lowerKey = key.toLowerCase();
+      const firstKey = firstKeyByLower.get(lowerKey);
+      if (firstKey !== undefined) {
+        fail(`setup.${key}`, `duplicates setup.${firstKey}`);
       }
-      keys.set(lower, key);
-      return [lower, commands] as const;
+      firstKeyByLower.set(lowerKey, key);
+      return [lowerKey, commands] as const;
     }),
   );
 };

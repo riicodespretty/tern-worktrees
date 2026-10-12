@@ -41,13 +41,13 @@ When omp is installed and the omp setting `worktree.clone` is true in the reposi
 - `--relocate`: move the worktree of the branch into the worktree root from a path that is not in the root. Pass it only after the user says yes. When git refuses the move, `create` makes the worktree again in the root with plain `git worktree add`, but only when the first worktree has no work to lose: a changed file, a new file that git does not track, or a submodule commit that no remote holds. Ignored files that are hard to rebuild (see `remove`) are copied into the new worktree.
 - `--no-tab`: skip the tab. `create` then types no setup commands: `setup.typed` is false, and the caller types `setup.line`.
 
-For a new worktree, after it opens the tab, `create` waits a maximum of 30 s for the shell prompt of the tab, then types the setup commands of the repository there (see [Options file](#options-file)). The commands then run in the tab: `create` does not wait for them to end.
+For a new worktree, `create` opens the tab and waits a maximum of 30 s for its shell prompt. Then it types the setup commands of the repository into the tab (see [Options file](#options-file)). The commands run in the tab, and `create` does not wait for them to complete.
 
 Output: `{"path", "branch", "repo", "status", "carried", "setup", "tab", "warnings"}`.
 
 - `status`: `created`, `reused` or `relocated`. For an omp-owned worktree, `reused` with its `path`.
 - `carried`: the ignored files, as paths in the worktree, that a rebuilt relocation copied into the new worktree. Empty otherwise. When the new worktree has a file at that path, the copy stays in the temporary folder, with a `not carried:` warning.
-- `setup`: `{"line", "typed"}`, or null. `line` is the setup commands of the repository, with `&&` between them. `typed` is true when `create` typed the line into the tab it opened. It is null unless `status` is `created`, `origin` is a GitHub URL, and the options file lists commands for its name with owner. When the tab was open before, no prompt shows in 30 s, or Tern fails, `typed` is false with a `setup not run:` warning, and the worktree stays.
+- `setup`: `{"line", "typed"}`, or null. `line` holds the setup commands of the repository, with `&&` between them. `typed` is true when `create` typed the line into the tab it opened. `setup` is null unless `status` is `created`, `origin` is a GitHub URL, and the options file lists commands for its name with owner. When the tab was open before, no prompt shows in 30 s, or Tern fails, `typed` is false with a `setup not run:` warning, and the worktree stays.
 - `tab`: `{"session", "block", "opened"}`, or null with a `tab not opened:` warning. `opened` is false when `create` focused a tab that was open before.
 
 ### `remove`
@@ -64,7 +64,13 @@ Output: `{"removed", "branch", "branchDeleted", "closedBlocks", "warnings"}`. `b
 
 - `--all`: also list the omp-owned worktrees, at all depths in the worktree root. `list` does not look in a worktree or a main checkout.
 
-Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty", "changed", "owner"}]}`. Without `--all`, `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`. `repo` is the main checkout. `branch` is null for a detached `HEAD`. `changed` is the number of changed files: changed and new files, each once, and submodule changes. `dirty` is true when `changed` is more than 0. `owner` is `tern` for a tern-managed worktree and `omp` for an omp-owned worktree.
+Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty", "changed", "owner"}]}`. Without `--all`, `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`.
+
+- `repo`: the main checkout.
+- `branch`: null for a detached `HEAD`.
+- `changed`: the number of files with changes. Each changed or new file counts one time, and submodule changes also count.
+- `dirty`: true when `changed` is more than 0.
+- `owner`: `tern` for a tern-managed worktree and `omp` for an omp-owned worktree.
 
 ### `branches`
 
@@ -135,5 +141,5 @@ An invalid file makes each command fail with `config_invalid`. The keys:
 
 - `teardown`: the teardown policy. It sets what `remove`, and the close of a worktree tab, do to the branch. `worktree` keeps the branch. `worktree+merged-branch`, the default, deletes a merged branch. `worktree+branch` deletes the branch. A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 - `cloneRoot`: the dir for `clone` and `new-repo`, an absolute path or a path that starts with `~`. The default is `~/Developer`.
-- `hotkeys.new`: the Tern key chords that open the picker for a new worktree tab. The default is `["cmd+shift+w"]`.
-- `setup`: the setup commands of each repository, for example `{"virtusize/aoyama": ["npm ci", "npm run build"]}`. The key is the name with owner of the repository, in lowercase or not. The value is a list of shell commands without line breaks, and an empty list runs nothing. The default is `{}`. For a new worktree only, `create` and the Tern plugin type the commands of its repository into the new worktree tab as one line, with `&&` between them.
+- `hotkeys.new`: the Tern key chords that open the branch picker. The default is `["cmd+shift+w"]`.
+- `setup`: the setup commands of each repository, for example `{"virtusize/aoyama": ["npm ci", "npm run build"]}`. The key is the name with owner of the repository. Uppercase and lowercase letters in the key are the same. The value is a list of shell commands without line breaks, and an empty list runs nothing. The default is `{}`. For a new worktree only, `create` and the Tern plugin type the commands of its repository into the new worktree tab as one line, with `&&` between them.

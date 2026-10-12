@@ -157,16 +157,17 @@ end
 
 -- The worktree index: each worktree in the worktree root by path, with its main checkout, branch and number of
 -- changed files. The host half reads it from kv to give the worktree variables to a new shell.
-local index = stored_index({})
--- When this window last set or deleted each entry; a `list --all` that started before keeps that change.
-local recent: { [string]: number } = {}
+local worktreeIndex = stored_index({})
+-- The time when this window last set or deleted each entry. A `list --all` answer keeps the value of this window
+-- for each entry that changed at or after the time that the `list --all` started.
+local changedAt: { [string]: number } = {}
 local listing = false
 local listAgain = false
-local listTimer = false
-local listedAt: number? = nil
+local refreshPending = false
+local listStartedAt: number? = nil
 
 local function in_index(cwd: string?): boolean
-	for path in pairs(index) do
+	for path in pairs(worktreeIndex) do
 		if is_under(cwd, path) then
 			return true
 		end
@@ -176,9 +177,12 @@ end
 
 -- Whether `a` and `b` differ in what a worktree segment shows: a worktree, its branch or its number of changed files.
 local function segments_differ(a: { [string]: IndexEntry? }, b: { [string]: IndexEntry? }): boolean
-	for path, x in pairs(a) do
-		local y = b[path]
-		if x ~= nil and (y == nil or x.branch ~= y.branch or x.changed ~= y.changed) then
+	for path, entry in pairs(a) do
+		local otherEntry = b[path]
+		if
+			entry ~= nil
+			and (otherEntry == nil or entry.branch ~= otherEntry.branch or entry.changed ~= otherEntry.changed)
+		then
 			return true
 		end
 	end
@@ -190,21 +194,21 @@ local function segments_differ(a: { [string]: IndexEntry? }, b: { [string]: Inde
 	return false
 end
 
--- Writes `written` as the worktree index, and redraws the status line when a worktree segment changes.
-local function write_index(written: { [string]: IndexEntry? })
-	local before = index
-	index = written
-	pcall(tern.kv.set, INDEX_KEY, index)
-	if segments_differ(before, index) then
+-- Writes `nextIndex` as the worktree index, and redraws the status line when a worktree segment changes.
+local function write_index(nextIndex: { [string]: IndexEntry? })
+	local before = worktreeIndex
+	worktreeIndex = nextIndex
+	pcall(tern.kv.set, INDEX_KEY, worktreeIndex)
+	if segments_differ(before, worktreeIndex) then
 		tern.chrome.refresh()
 	end
 end
 
 -- Sets or deletes one entry. Other windows write the same kv key, so this reads kv again and changes only `path`.
 local function set_entry(path: string, entry: IndexEntry?)
-	local merged = table.clone(stored_index(index))
+	local merged = table.clone(stored_index(worktreeIndex))
 	merged[path] = entry
-	recent[path] = tern.now()
+	changedAt[path] = tern.now()
 	write_index(merged)
 end
 
@@ -219,11 +223,11 @@ local function apply_list(res: ListResult, startedAt: number)
 			}
 		end
 	end
-	for path, at in pairs(recent) do
+	for path, at in pairs(changedAt) do
 		if at >= startedAt then
-			fresh[path] = index[path]
+			fresh[path] = worktreeIndex[path]
 		else
-			recent[path] = nil
+			changedAt[path] = nil
 		end
 	end
 	write_index(fresh)
@@ -235,7 +239,7 @@ local refresh_index: () -> ()
 local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 	listing = true
 	local startedAt = tern.now()
-	listedAt = startedAt
+	listStartedAt = startedAt
 	cli({ "list", "--all" }, function(res: ListResult, err, cx2)
 		listing = false
 		if err == nil then
@@ -250,20 +254,20 @@ local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 end
 
 -- Refreshes the worktree index: at most one `list --all` at a time, and at most one each INDEX_GAP_MS. A refresh
--- asked for inside that gap runs once at its end.
+-- request inside that gap runs one time, at the end of the gap.
 refresh_index = function()
 	if listing then
 		listAgain = true
 		return
 	end
-	if listTimer then
+	if refreshPending then
 		return
 	end
-	local wait = if listedAt == nil then 0 else listedAt + INDEX_GAP_MS - tern.now()
-	if wait > 0 then
-		listTimer = true
-		tern.timer(wait, function()
-			listTimer = false
+	local waitMs = if listStartedAt == nil then 0 else listStartedAt + INDEX_GAP_MS - tern.now()
+	if waitMs > 0 then
+		refreshPending = true
+		tern.timer(waitMs, function()
+			refreshPending = false
 			refresh_index()
 		end)
 		return
@@ -488,7 +492,8 @@ local function short_path(path: string): string
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
--- Every `:next` of `cx:pick` and `cx:prompt` returns at once when its `cx` is nil, and toasts `err`.
+-- `choose` wraps `cx:pick`, and `prompt_text` wraps `cx:prompt`. Each `:next` callback returns at once when its `cx`
+-- is nil. Else it shows `err`, when set, in an error toast, then calls `cb`.
 local function choose(cx: WindowCx, opts: PickOptions, cb: (item: PickItem?, cx: WindowCx, err: string?) -> ())
 	cx:pick(opts):next(function(item: PickItem?, err: string?, cx2: WindowCx?)
 		if cx2 == nil then
@@ -501,7 +506,7 @@ local function choose(cx: WindowCx, opts: PickOptions, cb: (item: PickItem?, cx:
 	end)
 end
 
-local function ask_text(cx: WindowCx, opts: PromptOptions, cb: (text: string?, cx: WindowCx, err: string?) -> ())
+local function prompt_text(cx: WindowCx, opts: PromptOptions, cb: (text: string?, cx: WindowCx, err: string?) -> ())
 	cx:prompt(opts):next(function(text: string?, err: string?, cx2: WindowCx?)
 		if cx2 == nil then
 			return
@@ -768,20 +773,20 @@ local function open_tab(cx: WindowCx, res: CreateResult): number?
 			end
 		end
 	end
-	local shell: number? = nil
+	local shellPane: number? = nil
 	if tab == nil then
 		if freshTab ~= nil then
 			tab = freshTab
 			for _, pane in ipairs(cx.session:panes()) do
 				if pane.tab == freshTab then
-					shell = pane.pane
+					shellPane = pane.pane
 					break
 				end
 			end
 		elseif sid ~= nil then
 			switch_to_session(cx, index, sid)
-			shell = cx.layout:new_tab({ cwd = path })
-			tab = if shell ~= nil then cx.session:tab_of(shell) else nil
+			shellPane = cx.layout:new_tab({ cwd = path })
+			tab = if shellPane ~= nil then cx.session:tab_of(shellPane) else nil
 		end
 	end
 	if tab ~= nil and tab ~= reused then
@@ -794,14 +799,14 @@ local function open_tab(cx: WindowCx, res: CreateResult): number?
 			table.insert(paths, path)
 		end
 	end
-	return shell
+	return shellPane
 end
 
 local SETUP_POLL_MS = 200
 local SETUP_PROMPT_MS = 30000
 
--- Types the setup commands of `setup` into the shell `pane` once it shows its prompt, polling every
--- SETUP_POLL_MS for up to SETUP_PROMPT_MS. It does nothing when `create` typed them already, and stops when
+-- Types `setup.line` into the shell `pane` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
+-- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
 -- the pane is gone. A nil `pane` means the tab was open before, so it only shows the line in a toast.
 -- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
 -- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
@@ -1052,10 +1057,10 @@ end
 
 local repo_picker: (cx: WindowCx) -> ()
 
-local function new_branch(cx: WindowCx, root: string, name: string, default: string, value: string?)
-	ask_text(cx, {
-		value = value,
-		placeholder = "New branch from " .. default .. " in " .. name,
+local function new_branch(cx: WindowCx, root: string, repoName: string, defaultBranch: string, typedName: string?)
+	prompt_text(cx, {
+		value = typedName,
+		placeholder = "New branch from " .. defaultBranch .. " in " .. repoName,
 		icon = "branch",
 		action = "create",
 	}, function(text, cx2, err)
@@ -1063,7 +1068,7 @@ local function new_branch(cx: WindowCx, root: string, name: string, default: str
 			return
 		end
 		create(cx2, root, { "--branch=" .. text, "--new" }, function(cx3)
-			new_branch(cx3, root, name, default, text)
+			new_branch(cx3, root, repoName, defaultBranch, text)
 		end)
 	end)
 end
@@ -1074,11 +1079,11 @@ local function branch_picker(cx: WindowCx, root: string)
 		if startCount ~= started then
 			return
 		end
-		local name = tostring(res.name)
-		local default = tostring(res.default)
+		local repoName = tostring(res.name)
+		local defaultBranch = tostring(res.default)
 		local hasWorktree = branches_with_worktree(res)
 		local items: { PickItem } = {
-			{ id = "new", label = "New branch…", detail = "from " .. default, icon = "plus" },
+			{ id = "new", label = "New branch…", detail = "from " .. defaultBranch, icon = "plus" },
 			{ id = "other", label = "Other repo…", icon = "folder" },
 		}
 		for _, pr in ipairs(res.prs or {}) do
@@ -1100,7 +1105,7 @@ local function branch_picker(cx: WindowCx, root: string)
 		end
 		choose(
 			cx2,
-			{ placeholder = "Search branches in " .. name, icon = "branch", action = "open", items = items },
+			{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
 			function(item, cx3, err)
 				if err ~= nil or item == nil then
 					return
@@ -1109,7 +1114,7 @@ local function branch_picker(cx: WindowCx, root: string)
 				local branch = string.match(id, "^b:(.*)$")
 				local pr = string.match(id, "^pr:(.*)$")
 				if id == "new" then
-					new_branch(cx3, root, name, default)
+					new_branch(cx3, root, repoName, defaultBranch)
 				elseif id == "other" then
 					repo_picker(cx3)
 				elseif branch ~= nil then
@@ -1182,7 +1187,7 @@ local function ask_visibility(cx: WindowCx, owner: string, name: string)
 end
 
 local function ask_name(cx: WindowCx, owner: string)
-	ask_text(cx, {
+	prompt_text(cx, {
 		placeholder = "Name of the new repository under " .. owner,
 		icon = "folder-plus",
 		action = "continue",
@@ -1336,24 +1341,24 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 		advance(cx2)
 	end
 	local policy = config().teardown
-	local where = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
-	-- `choose` already toasts a pick `err`. An `err` counts as Keep, so a closing tab can always close.
+	local placeholderPrefix = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
+	-- `choose` already toasts a pick error. A pick error counts as Keep, so the tab closes even when the picker fails.
 	choose(cx, {
-		placeholder = where .. short_path(path),
+		placeholder = placeholderPrefix .. short_path(path),
 		icon = "branch",
 		items = {
 			{ id = "keep", label = "Keep worktree", detail = "closes the tab, keeps the worktree" },
 			{ id = "teardown", label = "Tear down", detail = POLICY[policy] or ("Teardown policy: " .. policy) },
 		},
-	}, function(item, cx2, err)
-		if err == nil and item ~= nil and item.id == "teardown" then
+	}, function(item, cx2, pickErr)
+		if pickErr == nil and item ~= nil and item.id == "teardown" then
 			run_remove(cx2, path, false, function(cx3)
 				if tab ~= nil then
 					handled[path] = true
 				end
 				advance(cx3)
 			end, stop)
-		elseif err ~= nil or (item ~= nil and item.id == "keep") then
+		elseif pickErr ~= nil or (item ~= nil and item.id == "keep") then
 			keep(cx2)
 		else
 			stop(cx2)
@@ -1386,16 +1391,17 @@ tern.command({
 	run = start,
 })
 
--- The worktree segment: the branch and the number of changed files of the worktree of the focused pane, from the
--- worktree index only. Tern disables a formatter that takes more than 4 ms, and its `refresh` raises in one.
+-- The worktree segment shows the branch and the number of changed files of the worktree of the focused pane. It
+-- reads only the worktree index. Tern disables a formatter that takes more than 4 ms, and `tern.chrome.refresh`
+-- raises an error when a formatter calls it.
 tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
-	local found: string? = nil
-	for path in pairs(index) do
-		if is_under(pane.cwd, path) and (found == nil or #path > #found) then
-			found = path
+	local longest: string? = nil
+	for path in pairs(worktreeIndex) do
+		if is_under(pane.cwd, path) and (longest == nil or #path > #longest) then
+			longest = path
 		end
 	end
-	local entry = if found ~= nil then index[found] else nil
+	local entry = if longest ~= nil then worktreeIndex[longest] else nil
 	if entry == nil then
 		return nil
 	end

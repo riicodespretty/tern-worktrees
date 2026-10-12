@@ -1,8 +1,8 @@
 --!strict
 
--- Gives a shell that starts in a worktree of the worktree index the worktree variables. The window half writes
--- the index from `tern-wt list --all`; this filter only reads it from kv, because a spawn filter has 50 ms and
--- runs no process.
+-- Gives the worktree variables to a shell that starts in a worktree of the worktree index. The window half writes
+-- the index from `tern-wt list --all`. This filter only reads the index from kv, because a spawn filter has only
+-- 50 ms and runs no process.
 
 local INDEX_KEY = "worktreeIndex"
 
@@ -16,29 +16,29 @@ local function with_variables(spec: SpawnSpec): SpawnSpec?
 	if home ~= nil and home ~= "" and (cwd == "~" or string.sub(cwd, 1, 2) == "~/") then
 		cwd = home .. string.sub(cwd, 2)
 	end
-	local key: string? = nil
+	local worktreePath: string? = nil
 	for path in pairs(index) do
 		if
 			type(path) == "string"
 			and (cwd == path or string.sub(cwd, 1, #path + 1) == path .. "/")
-			and (key == nil or #path > #key)
+			and (worktreePath == nil or #path > #worktreePath)
 		then
-			key = path
+			worktreePath = path
 		end
 	end
-	if key == nil then
+	if worktreePath == nil then
 		return nil
 	end
-	local entry = index[key]
+	local entry = index[worktreePath]
 	if type(entry.main) ~= "string" then
 		return nil
 	end
-	-- `spec` comes in read-only tables, which `table.clone` refuses, so copy them field by field.
+	-- Tern gives `spec` as read-only tables, and `table.clone` refuses them. Thus copy them field by field.
 	local env: { [string]: string } = {}
 	for name, value in spec.env do
 		env[name] = value
 	end
-	env.TERN_WT_PATH = key
+	env.TERN_WT_PATH = worktreePath
 	env.TERN_WT_MAIN = entry.main
 	if type(entry.branch) == "string" then
 		env.TERN_WT_BRANCH = entry.branch

@@ -47,12 +47,12 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 ### Open a worktree tab
 
 1. Press `cmd+shift+w`. The branch picker opens over the focused pane, for the repository of the current session. When the current session has no repository, the repo picker opens first.
-2. Type to filter. The branch picker lists `New branch…`, `Other repo…`, the open pull requests, then the branches. A pull request row reads `#<n> <title> · <branch>`, so part of its branch name also finds it. A branch with a worktree shows `worktree` adjacent to its name. Typing filters on the row name only, not on that dim text.
-3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, press Enter on `New branch…`, type its name and press Enter. When `tern-wt` refuses the name, a toast tells why, and the prompt opens again with the name filled in. Escape or an empty name makes no branch.
+2. Type to filter. The branch picker lists `New branch…`, `Other repo…`, the open pull requests, then the branches. The label of a pull request row is `#<n> <title> · <branch>`, so you can also find the row when you type part of its branch name. A branch with a worktree shows `worktree` in dim text adjacent to its name. The filter reads only the row name, not the dim text.
+3. Press Enter on a branch or a pull request. To start a new branch from `origin/<default>`, press Enter on `New branch…`. Type the branch name, then press Enter. When `tern-wt` refuses the name, a toast tells you why. The prompt then opens again and shows the name that you typed. If you press Escape, or press Enter with no name, the plugin makes no branch.
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
 
-Each picker, prompt and confirmation of the plugin is Tern's own picker or prompt. In a picker, a path in your home folder starts with `~`.
+Each picker, prompt and confirmation of the plugin uses the Tern picker or the Tern prompt. In a picker, a path in your home folder starts with `~`.
 
 ### Open a worktree from the command palette
 
@@ -65,7 +65,7 @@ Press Enter on a row to open its worktree tab, as the branch picker does. The ro
 
 The rows refresh from local refs, with no network traffic. This refresh runs when a shell command ends in a pane of the repository and when one of its panes gets focus. It also runs after the plugin makes or removes a worktree. The fetch from `origin` and the list of open pull requests run at most one time in each Tern auto-fetch interval, the Tern setting `git.auto_fetch_minutes` (5 by default). When you set it to 0, Tern auto-fetch is off, and the rows refresh from local refs only. The pull request rows of an earlier fetch then stay as they are until Tern or the plugin reloads. After a reload with 0, no pull request rows show.
 
-`cmd+shift+w` still opens the branch picker. Use it for `New branch…` or `Other repo…`.
+`cmd+shift+w` also opens the branch picker. Use the branch picker to select `New branch…` or `Other repo…`.
 
 ### Select a different repository
 
@@ -73,13 +73,15 @@ In the branch picker, select `Other repo…`. The repo picker shows:
 
 - Each repository open in a session, in the `Open sessions` group.
 - In the `GitHub` group, `Browse GitHub repos…`: the repositories of your GitHub user and organizations, grouped by owner. `tern-wt` clones the one you select to the clone root, or reuses the clone there. When GitHub lists no repository, a toast says so.
-- In the `GitHub` group, `Create new GitHub repo…`, which asks for the owner, the name and the visibility (`Private` or `Public`), then makes the repository and clones it. An empty name ends it.
+- In the `GitHub` group, `Create new GitHub repo…`, which asks for the owner, the name and the visibility (`Private` or `Public`), then makes the repository and clones it. When the name is empty, the plugin makes no repository.
 
 The branch picker of that repository opens next.
 
 ### Relocate
 
-A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a picker reads `Worktree of this branch is at <path>` and offers `Relocate to <path>`. Enter relocates, and Escape keeps the worktree where it is. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a picker reads `Worktree of this branch is at <path>` and offers `Relocate to <path>`. Enter relocates, and Escape keeps the worktree where it is. Relocate moves the worktree into the root.
+
+When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
 
 An omp-owned worktree of the branch needs no relocation: `tern-wt` opens its tab where it is.
 
@@ -87,16 +89,16 @@ Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not st
 
 ### Close a worktree tab
 
-When you close a worktree tab, a picker opens with the placeholder `Closing worktree tab · <path>`. It lists two items, and Keep worktree comes first, so Enter keeps the worktree:
+When you close a worktree tab, a picker opens with the placeholder `Closing worktree tab · <path>`. It shows two items. Keep worktree is the first item, so Enter keeps the worktree:
 
 - Keep worktree: closes the tab and keeps the worktree.
 - Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Its dim text says what the teardown policy does with the branch. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
 
-Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys: type to filter, or use the arrow keys, then press Enter. When the picker fails to open, a toast shows the error, and the tab closes with its worktree kept.
+Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys. To select an item, type to filter the list or use the arrow keys. Then press Enter. When the picker fails to open, a toast shows the error. The tab closes, and the worktree stays.
 
-When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can filter out Keep worktree, so check the selected item before you press Enter.
+When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can hide Keep worktree, so check the selected item before you press Enter.
 
-When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, an error toast names the worktree and lists the files with work to lose: at most 10, with the ignored files that are hard to rebuild counted first, then `and <n> more`. A second picker then offers:
+When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, an error toast names the worktree. The toast also shows the files with work to lose, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the toast adds `and <n> more`. A second picker then offers:
 
 - Retry: runs the teardown again.
 - Force delete: removes the worktree and discards its uncommitted work.
@@ -105,21 +107,27 @@ Escape keeps the tab and the worktree.
 
 ### Worktree variables
 
-A shell that starts in a worktree in the worktree root, a managed worktree or an omp-owned worktree, or in a folder of one, gets three environment variables:
+A shell that starts in a worktree in the worktree root, or in a folder of one, gets three environment variables. The worktree can be tern-managed or omp-owned. The variables are:
 
 - `TERN_WT_PATH`: the path of the worktree.
 - `TERN_WT_MAIN`: the path of its main checkout.
 - `TERN_WT_BRANCH`: its branch. A shell in a worktree with a detached `HEAD` does not get it.
 
-A shell that starts in a folder that is not in the worktree root gets none of them. The values come from the last refresh of the plugin's list of worktrees, `tern-wt list --all`. The refresh runs when a Tern window starts, when a pane moves into a worktree in the root that the list does not have, and when a shell command ends or a pane gets focus in a worktree on the list, at most one time in 2 seconds. A worktree that the plugin makes or tears down changes the list at once. After a branch switch, a new shell gets the new branch after the next refresh. A shell keeps the variables it started with.
+A shell that starts in a folder that is not in the worktree root gets none of them. The values come from the last refresh of the plugin's list of worktrees, `tern-wt list --all`. The refresh runs at these times:
+
+- A Tern window starts.
+- A pane moves into a worktree in the root that is not on the list.
+- A shell command ends, or a pane gets focus, in a worktree on the list.
+
+A refresh from a pane or a shell command runs at most one time in 2 seconds. When the plugin makes or tears down a worktree, the list changes immediately. After a branch switch, a new shell gets the new branch after the next refresh. A shell keeps the variables it started with.
 
 ### Worktree segment
 
-When the pane with the focus is in a worktree in the worktree root, a managed worktree or an omp-owned worktree, or in a folder of one, the Tern status line shows the worktree segment: the branch icon, the branch, and `· <n>` when the worktree has `n` changed files, for example `⎇ feat · 2`, in the warning color. Without changed files it shows the branch alone, in the muted color. A worktree with a detached `HEAD` shows `detached`. A pane in a folder that is not in the worktree root shows no segment.
+When the pane with the focus is in a worktree in the worktree root, or in a folder of one, the Tern status line shows the worktree segment. The worktree can be tern-managed or omp-owned. The segment shows the branch icon and the branch. When the worktree has `n` changed files, the segment adds `· <n>` and shows in the warning color, for example `⎇ feat · 2`. Without changed files, the segment shows the branch alone, in the muted color. A worktree with a detached `HEAD` shows `detached`.
 
-The count is the number of changed files that `tern-wt list --all` gives: changes to tracked files, staged or not, new files that git does not track, and submodule changes. Ignored files do not count. The segment changes with the plugin's list of worktrees, which the section above describes: after a shell command ends and when a pane gets focus in a worktree on the list, at most one time in 2 seconds, and at once when the plugin makes or tears down a worktree.
+A pane in a folder that is not in the worktree root shows no segment. The count is the number of changed files that `tern-wt list --all` gives. The count includes changes to tracked files, staged or not, new files that git does not track, and submodule changes. Ignored files do not count. The segment changes when the plugin's list of worktrees changes, at the times that [Worktree variables](#worktree-variables) gives.
 
-A click on the segment opens the branch picker, as `cmd+shift+w` does.
+Click the segment to open the branch picker, as `cmd+shift+w` does.
 
 ## Work with omp
 
@@ -145,16 +153,16 @@ The options file is `config.json` in the first of these folders:
 
 Each key in the file replaces its default:
 
-| Key           | Default                    | Value                                                                                                                                                              |
-| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch.       |
-| `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                             |
-| `hotkeys.new` | `["cmd+shift+w"]`          | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                      |
-| `setup`       | `{}`                       | The setup commands of each repository: its name with owner, in lowercase or not, maps to a list of shell commands without line breaks. An empty list runs nothing. |
+| Key           | Default                    | Value                                                                                                                                                                                                  |
+| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `teardown`    | `"worktree+merged-branch"` | The teardown policy. `"worktree"` keeps the branch. `"worktree+merged-branch"` deletes the branch when it is merged. `"worktree+branch"` deletes the branch.                                           |
+| `cloneRoot`   | `"~/Developer"`            | The clone root, an absolute path or a path that starts with `~`. `tern-wt` clones a GitHub repository to `<cloneRoot>/<owner>/<name>`.                                                                 |
+| `hotkeys.new` | `["cmd+shift+w"]`          | The Tern key chords that open the branch picker. A change applies after `tern plugin reload`.                                                                                                          |
+| `setup`       | `{}`                       | The setup commands of each repository: its name with owner maps to a list of shell commands without line breaks. Uppercase and lowercase letters in the name are the same. An empty list runs nothing. |
 
 A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 
-For a new worktree only, `tern-wt` types the commands of its repository into the new worktree tab as one line, with `&&` between them. The name with owner comes from the GitHub URL of `origin`, so a repository without a GitHub origin gets no setup commands. `tern-wt` waits a maximum of 30 s for the shell prompt of the tab before it types the line. When the tab was open before or no prompt shows, the commands do not run, and a toast or a `create` warning shows why.
+For a new worktree only, `tern-wt` types the commands of its repository into the new worktree tab as one line, with `&&` between them. The name with owner comes from the GitHub URL of `origin`, so a repository without a GitHub origin gets no setup commands. `tern-wt` waits a maximum of 30 s for the shell prompt of the tab before it types the line. When the tab was open before or no prompt shows, the commands do not run. A toast or a `create` warning shows why.
 
 ```json
 {
@@ -181,7 +189,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 [`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) is the reference for each command: its arguments, its output fields, the next step for each error code, and the rules agents follow for teardown. The commands:
 
-- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. Its `setup` field holds the setup commands of a new worktree, which it types into the tab it opened.
+- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
 - `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.

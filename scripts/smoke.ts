@@ -52,7 +52,7 @@ const makeClone = async (): Promise<RepoFixture> => {
 
 const POLL_MS = 100;
 
-/** Calls `ready` at an interval of {@link POLL_MS} until it gives true, at most `attempts` times. `seconds` is that wait, for the failure message. */
+/** Calls `ready` at an interval of {@link POLL_MS} until it gives true, at most `attempts` times. `seconds` is the total wait in seconds that the failure message shows. */
 const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, attempts = 50, seconds = (attempts * POLL_MS) / 1000): Promise<void> => {
   if (await ready()) {
     return;
@@ -70,8 +70,8 @@ const waitForBlock = async (dir: string): Promise<void> => {
 };
 
 /**
- * The clone gets a GitHub origin URL, so the options file gives it setup commands. `GIT_ALLOW_PROTOCOL` makes the fetch of that URL fail at once,
- * and `create` then uses the `origin/feature/x` that the clone has. `remove` runs with the bare origin again, so it runs no `gh`.
+ * The clone gets a GitHub origin URL, so the options file gives it setup commands. `GIT_ALLOW_PROTOCOL` makes the fetch of that URL fail immediately.
+ * Then `create` uses the `origin/feature/x` that the clone has. `remove` runs with the bare origin again, so it runs no `gh`.
  */
 const smoke = async (): Promise<void> => {
   const repo = await makeClone();
