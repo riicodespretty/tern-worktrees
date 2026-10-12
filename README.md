@@ -197,7 +197,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 - `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. Its `owner` field is `tern` or `omp`. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
-- `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree. `--offline` reads only local refs, with no fetch and no pull requests.
+- `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree and `main` true for the main checkout. `--offline` reads only local refs, with no fetch and no pull requests.
 - `resolve`: gives the repository root, name and owner of each directory.
 - `repos`: lists the GitHub repositories of your user and organizations.
 - `clone`: clones a GitHub repository to the clone root.

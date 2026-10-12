@@ -20,6 +20,7 @@
 - Run one `branches` at a time for each repository, which the worktree rows and the branch picker share. A create or a teardown refreshes only the repository of its worktree
 - Start a new `branches` or `list --all` when Tern dropped the answer of the last one for 120 s. Before, the worktree rows and the worktree index stopped their refreshes until the plugin reloaded
 - Open a new worktree tab in the oldest session of its repository when two or more sessions show that repository. Before, the order of a Luau table selected the session
+- Show no `worktree` text for the branch of the main checkout, in the branch picker and on its worktree row. Each entry of `worktrees` in the `branches` output has `main`, which is true for the main checkout
 
 ## [0.1.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.1.0 "2026-10-10")
 

@@ -18,10 +18,12 @@ export interface PullRequest {
 /**
  * A worktree of the repository. `owner` tells who owns it: `tern` for a tern-managed worktree, `<root>/<repo>/<slug>`, `omp` for an omp-owned one,
  * elsewhere in the omp worktree root, and null for a worktree that is not in the worktree root. `managed` is true for a tern-managed worktree.
+ * `main` is true for the main checkout.
  */
 export interface BranchWorktree {
   branch: string | null;
   path: string;
+  main: boolean;
   managed: boolean;
   owner: WorktreeOwner;
 }
@@ -100,7 +102,7 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     warnings,
     worktrees: repoWorktrees.map(worktree => {
       const owner = worktreeOwner(wtRoot, root, worktree.path);
-      return { branch: worktree.branch, managed: owner === 'tern', owner, path: worktree.path };
+      return { branch: worktree.branch, main: worktree.main, managed: owner === 'tern', owner, path: worktree.path };
     }),
   };
 };

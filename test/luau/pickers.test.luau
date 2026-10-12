@@ -9,7 +9,12 @@ local ENV = { HOME = "/home/u" }
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
 "prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
-"worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":[]}]]
+"worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
+{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+-- A `branches` answer with the main checkout and a worktree of y that is not in the worktree root.
+local OUTSIDE_ROOT = [[{"name":"app","default":"main","branches":["main","y"],"prs":[],"prsFailed":false,
+"worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
+{"branch":"y","path":"/elsewhere/y","managed":false,"owner":null,"main":false}],"warnings":[]}]]
 
 local function same(actual: { [string]: any }, expected: { [string]: any }, what: string)
 	for key, value in expected do
@@ -39,13 +44,14 @@ local function item_by_id(request: any, id: string): any
 	error("no item " .. id)
 end
 
--- Opens the branch picker of REPO from a pane in it, and returns the harness and the cx.
-local function open_branch_picker(): (Stub.Harness, any)
+-- Opens the branch picker of REPO from a pane in it, answers `branches` with `answer` (default BRANCHES), and
+-- returns the harness and the cx.
+local function open_branch_picker(answer: string?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
 	local plugin = Stub.load({ env = ENV })
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
+	plugin:answer("branches", answer or BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(cx.asked[1].kind, "pick", "request kind")
 	return plugin, cx
@@ -91,6 +97,16 @@ test("the branch picker lists New branch, Other repo, pull requests, then branch
 		"items[5]"
 	)
 end)
+
+test(
+	"the branch picker shows no worktree text for the main checkout, and shows it for a worktree not in the worktree root",
+	function()
+		local _, cx = open_branch_picker(OUTSIDE_ROOT)
+		local picker = cx.asked[1]
+		eq(item_by_id(picker, "b:main").detail, nil, "detail of b:main")
+		eq(item_by_id(picker, "b:y").detail, "worktree", "detail of b:y")
+	end
+)
 
 test("choosing a branch creates its worktree with --branch=<name>", function()
 	local plugin, cx = open_branch_picker()

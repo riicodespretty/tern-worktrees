@@ -12,11 +12,12 @@ local BOTH_RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"},'
 	.. '{"dir":"/r/lib","root":"/r/lib","name":"lib"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
 "prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
-"worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":[]}]]
+"worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
+{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
 local STALE =
 	[[{"name":"app","default":"main","branches":["main"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
 local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs":[],"prsFailed":false,
-"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":[]}]]
+"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
 -- The `branches` answer of the CLI when `gh pr list` fails, for REPO with a worktree of x.
 local PR_LIST_FAILED = Stub.fixture("branches-pr-list-failed", { repo = REPO, worktree = "/wt/worktrees/app/x" })

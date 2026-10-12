@@ -33,7 +33,7 @@ local POLICY = {
 
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
 type PullRequest = { number: number, title: string, branch: string }
-type BranchWorktree = { branch: string?, path: string }
+type BranchWorktree = { branch: string?, path: string, main: boolean? }
 type BranchesResult = {
 	name: string,
 	default: string,
@@ -1008,7 +1008,7 @@ end
 local function branches_with_worktree(res: BranchesResult): { [string]: boolean }
 	local hasWorktree: { [string]: boolean } = {}
 	for _, w in ipairs(res.worktrees or {}) do
-		if type(w.branch) == "string" then
+		if type(w.branch) == "string" and w.main ~= true then
 			hasWorktree[w.branch] = true
 		end
 	end

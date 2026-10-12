@@ -7,7 +7,7 @@
   "repo": "{{repo}}",
   "warnings": ["pr list failed: fake gh: no fixture"],
   "worktrees": [
-    { "branch": "main", "managed": false, "owner": null, "path": "{{repo}}" },
-    { "branch": "x", "managed": true, "owner": "tern", "path": "{{worktree}}" }
+    { "branch": "main", "main": true, "managed": false, "owner": null, "path": "{{repo}}" },
+    { "branch": "x", "main": false, "managed": true, "owner": "tern", "path": "{{worktree}}" }
   ]
 }

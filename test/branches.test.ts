@@ -54,9 +54,9 @@ describe('branches command', () => {
         repo: repo.dir,
         warnings: [],
         worktrees: [
-          { branch: 'main', managed: false, owner: null, path: repo.dir },
-          { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
-          { branch: 'zzz', managed: false, owner: null, path: outside },
+          { branch: 'main', main: true, managed: false, owner: null, path: repo.dir },
+          { branch: 'feature/x', main: false, managed: true, owner: 'tern', path: managed },
+          { branch: 'zzz', main: false, managed: false, owner: null, path: outside },
         ],
       });
     });
@@ -71,9 +71,9 @@ describe('branches command', () => {
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'feature/y', ompOwned);
       const result = await run(['--repo', repo.dir, '--offline']);
       expect(result.worktrees).toStrictEqual([
-        { branch: 'main', managed: false, owner: null, path: repo.dir },
-        { branch: 'feature/x', managed: true, owner: 'tern', path: managed },
-        { branch: 'feature/y', managed: false, owner: 'omp', path: ompOwned },
+        { branch: 'main', main: true, managed: false, owner: null, path: repo.dir },
+        { branch: 'feature/x', main: false, managed: true, owner: 'tern', path: managed },
+        { branch: 'feature/y', main: false, managed: false, owner: 'omp', path: ompOwned },
       ]);
       expect(result.warnings).toStrictEqual([]);
     });
@@ -131,7 +131,7 @@ describe('branches command', () => {
         prsFailed: false,
         repo: repo.dir,
         warnings: [],
-        worktrees: [{ branch: 'main', managed: false, owner: null, path: repo.dir }],
+        worktrees: [{ branch: 'main', main: true, managed: false, owner: null, path: repo.dir }],
       });
       expect(fetchHeadState()).toStrictEqual(before);
       const online = await run(['--repo', repo.dir]);
