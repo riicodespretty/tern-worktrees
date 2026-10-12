@@ -288,13 +288,13 @@ test("the Deleted worktree toast says in its title what happened to the branch",
 			.. '","branch":"feat","branchDeleted":false,'
 			.. '"warnings":["kept local branch feat: not merged","fetch failed: fatal: transport \'https\' not allowed"]}'
 	)
-	eq(kept.title, "Deleted\u{A0}worktree, kept branch feat: not merged", "kept title")
+	eq(kept.title, "Deleted\u{A0}worktree, kept branch: not merged", "kept title")
 	eq(kept.detail, "fetch failed", "kept detail")
 	local deleted = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":true,"warnings":[]}')
-	eq(deleted.title, "Deleted\u{A0}worktree and branch feat", "deleted title")
+	eq(deleted.title, "Deleted\u{A0}worktree and branch", "deleted title")
 	eq(deleted.detail, nil, "deleted detail")
 	local policy = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":false,"warnings":[]}')
-	eq(policy.title, "Deleted\u{A0}worktree, kept branch feat", "policy title")
+	eq(policy.title, "Deleted\u{A0}worktree, kept branch", "policy title")
 	local detached = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":null,"branchDeleted":false,"warnings":[]}')
 	eq(detached.title, "Deleted\u{A0}worktree", "detached title")
 	local failed = deleted_toast(
@@ -302,7 +302,7 @@ test("the Deleted worktree toast says in its title what happened to the branch",
 			.. WORKTREE
 			.. '","branch":"feat","branchDeleted":false,"warnings":["branch feat not deleted: error: in use"]}'
 	)
-	eq(failed.title, "Deleted\u{A0}worktree, kept branch feat", "failed title")
+	eq(failed.title, "Deleted\u{A0}worktree, kept branch", "failed title")
 	eq(failed.detail, "branch feat not deleted", "failed detail")
 end)
 

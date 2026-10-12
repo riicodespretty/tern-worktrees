@@ -98,7 +98,7 @@ When you close a worktree tab, a picker opens with the placeholder `Closing work
 
 Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys. To select an item, type to filter the list or use the arrow keys. Then press Enter. When the picker fails to open, a toast shows the error. The tab closes, and the worktree stays.
 
-After a teardown, the toast title tells you what the teardown did with the branch: `Deleted worktree and branch <branch>`, `Deleted worktree, kept branch <branch>: not merged`, or `Deleted worktree, kept branch <branch>`. Its second line names the steps that failed, for example `fetch failed`.
+After a teardown, the toast title tells you what the teardown did with the branch: `Deleted worktree and branch`, `Deleted worktree, kept branch: not merged`, or `Deleted worktree, kept branch`. Its second line names the steps that failed, for example `fetch failed`.
 
 When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can hide Keep worktree, so check the selected item before you press Enter.
 

@@ -1513,14 +1513,14 @@ local function deleted_title(res: RemoveResult): string
 		return title
 	end
 	if res.branchDeleted then
-		return title .. " and branch " .. branch
+		return title .. " and branch"
 	end
 	for _, w in ipairs(res.warnings or {}) do
 		if w == KEPT_NOT_MERGED .. branch .. ": not merged" then
-			return title .. ", kept branch " .. branch .. ": not merged"
+			return title .. ", kept branch: not merged"
 		end
 	end
-	return title .. ", kept branch " .. branch
+	return title .. ", kept branch"
 end
 
 local function short_warnings(warnings: { string }?): string?
