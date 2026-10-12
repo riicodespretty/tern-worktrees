@@ -141,7 +141,7 @@ The options file lists the setup commands in the `setup` key, by the name with o
 - When `create` opens the tab, it waits a maximum of 30 s for the shell prompt with `tern wait <block> --until prompt`, then types the line with `tern run`. `setup.typed` is true when `create` typed the line.
 - The plugin runs `create --no-tab` and opens the tab itself. `type_setup` then reads `at_prompt` of the new shell pane each 200 ms, for a maximum of 30 s, and types the line with `cx:run`. The Carly `create` export replies only after the plugin types the line or gives up, so `setup.typed` and the warnings tell the agent the result.
 
-When the tab was open before, or when no prompt shows in 30 s, the line does not run. A warning of `create` or a toast of the plugin tells why. The commands run in the shell of the tab, where the user sees them and can stop them.
+When the tab was open before, when no tab opens, or when no prompt shows in 30 s, the line does not run. A warning of `create` or a toast of the plugin tells why. The commands run in the shell of the tab, where the user sees them and can stop them.
 
 ## Development
 

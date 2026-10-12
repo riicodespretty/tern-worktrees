@@ -712,9 +712,9 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 	end)
 end
 
--- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or nil when it
--- focused or unparked a pane that was there before.
-local function open_tab(cx: WindowCx, res: CreateResult): number?
+-- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, and the tab. The pane is
+-- nil when it focused or unparked a pane that was there before, and both are nil when no tab opened.
+local function open_tab(cx: WindowCx, res: CreateResult): (number?, number?)
 	local path = res.path
 	set_entry(path, { main = res.repo, branch = res.branch, changed = 0 })
 	local tab: number? = nil
@@ -809,7 +809,7 @@ local function open_tab(cx: WindowCx, res: CreateResult): number?
 			table.insert(paths, path)
 		end
 	end
-	return shellPane
+	return shellPane, tab
 end
 
 local SETUP_POLL_MS = 200
@@ -817,12 +817,14 @@ local SETUP_PROMPT_MS = 30000
 
 -- Types `setup.line` into the shell `pane` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
 -- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
--- the pane is gone. A nil `pane` means the tab was open before, so it only shows the line in a toast.
+-- the pane is gone. When `pane` is nil, it only shows the line in a toast: the tab was open before, or, when `tab` is
+-- nil too, no tab opened.
 -- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
 -- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
 local function type_setup(
 	cx: WindowCx,
 	pane: number?,
+	tab: number?,
 	setup: SetupLine?,
 	done: ((typed: boolean, warning: string?) -> ())?
 )
@@ -841,7 +843,7 @@ local function type_setup(
 		finish(false, warning)
 	end
 	if pane == nil then
-		give_up(cx, "setup not run: the tab was open before")
+		give_up(cx, if tab == nil then "setup not run: no tab opened" else "setup not run: the tab was open before")
 		return
 	end
 	local deadline = tern.now() + SETUP_PROMPT_MS
@@ -904,7 +906,8 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 			end
 			return
 		end
-		type_setup(cx2, open_tab(cx2, res), res.setup)
+		local pane, tab = open_tab(cx2, res)
+		type_setup(cx2, pane, tab, res.setup)
 		after_change(cx2, root)
 		local parts: { string } = { res.path }
 		local warnings = join_or_nil(res.warnings, "; ")
@@ -1350,12 +1353,13 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	end
 	local policy = config().teardown
 	local placeholderPrefix = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
+	local keepDetail = if tab ~= nil then "closes the tab, keeps the worktree" else "keeps the worktree"
 	-- `choose` already toasts a pick error. A pick error counts as Keep, so the tab closes even when the picker fails.
 	choose(cx, {
 		placeholder = placeholderPrefix .. short_path(path),
 		icon = "branch",
 		items = {
-			{ id = "keep", label = "Keep worktree", detail = "closes the tab, keeps the worktree" },
+			{ id = "keep", label = "Keep worktree", detail = keepDetail },
 			{ id = "teardown", label = "Tear down", detail = POLICY[policy] or ("Teardown policy: " .. policy) },
 		},
 	}, function(id, cx2, pickErr)
@@ -1564,9 +1568,9 @@ tern.carly.export("create", {
 		call:fail(err_text(err))
 	end, function(res: CreateResult, cx2)
 		resolve_sessions(cx2, function(cx3)
-			local pane: number? = nil
+			local pane: number?, tab: number? = nil, nil
 			local ok, openErr = pcall(function()
-				pane = open_tab(cx3, res)
+				pane, tab = open_tab(cx3, res)
 			end)
 			if not ok then
 				res.warnings = res.warnings or {}
@@ -1580,7 +1584,7 @@ tern.carly.export("create", {
 				call:reply(res)
 				return
 			end
-			type_setup(cx3, pane, setup, function(typed, warning)
+			type_setup(cx3, pane, tab, setup, function(typed, warning)
 				setup.typed = typed
 				if warning ~= nil then
 					res.warnings = res.warnings or {}

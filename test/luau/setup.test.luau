@@ -11,6 +11,7 @@ local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
 local NO_PROMPT = "setup not run: no shell prompt in 30 s"
 local OPEN_BEFORE = "setup not run: the tab was open before"
+local NO_TAB = "setup not run: no tab opened"
 
 -- The `create` answer for branch x, with `setup` as its JSON value.
 local function created(setup: string): string
@@ -167,6 +168,21 @@ test("a tab that was open before gets the open-before toast and no typing", func
 	eq(#cx.typed, 0, "typed")
 end)
 
+test("a create that opens no tab gets the no-tab toast and no typing", function()
+	local plugin, cx = window()
+	cx.layout.new_tab = function(_self: any, _opts: any): number?
+		return nil
+	end
+	create_x(plugin, cx, UNTYPED)
+	local toasts = setup_toasts(cx)
+	eq(#toasts, 1, "setup toasts")
+	eq(toasts[1].level, "error", "toast level")
+	eq(toasts[1].title, NO_TAB, "toast title")
+	eq(toasts[1].detail, LINE, "toast detail")
+	wait_ms(plugin, 31000)
+	eq(#cx.typed, 0, "typed")
+end)
+
 test("the first tab of a new session gets the setup commands", function()
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/other" } }
 	local cx = Stub.cx(panes, 1)
@@ -288,6 +304,19 @@ test("a Carly create into a tab that was open before replies at once with the wa
 	eq(#replies, 1, "replies")
 	eq(replies[1].setup.typed, false, "setup typed")
 	eq(replies[1].warnings[1], OPEN_BEFORE, "warning")
+	eq(#cx.typed, 0, "typed")
+end)
+
+test("a Carly create that opens no tab replies at once with the no-tab warning", function()
+	local plugin, cx = window()
+	cx.layout.new_tab = function(_self: any, _opts: any): number?
+		return nil
+	end
+	local replies = carly_create(plugin, cx)
+	eq(#replies, 1, "replies")
+	eq(replies[1].setup.typed, false, "setup typed")
+	eq(replies[1].warnings[1], NO_TAB, "warning")
+	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
 end)
 

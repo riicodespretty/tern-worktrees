@@ -162,7 +162,7 @@ Each key in the file replaces its default:
 
 A branch is merged when it is an ancestor of `origin/<default>`, or when its tip is the head commit of a merged pull request or an ancestor of that commit.
 
-For a new worktree only, `tern-wt` types the commands of its repository into the new worktree tab as one line, with `&&` between them. The name with owner comes from the GitHub URL of `origin`, so a repository without a GitHub origin gets no setup commands. `tern-wt` waits a maximum of 30 s for the shell prompt of the tab before it types the line. When the tab was open before or no prompt shows, the commands do not run. A toast or a `create` warning shows why.
+For a new worktree only, `tern-wt` types the commands of its repository into the new worktree tab as one line, with `&&` between them. The name with owner comes from the GitHub URL of `origin`, so a repository without a GitHub origin gets no setup commands. `tern-wt` waits a maximum of 30 s for the shell prompt of the tab before it types the line. When the tab was open before, no tab opens or no prompt shows, the commands do not run. A toast or a `create` warning shows why.
 
 ```json
 {

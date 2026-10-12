@@ -187,6 +187,16 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 	eq(#cx.commands, 0, "commands run")
 end)
 
+test("Keep worktree in the Worktree tab closed picker says only that it keeps the worktree", function()
+	local live = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE } }, 1)
+	local plugin = Stub.load({ env = ENV, files = FILES })
+	plugin.handlers.window_start(live)
+	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
+	plugin.handlers.tab_closed({ tab = 1 }, cx)
+	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
+	eq(cx.asked[1].opts.items[1].detail, "keeps the worktree", "items[1].detail")
+end)
+
 test("a failed teardown toasts the files, ignored ones first in the 10", function()
 	local _, cx = fail_teardown(DIRTY)
 	local toast = cx.toasts[#cx.toasts]
