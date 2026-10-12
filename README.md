@@ -10,7 +10,7 @@ Each tern-managed worktree lives in the worktree root, at `<root>/<repo>/<slug>`
 
 ## Requirements
 
-- Tern 0.5.3 or a newer version.
+- Tern 0.8.0 or a newer version.
 - [bun](https://bun.sh).
 - git.
 - [gh](https://cli.github.com), logged in (`gh auth login`).

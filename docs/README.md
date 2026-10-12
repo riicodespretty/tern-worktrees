@@ -127,7 +127,7 @@ A close through the CLI, for example `tern close <block>`, sends no event to the
 
 A tab that shares its worktree with a different open tab closes with no dialog. `tern-wt remove` removes the worktree before it closes the tabs, so an agent teardown shows no dialog.
 
-Tern 0.6 can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
+Tern can park a pane: the pane goes out of its tab, and its program goes on in the deck of the session. A parked pane has no tab. A parked pane in a worktree counts as a pane of a different tab, so a park that closes the last tab of a worktree opens no dialog. When the user opens a worktree, no pane of the worktree is in a tab, and one or more of its panes are parked, the window half calls `unpark` on the first parked pane and puts it in a tab of the session of the repository, with the name of the branch:
 
 - When that session has a tab, the window half switches to the session and moves the pane to a new tab.
 - When that session has no tab, because all of its panes are parked, the window half switches to the session, opens a tab, deals the pane into it and closes the shell of that tab.
@@ -140,6 +140,8 @@ When a teardown fails, the dialog offers Retry (Enter), Force delete (`⌘⌫`) 
 ## Development
 
 The gates are `vp check`, `vp run check:luau`, `vp run lint:prose` and `vp test --coverage`, with coverage at 100%. `vp run test.mutation` runs the mutation tests. It isolates `HOME`, the Tern config folder and the Tern daemon socket, so no mutant touches the real machine. `vp run smoke` tests the CLI against a Tern session daemon of its own, with its own config folder and socket, so it does not touch the Tern that you use.
+
+`tern plugin types types` refreshes `types/tern.d.luau`.
 
 Tern loads a linked plugin again when a file in its folder changes. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the window half again and again during a mutation run. Each load ends the open dialog: the dialog falls back to a small block that does not get the keys. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
 
