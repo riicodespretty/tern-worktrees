@@ -118,22 +118,24 @@ type PickerCache = {
 	startedAt: number,
 	again: boolean,
 	againOnline: boolean,
+	notify: boolean,
+	againNotify: boolean,
 }
 -- The last `branches` answer of each repository root, which the branch picker shows at once. `res` is nil while the
 -- first `branches` of the root runs, and `openFor` is then the press that waits for it. `startedAt` is the start of
--- the last run.
+-- the last run, and `notify` tells whether that run shows its toasts.
 local pickerCacheOfRoot: { [string]: PickerCache } = {}
-local refresh_picker_cache: (root: string, online: boolean) -> ()
+local refresh_picker_cache: (cx: WindowCx, root: string, online: boolean, notify: boolean) -> ()
 
 local function after_change(cx: WindowCx, root: string?)
 	if root == nil then
 		refresh_all_roots(cx)
 		for cachedRoot in pairs(pickerCacheOfRoot) do
-			refresh_picker_cache(cachedRoot, false)
+			refresh_picker_cache(cx, cachedRoot, false, false)
 		end
 	else
 		refresh(cx, root)
-		refresh_picker_cache(root, false)
+		refresh_picker_cache(cx, root, false, false)
 	end
 end
 
@@ -1110,13 +1112,11 @@ local function new_branch(cx: WindowCx, root: string, repoName: string, defaultB
 	end)
 end
 
--- Opens the picker of the branches, pull requests and worktrees of `root` in `res`.
-local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResult)
-	local repoName = tostring(res.name)
-	local defaultBranch = tostring(res.default)
+-- The items of the branch picker for `res`: `New branch…`, `Other repo…`, the pull requests, then the branches.
+local function branch_picker_items(res: BranchesResult): { PickItem }
 	local hasWorktree = branches_with_worktree(res)
 	local items: { PickItem } = {
-		{ id = "new", label = "New branch…", detail = "from " .. defaultBranch, icon = "plus" },
+		{ id = "new", label = "New branch…", detail = "from " .. tostring(res.default), icon = "plus" },
 		{ id = "other", label = "Other repo…", icon = "folder" },
 	}
 	for _, pr in ipairs(res.prs or {}) do
@@ -1136,6 +1136,30 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 			icon = "branch",
 		})
 	end
+	return items
+end
+
+-- Whether the branch picker shows the same items for `a` and `b`, in the same order: the same ids, labels, dim text
+-- and groups.
+local function same_branch_picker_items(a: BranchesResult, b: BranchesResult): boolean
+	local itemsA, itemsB = branch_picker_items(a), branch_picker_items(b)
+	if #itemsA ~= #itemsB then
+		return false
+	end
+	for i, x in ipairs(itemsA) do
+		local y = itemsB[i]
+		if x.id ~= y.id or x.label ~= y.label or x.detail ~= y.detail or x.group ~= y.group then
+			return false
+		end
+	end
+	return true
+end
+
+-- Opens the picker of the branches, pull requests and worktrees of `root` in `res`.
+local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResult)
+	local repoName = tostring(res.name)
+	local defaultBranch = tostring(res.default)
+	local items = branch_picker_items(res)
 	choose(
 		cx,
 		{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
@@ -1168,9 +1192,12 @@ end
 -- online answer with a failed pull request list keeps the pull requests of the cache. At most one runs per root at
 -- a time: a request during a run runs one more after it, online when one of those requests is online. A run with no
 -- answer after the timeout of `cli` counts as lost: a request then starts a new run, and the lost run's answer is
--- ignored. A failed run keeps the cache and shows no toast. While the entry has no answer yet, a failed run shows
--- the error and drops the entry, and an answer opens the picker when the press that waits for it is the latest press.
-refresh_picker_cache = function(root: string, online: boolean)
+-- ignored. A failed run keeps the cache. While the entry has no answer yet, a failed run shows the error and drops
+-- the entry, and an answer opens the picker when the press that waits for it is the latest press. With `notify`, the
+-- run shows a loading toast when it starts, and a run that refreshes an answer shows a toast when it ends: the cause
+-- of a failure, or whether the picker items changed. A `notify` request during a run that shows no toasts makes the
+-- run after it show them.
+refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, notify: boolean)
 	local cache = pickerCacheOfRoot[root]
 	if cache == nil then
 		return
@@ -1178,11 +1205,16 @@ refresh_picker_cache = function(root: string, online: boolean)
 	if cache.refreshing and not picker_run_lost(cache) then
 		cache.again = true
 		cache.againOnline = cache.againOnline or online
+		cache.againNotify = cache.againNotify or (notify and not cache.notify)
 		return
 	end
 	cache.refreshing = true
+	cache.notify = notify
 	local startedAt = tern.now()
 	cache.startedAt = startedAt
+	if notify then
+		cx:toast("info", if cache.res == nil then "Loading branches…" else "Refreshing branches…")
+	end
 	local args = { "branches", "--repo", root }
 	if not online then
 		table.insert(args, "--offline")
@@ -1199,6 +1231,9 @@ refresh_picker_cache = function(root: string, online: boolean)
 				toast_error(cx2, err)
 				return
 			end
+			if notify then
+				cx2:toast("error", "Branch refresh failed: " .. tostring(err.message or "tern-wt failed"))
+			end
 		else
 			if before ~= nil and not online then
 				res.prs = before.prs
@@ -1212,20 +1247,30 @@ refresh_picker_cache = function(root: string, online: boolean)
 			if openFor == startCount then
 				show_branch_picker(cx2, root, res)
 			end
+			if notify and before ~= nil then
+				cx2:toast(
+					"info",
+					if same_branch_picker_items(before, res)
+						then "Branches refreshed: no changes"
+						else "Branches refreshed: reopen to see changes"
+				)
+			end
 		end
 		if cache.again then
-			local againOnline = cache.againOnline
+			local againOnline, againNotify = cache.againOnline, cache.againNotify
 			cache.again = false
 			cache.againOnline = false
-			refresh_picker_cache(root, againOnline)
+			cache.againNotify = false
+			refresh_picker_cache(cx2, root, againOnline, againNotify)
 		end
 	end)
 end
 
--- Opens the branch picker of `root`. With no picker cache of `root` it waits for `branches`, keeps the answer as the
--- cache and shows it, or shows the error. A press while that `branches` runs starts no second one: the answer opens
--- the picker of the latest press. A press after that `branches` is lost starts it again. With a cache it shows the
--- cache at once and refreshes the cache in the background for the next open.
+-- Opens the branch picker of `root`. With no picker cache of `root` it shows a loading toast, waits for `branches`,
+-- keeps the answer as the cache and shows it, or shows the error. A press while that `branches` runs starts no second
+-- one and shows no second toast: the answer opens the picker of the latest press. A press after that `branches` is
+-- lost starts it again. With a cache it shows the cache at once and refreshes the cache in the background for the
+-- next open, with toasts when that refresh starts and ends.
 local function branch_picker(cx: WindowCx, root: string)
 	local cache = pickerCacheOfRoot[root]
 	local res = if cache ~= nil then cache.res else nil
@@ -1234,13 +1279,20 @@ local function branch_picker(cx: WindowCx, root: string)
 		return
 	end
 	if res == nil then
-		pickerCacheOfRoot[root] =
-			{ refreshing = false, startedAt = 0, again = false, againOnline = false, openFor = startCount }
-		refresh_picker_cache(root, true)
+		pickerCacheOfRoot[root] = {
+			refreshing = false,
+			startedAt = 0,
+			again = false,
+			againOnline = false,
+			notify = false,
+			againNotify = false,
+			openFor = startCount,
+		}
+		refresh_picker_cache(cx, root, true, true)
 		return
 	end
 	show_branch_picker(cx, root, res)
-	refresh_picker_cache(root, true)
+	refresh_picker_cache(cx, root, true, true)
 end
 
 local function github_picker(cx: WindowCx)

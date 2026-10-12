@@ -18,6 +18,12 @@ local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
 local PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":["pr list failed: gh auth"]}]]
+local SAME_PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],
+"worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":["pr list failed: gh auth"]}]]
+local LOADING = "info Loading branches…"
+local REFRESHING = "info Refreshing branches…"
+local CHANGED = "info Branches refreshed: reopen to see changes"
+local UNCHANGED = "info Branches refreshed: no changes"
 local CREATED =
 	'{"branch":"y","carried":[],"path":"/wt/worktrees/app/y","repo":"/r/app","status":"created","warnings":[]}'
 
@@ -59,6 +65,18 @@ local function item_ids(request: any): string
 	return table.concat(ids, " ")
 end
 
+-- The toasts of the branch picker cache so far, the ones with "branch" in the title, each as its level and title,
+-- joined by "; ". A create also shows its own toast.
+local function toast_lines(cx: any): string
+	local lines: { string } = {}
+	for _, t in cx.toasts do
+		if string.find(string.lower(t.title), "branch", 1, true) then
+			table.insert(lines, t.level .. " " .. t.title)
+		end
+	end
+	return table.concat(lines, "; ")
+end
+
 -- A window with pane 1 in REPO and `git.auto_fetch_minutes` 0, so the worktree rows run only `branches --offline`.
 local function window(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
@@ -93,13 +111,86 @@ local function open(plugin: Stub.Harness, cx: any): number
 	return #cx.asked
 end
 
--- Opens the branch picker a first time, which waits for `branches` and answers it with `stdout`.
+-- Opens the branch picker a first time, which waits for `branches` and answers it with `stdout`. Checks the loading
+-- toast, then clears the toasts.
 local function first_open(plugin: Stub.Harness, cx: any, stdout: string)
 	eq(open(plugin, cx), 0, "pickers before branches answers on the first open")
 	eq(#argv_lines(plugin, "branches"), 1, "branches calls on the first open")
 	plugin:answer("branches", stdout, 0, cx)
 	eq(#cx.asked, 1, "pickers after the first open")
+	eq(toast_lines(cx), LOADING, "toasts after the first open")
+	table.clear(cx.toasts)
 end
+
+test("the first open shows a loading toast while branches runs", function()
+	local plugin, cx = window()
+	open(plugin, cx)
+	eq(toast_lines(cx), LOADING, "toasts while the first branches runs")
+	open(plugin, cx)
+	eq(toast_lines(cx), LOADING, "toasts after a second press during the first branches")
+	plugin:answer("branches", BRANCHES, 0, cx)
+	eq(#cx.asked, 1, "pickers after branches answers")
+	eq(toast_lines(cx), LOADING, "toasts after branches answers")
+end)
+
+test("a cached open shows a refreshing toast", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	eq(open(plugin, cx), 2, "pickers after the second open")
+	eq(toast_lines(cx), REFRESHING, "toasts after the second open")
+end)
+
+test("a background branches that changes the picker toasts to reopen it", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	plugin:answer("branches", UPDATED, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the refresh")
+end)
+
+test("a background branches with the same picker toasts no changes", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. UNCHANGED, "toasts after the refresh")
+end)
+
+test("a background branches compares after it keeps the cached pull requests", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	plugin:answer("branches", SAME_PR_LIST_FAILED, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. UNCHANGED, "toasts after the refresh")
+end)
+
+test("a second press during a background branches shows one loading and one finish toast", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	open(plugin, cx)
+	eq(open(plugin, cx), 3, "pickers after the third press")
+	eq(toast_lines(cx), REFRESHING, "toasts after the third press")
+	plugin:answer("branches", UPDATED, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the refresh")
+	plugin:answer("branches", UPDATED, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the rerun")
+end)
+
+test("refreshes after a create or a teardown show no toasts", function()
+	local plugin, cx = window()
+	first_open(plugin, cx, BRANCHES)
+	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
+	plugin:answer("create", CREATED, 0, cx)
+	plugin:answer("branches", OFFLINE, 0, cx)
+	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
+	function call.wait(_self: any, _ms: number): any
+		return nil
+	end
+	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
+	plugin:answer("remove", '{"removed":"/wt/worktrees/app/x","branch":"x","warnings":[]}', 0, cx)
+	plugin:answer("branches", STALE, 0, cx)
+	eq(toast_lines(cx), "", "toasts after the create and the teardown")
+end)
 
 test("a second open shows the cached picker before branches answers", function()
 	local plugin, cx = window()
@@ -131,15 +222,14 @@ test("at most one background branches runs per repository", function()
 	eq(#argv_lines(plugin, "branches"), 1, "branches calls after the refresh answered")
 end)
 
-test("a failed background branches keeps the cache and shows no toast", function()
+test("a failed background branches keeps the cache and toasts the cause", function()
 	local plugin, cx = window()
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", FAILED, 1, cx)
-	eq(#cx.toasts, 0, "toasts after the failed refresh")
+	eq(toast_lines(cx), REFRESHING .. "; error Branch refresh failed: fetch failed", "toasts after the failed refresh")
 	eq(open(plugin, cx), 3, "pickers after the third open")
 	eq(item_ids(cx.asked[3]), item_ids(cx.asked[1]), "items of the third picker")
-	eq(#cx.toasts, 0, "toasts after the third open")
 end)
 
 test("a failed first branches still shows its error", function()
@@ -214,9 +304,11 @@ test("a press after a background branches that never answered for 120 s starts a
 	plugin:tick(120000)
 	eq(open(plugin, cx), 3, "pickers after a press at 120 s")
 	eq(#argv_lines(plugin, "branches"), 0, "branches calls after a press at 120 s")
+	eq(toast_lines(cx), REFRESHING, "toasts after a press at 120 s")
 	plugin:tick(1)
 	eq(open(plugin, cx), 4, "pickers after a press after 120 s")
 	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app", "new background branches")
+	eq(toast_lines(cx), REFRESHING .. "; " .. REFRESHING, "toasts after a press after 120 s")
 	plugin:answer("branches", UPDATED, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other b:main b:x b:y*", "items after the new background branches")
@@ -264,9 +356,12 @@ test("an open during an offline refresh runs one online after it", function()
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
 	eq(open(plugin, cx), 2, "pickers after the open")
+	eq(toast_lines(cx), "", "toasts after the open during the offline refresh")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app", "rerun")
+	eq(toast_lines(cx), REFRESHING, "toasts after the online rerun starts")
 	plugin:answer("branches", UPDATED, 0, cx)
+	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the online rerun")
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other b:main b:x b:y*", "items after the online rerun")
 end)

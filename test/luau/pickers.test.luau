@@ -146,10 +146,11 @@ end)
 test("a picker callback with a nil cx returns at once", function()
 	local plugin, cx = open_branch_picker()
 	local picker = cx.asked[1]
+	local toastsBefore = #cx.toasts
 	picker.next(item_by_id(picker, "b:x"), nil, nil)
 	picker.next(nil, "picker gone", nil)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.toasts, 0, "toasts")
+	eq(#cx.toasts, toastsBefore, "toasts")
 end)
 
 test("New branch prompts for the name of a branch from the default branch", function()
