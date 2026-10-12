@@ -60,6 +60,7 @@ interface Carry {
 interface Context {
   carry: Carry | null;
   clone: string | null;
+  fetchWarning: string | null;
   repoName: string;
   root: string;
   warnings: string[];
@@ -73,6 +74,7 @@ interface Target {
   forkPr: string | null;
   ompPrBranch: string | null;
   path: string;
+  pr: string | null;
 }
 
 interface Placement {
@@ -149,14 +151,14 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   const { headRefName, isCrossRepository } = JSON.parse(view) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository'>;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
-    return { branch, forkPr: pr, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, branch) };
+    return { branch, forkPr: pr, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, branch), pr };
   }
-  return { branch: headRefName, forkPr: null, ompPrBranch: `pr-${pr}`, path: worktreePath(ctx.wtRoot, ctx.repoName, headRefName) };
+  return { branch: headRefName, forkPr: null, ompPrBranch: `pr-${pr}`, path: worktreePath(ctx.wtRoot, ctx.repoName, headRefName), pr };
 };
 
 const sourceTarget = async (ctx: Context, source: Source): Promise<{ isNew: boolean; target: Target }> => {
   if ('branch' in source) {
-    const target = { branch: source.branch, forkPr: null, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, source.branch) };
+    const target = { branch: source.branch, forkPr: null, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, source.branch), pr: null };
     return { isNew: source.isNew, target };
   }
   return { isNew: false, target: await pullRequestTarget(ctx, source.pr) };
@@ -191,7 +193,13 @@ const addSpec = async (ctx: Context, target: Target, isNew: boolean): Promise<Ad
   if (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)) {
     return { detach: false, newBranch: target.branch, start: `origin/${target.branch}`, track: true };
   }
-  throw badArgs(`no branch ${target.branch}; pass --new to create it`);
+  if (target.pr === null) {
+    throw badArgs(`no branch ${target.branch}; pass --new to create it`);
+  }
+  if (ctx.fetchWarning === null) {
+    throw badArgs(`branch ${target.branch} of pull request ${target.pr} is not on origin; it may have been deleted`);
+  }
+  throw new CliError('git_failed', `no branch ${target.branch} of pull request ${target.pr} locally or on origin; ${ctx.fetchWarning}`);
 };
 
 const addArgs = (spec: AddSpec): string[] => [...(spec.detach ? ['--detach'] : []), ...(spec.newBranch === null ? [] : ['-b', spec.newBranch])];
@@ -437,15 +445,10 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   const { repo, source } = checkOptions(options);
   const root = await requireRepoRoot(repo);
   const [wtRoot, probe, withOrigin] = await Promise.all([worktreeRoot(), ompSettings(root), hasOrigin(root)]);
-  const warnings = probe.warning === null ? [] : [probe.warning];
+  const fetchWarning = withOrigin ? await fetchOrigin(root, true) : null;
+  const warnings = [probe.warning, fetchWarning].filter(warning => warning !== null);
   const clone = probe.settings?.clone === true ? probe.omp : null;
-  const ctx: Context = { carry: null, clone, repoName: path.basename(root), root, warnings, withOrigin, wtRoot };
-  if (ctx.withOrigin) {
-    const fetchWarning = await fetchOrigin(root, true);
-    if (fetchWarning !== null) {
-      ctx.warnings.push(fetchWarning);
-    }
-  }
+  const ctx: Context = { carry: null, clone, fetchWarning, repoName: path.basename(root), root, warnings, withOrigin, wtRoot };
   const { isNew, target } = await sourceTarget(ctx, source);
   let placed: Placed;
   let carried: string[] = [];

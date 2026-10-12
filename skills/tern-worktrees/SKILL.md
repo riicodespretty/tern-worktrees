@@ -37,7 +37,7 @@ When omp is installed and the omp setting `worktree.clone` is true in the reposi
 - `--repo`: a dir in the repository.
 - `--branch`: a local branch or a branch on `origin`. A name that git rejects gives `bad_args`.
 - `--new`: make `--branch` a new branch from `origin/<default>`. When the branch is local or on `origin`, `--new` gives `bad_args`, also when the branch has a worktree.
-- `--pr`: the branch of a pull request. A pull request from a fork gets the branch `pr-<number>`.
+- `--pr`: the branch of a pull request. A pull request from a fork gets the branch `pr-<number>`. When the head branch of a pull request from the same repository is not local and not on `origin`, `--pr` gives `git_failed` with the fetch failure when the fetch of `origin` failed, else `bad_args`: `origin` does not have the branch, for example because it was deleted.
 - `--relocate`: move the worktree of the branch into the worktree root from a path that is not in the root. Pass it only after the user says yes. When git refuses the move, `create` makes the worktree again in the root with plain `git worktree add`, but only when the first worktree has no work to lose: a changed file, a new file that git does not track, or a submodule commit that no remote holds. Ignored files that are hard to rebuild (see `remove`) are copied into the new worktree.
 - `--no-tab`: skip the tab. `create` then types no setup commands: `setup.typed` is false, and the caller types `setup.line`.
 
