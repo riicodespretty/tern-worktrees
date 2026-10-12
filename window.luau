@@ -172,13 +172,38 @@ local function in_index(cwd: string?): boolean
 	return false
 end
 
+-- Whether `a` and `b` differ in what a worktree segment shows: a worktree, its branch or its number of changed files.
+local function segments_differ(a: { [string]: IndexEntry? }, b: { [string]: IndexEntry? }): boolean
+	for path, x in pairs(a) do
+		local y = b[path]
+		if x ~= nil and (y == nil or x.branch ~= y.branch or x.changed ~= y.changed) then
+			return true
+		end
+	end
+	for path in pairs(b) do
+		if a[path] == nil then
+			return true
+		end
+	end
+	return false
+end
+
+-- Writes `written` as the worktree index, and redraws the status line when a worktree segment changes.
+local function write_index(written: { [string]: IndexEntry? })
+	local before = index
+	index = written
+	pcall(tern.kv.set, INDEX_KEY, index)
+	if segments_differ(before, index) then
+		tern.chrome.refresh()
+	end
+end
+
 -- Sets or deletes one entry. Other windows write the same kv key, so this reads kv again and changes only `path`.
 local function set_entry(path: string, entry: IndexEntry?)
 	local merged = table.clone(stored_index(index))
 	merged[path] = entry
-	index = merged
 	recent[path] = tern.now()
-	pcall(tern.kv.set, INDEX_KEY, index)
+	write_index(merged)
 end
 
 local function apply_list(res: ListResult, startedAt: number)
@@ -199,8 +224,7 @@ local function apply_list(res: ListResult, startedAt: number)
 			recent[path] = nil
 		end
 	end
-	index = fresh
-	pcall(tern.kv.set, INDEX_KEY, index)
+	write_index(fresh)
 end
 
 local refresh_index: () -> ()
@@ -1294,6 +1318,30 @@ tern.command({
 	keys = config().hotkeys.new,
 	run = start,
 })
+
+-- The worktree segment: the branch and the number of changed files of the worktree of the focused pane, from the
+-- worktree index only. Tern disables a formatter that takes more than 4 ms, and its `refresh` raises in one.
+tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
+	local found: string? = nil
+	for path in pairs(index) do
+		if is_under(pane.cwd, path) and (found == nil or #path > #found) then
+			found = path
+		end
+	end
+	local entry = if found ~= nil then index[found] else nil
+	if entry == nil then
+		return nil
+	end
+	local branch = entry.branch or "detached"
+	return {
+		{
+			text = if entry.changed > 0 then branch .. " · " .. entry.changed else branch,
+			icon = "branch",
+			tone = if entry.changed > 0 then "warn" else "muted",
+			command = "plugin.tern-worktrees.new",
+		},
+	}
+end)
 
 tern.override("close_tab", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()

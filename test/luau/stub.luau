@@ -27,8 +27,12 @@ export type Harness = {
 	kv: { [string]: any },
 	clock: number,
 	timers: { Timer },
+	-- The `tern.chrome.status` formatter, and how many times `tern.chrome.refresh` ran.
+	formatter: ((pane: any) -> any)?,
+	refreshes: number,
 	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
 	tick: (self: Harness, ms: number) -> (),
+	status: (self: Harness, cwd: string?) -> any,
 }
 
 local Stub = {}
@@ -152,6 +156,7 @@ function Stub.load(opts: Options): Harness
 	local env: { [string]: string } = opts.env or {}
 	local files: { [string]: string } = opts.files or {}
 	local defaultCx = opts.cx
+	local formatting = false
 	local h: Harness = {
 		commands = {},
 		overrides = {},
@@ -161,6 +166,7 @@ function Stub.load(opts: Options): Harness
 		kv = opts.kv or {},
 		clock = 0,
 		timers = {},
+		refreshes = 0,
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
 			answer(self, verb, stdout, status, cx or defaultCx or lastCx)
 		end,
@@ -182,6 +188,18 @@ function Stub.load(opts: Options): Harness
 					timer.fn(defaultCx or lastCx)
 				end
 			end
+		end,
+		-- Runs the status formatter for a focused pane in `cwd`. `tern.chrome.refresh` raises while it runs, as in Tern.
+		status = function(self: Harness, cwd: string?): any
+			local formatter = self.formatter
+			assert(formatter ~= nil, "no status formatter registered")
+			formatting = true
+			local ok, result = pcall(formatter, { pane = 1, cwd = cwd, program = "zsh", busy = false })
+			formatting = false
+			if not ok then
+				error(result, 0)
+			end
+			return result
 		end,
 	}
 
@@ -261,6 +279,17 @@ function Stub.load(opts: Options): Harness
 				end,
 			}
 		end,
+		chrome = {
+			status = function(fn: (pane: any) -> any)
+				h.formatter = fn
+			end,
+			refresh = function()
+				if formatting then
+					error("tern.chrome.refresh called from a formatter", 2)
+				end
+				h.refreshes += 1
+			end,
+		},
 	}
 
 	local file = opts.file or "window.luau"

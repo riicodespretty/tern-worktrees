@@ -113,6 +113,14 @@ A shell that starts in a worktree in the worktree root, a managed worktree or an
 
 A shell that starts in a folder that is not in the worktree root gets none of them. The values come from the last refresh of the plugin's list of worktrees, `tern-wt list --all`. The refresh runs when a Tern window starts, when a pane moves into a worktree in the root that the list does not have, and when a shell command ends or a pane gets focus in a worktree on the list, at most one time in 2 seconds. A worktree that the plugin makes or tears down changes the list at once. After a branch switch, a new shell gets the new branch after the next refresh. A shell keeps the variables it started with.
 
+### Worktree segment
+
+When the pane with the focus is in a worktree in the worktree root, a managed worktree or an omp-owned worktree, or in a folder of one, the Tern status line shows the worktree segment: the branch icon, the branch, and `· <n>` when the worktree has `n` changed files, for example `⎇ feat · 2`, in the warning color. Without changed files it shows the branch alone, in the muted color. A worktree with a detached `HEAD` shows `detached`. A pane in a folder that is not in the worktree root shows no segment.
+
+The count is the number of changed files that `tern-wt list --all` gives: changes to tracked files, staged or not, new files that git does not track, and submodule changes. Ignored files do not count. The segment changes with the plugin's list of worktrees, which the section above describes: after a shell command ends and when a pane gets focus in a worktree on the list, at most one time in 2 seconds, and at once when the plugin makes or tears down a worktree.
+
+A click on the segment opens the branch picker, as `cmd+shift+w` does.
+
 ## Work with omp
 
 When omp is on `PATH` and `TERN_WT_HOME` is not set, `tern-wt` shares omp's default worktree root, usually `~/.omp/wt`. It resolves the root as omp 18.8.6 does: `$OMP_WORKTREE_DIR`, else the omp setting `worktree.base`, else the `wt` folder of the omp data folder. omp removes the spaces at the two ends of each override, a leading `~` becomes the home folder, and a value that is still relative does not count. The omp data folder is `~/.omp`, or `~/$PI_CONFIG_DIR`, with `profiles/<profile>` added for the profile in `OMP_PROFILE` or `PI_PROFILE`. On Linux and macOS, `$XDG_DATA_HOME/omp` replaces it when that folder is on disk (`$XDG_DATA_HOME/omp/profiles/<profile>` for a profile). `tern-wt` reads the omp settings with `omp config list --json` run in `/`, so the config of a project does not move the root.
