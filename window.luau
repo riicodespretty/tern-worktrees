@@ -1213,9 +1213,9 @@ end
 -- answer after the timeout of `cli` counts as lost: a request then starts a new run, and the lost run's answer is
 -- ignored. A failed run keeps the cache. While the entry has no answer yet, a failed run shows the error and drops
 -- the entry, and an answer opens the picker when the press that waits for it is the latest press. With `notify`, the
--- run shows a loading toast when it starts, and a run that refreshes an answer shows a toast when it ends: the cause
--- of a failure, or whether the picker items changed. A `notify` request during a run that shows no toasts makes the
--- run after it show them.
+-- run shows a loading toast when it starts and a toast when it ends: a loaded toast for a first answer, else the
+-- cause of a failure, or whether the picker items changed. A `notify` request during a run that shows no toasts makes
+-- the run after it show them.
 refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, notify: boolean)
 	local cache = pickerCacheOfRoot[root]
 	if cache == nil then
@@ -1266,7 +1266,9 @@ refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, not
 			if openFor == startCount then
 				show_branch_picker(cx2, root, res)
 			end
-			if notify and before ~= nil then
+			if notify and before == nil then
+				cx2:toast("info", "Branches loaded")
+			elseif notify then
 				cx2:toast(
 					"info",
 					if same_branch_picker_items(before, res)
@@ -1286,10 +1288,10 @@ refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, not
 end
 
 -- Opens the branch picker of `root`. With no picker cache of `root` it shows a loading toast, waits for `branches`,
--- keeps the answer as the cache and shows it, or shows the error. A press while that `branches` runs starts no second
--- one and shows no second toast: the answer opens the picker of the latest press. A press after that `branches` is
--- lost starts it again. With a cache it shows the cache at once and refreshes the cache in the background for the
--- next open, with toasts when that refresh starts and ends.
+-- keeps the answer as the cache and shows it with a loaded toast, or shows the error. A press while that `branches`
+-- runs starts no second one and shows no second toast: the answer opens the picker of the latest press. A press after
+-- that `branches` is lost starts it again. With a cache it shows the cache at once and refreshes the cache in the
+-- background for the next open, with toasts when that refresh starts and ends.
 local function branch_picker(cx: WindowCx, root: string)
 	local cache = pickerCacheOfRoot[root]
 	local res = if cache ~= nil then cache.res else nil

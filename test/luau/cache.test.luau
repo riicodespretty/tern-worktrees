@@ -21,6 +21,7 @@ local PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x","
 local SAME_PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],
 "worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":["pr list failed: gh auth"]}]]
 local LOADING = "info Loading branches…"
+local LOADED = "info Branches loaded"
 local REFRESHING = "info Refreshing branches…"
 local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
@@ -112,17 +113,17 @@ local function open(plugin: Stub.Harness, cx: any): number
 end
 
 -- Opens the branch picker a first time, which waits for `branches` and answers it with `stdout`. Checks the loading
--- toast, then clears the toasts.
+-- and loaded toasts, then clears the toasts.
 local function first_open(plugin: Stub.Harness, cx: any, stdout: string)
 	eq(open(plugin, cx), 0, "pickers before branches answers on the first open")
 	eq(#argv_lines(plugin, "branches"), 1, "branches calls on the first open")
 	plugin:answer("branches", stdout, 0, cx)
 	eq(#cx.asked, 1, "pickers after the first open")
-	eq(toast_lines(cx), LOADING, "toasts after the first open")
+	eq(toast_lines(cx), LOADING .. "; " .. LOADED, "toasts after the first open")
 	table.clear(cx.toasts)
 end
 
-test("the first open shows a loading toast while branches runs", function()
+test("the first open shows a loading toast while branches runs, then a loaded toast", function()
 	local plugin, cx = window()
 	open(plugin, cx)
 	eq(toast_lines(cx), LOADING, "toasts while the first branches runs")
@@ -130,7 +131,7 @@ test("the first open shows a loading toast while branches runs", function()
 	eq(toast_lines(cx), LOADING, "toasts after a second press during the first branches")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after branches answers")
-	eq(toast_lines(cx), LOADING, "toasts after branches answers")
+	eq(toast_lines(cx), LOADING .. "; " .. LOADED, "toasts after branches answers")
 end)
 
 test("a cached open shows a refreshing toast", function()

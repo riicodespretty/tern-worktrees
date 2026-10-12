@@ -12,7 +12,6 @@ local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":
 local NO_PROMPT = "setup not run: no shell prompt in 30 s"
 local OPEN_BEFORE = "setup not run: the tab was open before"
 local NO_TAB = "setup not run: no tab opened"
-local NO_NEW_SHELL = "setup not run: no new shell in the tab"
 
 -- The `create` answer for branch x, with `setup` as its JSON value.
 local function created(setup: string): string
