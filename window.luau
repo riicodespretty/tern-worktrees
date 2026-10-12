@@ -111,11 +111,20 @@ local function refresh_all_roots(cx: WindowCx)
 	end
 end
 
+type PickerCache = { res: BranchesResult, refreshing: boolean, again: boolean, againOnline: boolean }
+-- The last `branches` answer of each repository root, which the branch picker shows at once.
+local pickerCacheOfRoot: { [string]: PickerCache } = {}
+local refresh_picker_cache: (root: string, online: boolean) -> ()
+
 local function after_change(cx: WindowCx, root: string?)
 	if root == nil then
 		refresh_all_roots(cx)
+		for cachedRoot in pairs(pickerCacheOfRoot) do
+			refresh_picker_cache(cachedRoot, false)
+		end
 	else
 		refresh(cx, root)
+		refresh_picker_cache(root, false)
 	end
 end
 
@@ -1090,56 +1099,113 @@ local function new_branch(cx: WindowCx, root: string, repoName: string, defaultB
 	end)
 end
 
+-- Runs `branches` for `root` in the background and keeps its answer as the picker cache of `root`, when `root` has
+-- a cache. With `online` false it runs `branches --offline` and keeps the pull requests and the default branch of
+-- the cache. At most one runs per root at a time: a request during a run runs one more after it, online when one of
+-- those requests is online. A failed run keeps the cache and shows no toast.
+refresh_picker_cache = function(root: string, online: boolean)
+	local cache = pickerCacheOfRoot[root]
+	if cache == nil then
+		return
+	end
+	if cache.refreshing then
+		cache.again = true
+		cache.againOnline = cache.againOnline or online
+		return
+	end
+	cache.refreshing = true
+	local args = { "branches", "--repo", root }
+	if not online then
+		table.insert(args, "--offline")
+	end
+	cli(args, function(res: BranchesResult, err)
+		cache.refreshing = false
+		if err == nil then
+			if not online then
+				res.prs = cache.res.prs
+				res.default = cache.res.default
+			end
+			cache.res = res
+		end
+		if cache.again then
+			local againOnline = cache.againOnline
+			cache.again = false
+			cache.againOnline = false
+			refresh_picker_cache(root, againOnline)
+		end
+	end)
+end
+
+-- Opens the picker of the branches, pull requests and worktrees of `root` in `res`.
+local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResult)
+	local repoName = tostring(res.name)
+	local defaultBranch = tostring(res.default)
+	local hasWorktree = branches_with_worktree(res)
+	local items: { PickItem } = {
+		{ id = "new", label = "New branch…", detail = "from " .. defaultBranch, icon = "plus" },
+		{ id = "other", label = "Other repo…", icon = "folder" },
+	}
+	for _, pr in ipairs(res.prs or {}) do
+		table.insert(items, {
+			id = "pr:" .. tostring(pr.number),
+			label = pr_label(pr) .. " · " .. tostring(pr.branch),
+			group = "Pull requests",
+			icon = "merge",
+		})
+	end
+	for _, branch in ipairs(res.branches or {}) do
+		table.insert(items, {
+			id = "b:" .. branch,
+			label = branch,
+			detail = if hasWorktree[branch] then "worktree" else nil,
+			group = "Branches",
+			icon = "branch",
+		})
+	end
+	choose(
+		cx,
+		{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
+		function(id, cx2)
+			if id == nil then
+				return
+			end
+			local branch = string.match(id, "^b:(.*)$")
+			local pr = string.match(id, "^pr:(.*)$")
+			if id == "new" then
+				new_branch(cx2, root, repoName, defaultBranch)
+			elseif id == "other" then
+				repo_picker(cx2)
+			elseif branch ~= nil then
+				create(cx2, root, { "--branch=" .. branch })
+			elseif pr ~= nil then
+				create(cx2, root, { "--pr", pr })
+			end
+		end
+	)
+end
+
+-- Opens the branch picker of `root`. With no picker cache of `root` it waits for `branches`, keeps the answer as the
+-- cache and shows it, or shows the error. With a cache it shows the cache at once and refreshes the cache in the
+-- background for the next open.
 local function branch_picker(cx: WindowCx, root: string)
+	local cached = pickerCacheOfRoot[root]
+	if cached ~= nil then
+		show_branch_picker(cx, root, cached.res)
+		refresh_picker_cache(root, true)
+		return
+	end
 	local started = startCount
 	cli_or_toast({ "branches", "--repo", root }, function(res: BranchesResult, cx2)
+		local cache = pickerCacheOfRoot[root]
+		if cache == nil then
+			pickerCacheOfRoot[root] = { res = res, refreshing = false, again = false, againOnline = false }
+		else
+			cache.res = res
+		end
 		if startCount ~= started then
 			return
 		end
-		local repoName = tostring(res.name)
-		local defaultBranch = tostring(res.default)
-		local hasWorktree = branches_with_worktree(res)
-		local items: { PickItem } = {
-			{ id = "new", label = "New branch…", detail = "from " .. defaultBranch, icon = "plus" },
-			{ id = "other", label = "Other repo…", icon = "folder" },
-		}
-		for _, pr in ipairs(res.prs or {}) do
-			table.insert(items, {
-				id = "pr:" .. tostring(pr.number),
-				label = pr_label(pr) .. " · " .. tostring(pr.branch),
-				group = "Pull requests",
-				icon = "merge",
-			})
-		end
-		for _, branch in ipairs(res.branches or {}) do
-			table.insert(items, {
-				id = "b:" .. branch,
-				label = branch,
-				detail = if hasWorktree[branch] then "worktree" else nil,
-				group = "Branches",
-				icon = "branch",
-			})
-		end
-		choose(
-			cx2,
-			{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
-			function(id, cx3)
-				if id == nil then
-					return
-				end
-				local branch = string.match(id, "^b:(.*)$")
-				local pr = string.match(id, "^pr:(.*)$")
-				if id == "new" then
-					new_branch(cx3, root, repoName, defaultBranch)
-				elseif id == "other" then
-					repo_picker(cx3)
-				elseif branch ~= nil then
-					create(cx3, root, { "--branch=" .. branch })
-				elseif pr ~= nil then
-					create(cx3, root, { "--pr", pr })
-				end
-			end
-		)
+		show_branch_picker(cx2, root, res)
 	end)
 end
 
