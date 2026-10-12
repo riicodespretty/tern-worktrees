@@ -14,12 +14,6 @@ ls)
 new)
 	echo '{"block":42}'
 	;;
-plugin)
-	if [ "${2:-}" = link ]; then
-		mkdir -p "$TERN_CONFIG_DIR/plugins"
-		printf '%s\n' "$3" >"$TERN_CONFIG_DIR/plugins/tern-worktrees.path"
-	fi
-	;;
 wait)
 	exit "${FAKE_TERN_WAIT_STATUS:-0}"
 	;;

@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { repoRoot } from './git.ts';
-import { envVar, isUnder, PLUGIN_ID, ternConfigDir } from './paths.ts';
+import { envVar, isUnder } from './paths.ts';
 import { CliError, must, run } from './proc.ts';
 
 /** A pane of a Tern tab, as `tern ls --json` prints it. */
@@ -116,19 +115,4 @@ export const sessionForRepo = async (root: string): Promise<TernSession | null> 
   const cwds = [...new Set(placed.map(({ block }) => cwdOf(block)))];
   const roots = new Map(await Promise.all(cwds.map(async cwd => [cwd, cwd === null ? null : await repoRoot(cwd)] as const)));
   return placed.find(({ block }) => roots.get(cwdOf(block)) === root)?.session ?? null;
-};
-
-/** Where Tern loads the plugin from: the linked package directory, `"installed"` for a copied install, or null when Tern does not have the plugin. */
-export const pluginLinked = (): string | null => {
-  const plugins = path.join(ternConfigDir(), 'plugins');
-  const pathFile = path.join(plugins, `${PLUGIN_ID}.path`);
-  if (existsSync(pathFile)) {
-    return readFileSync(pathFile, 'utf-8').trim();
-  }
-  return existsSync(path.join(plugins, PLUGIN_ID)) ? 'installed' : null;
-};
-
-/** Links the plugin package at `dir` into Tern. */
-export const pluginLink = async (dir: string): Promise<void> => {
-  await tern(['plugin', 'link', dir]);
 };

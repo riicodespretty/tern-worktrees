@@ -1,0 +1,15 @@
+{
+  "branch": "main",
+  "carried": [],
+  "owner": "main",
+  "path": "{{repo}}",
+  "repo": "{{repo}}",
+  "setup": null,
+  "status": "reused",
+  "tab": {
+    "block": 1,
+    "opened": false,
+    "session": "work"
+  },
+  "warnings": []
+}

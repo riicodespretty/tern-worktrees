@@ -24,6 +24,16 @@ Each command prints one JSON object, and each failure has an error code. The win
 
 `branches` lists the local branches and the branches on `origin`, each once, newest commit first. `branches --offline` reads only local refs: no fetch, no pull request list and no GitHub lookup of the default branch. The worktree rows use it, so most of their refreshes cost no network traffic.
 
+### The links of the CLI and the skill
+
+Tern 0.8.3 has no install hook, and the manifest has no field for a CLI or a skill. `tern plugin install` only copies the package into the plugin folder of Tern. Thus, each time the window half loads, it runs `tern-wt setup` from the plugin folder. `setup` links `~/.local/bin/tern-wt` and `~/.omp/agent/skills/tern-worktrees` to the real path of the package that it runs from. The user then installs with one command, with no checkout and no `ln -s`.
+
+The window half loads when a window starts, and also when `tern plugin install`, `tern plugin reload` or a change in a linked plugin folder loads the plugin again in an open window. In a sandbox on Tern 0.8.3, an install into an open window sent no `window_start` event, so a `window_start` handler made no links until the next window. A load has a budget of 50 ms, and Tern disables a plugin that goes over it until the next reload. Thus the load only starts a 0 ms timer, and the timer starts `setup`. The load does not start a process or wait for one.
+
+`setup` runs at each load, so a second run must change nothing. When a link points at its target, `setup` keeps it, and the window half shows no toast. When `setup` makes or replaces a link, one `Linked tern-wt and the tern-worktrees skill` toast shows. `setup` checks each link and its parent folders before it changes anything, so a `path_conflict` keeps the machine as it was, and the toast is `Setup failed: <message>`. `setup` writes only in `~/.local/bin` and `~/.omp`, not in the plugin folder, so it does not cause Tern to load a linked plugin again.
+
+Two windows can start at the same time, so two `setup` runs can make the same link. When `setup` cannot make a link because the link is there and points at the same target, the other run made it, and `setup` gives `kept`, not `path_conflict`.
+
 ### omp
 
 omp makes worktrees too: pull request checkouts, `/wt` session worktrees and task sandboxes, all in one worktree root. When omp is installed, `tern-wt` uses that root, omp's default worktree root, usually `~/.omp/wt`, so the user has one folder for all worktrees, and omp lists the managed worktrees as its own. `TERN_WT_HOME` still wins, so the tests and the smoke test do not touch the real root. `src/omp.ts` is the one module that runs omp.
@@ -35,6 +45,8 @@ The root comes from `omp config list --json` run in `/`, so the config of a proj
 Clone mode comes from the same command run in the repository, so the config of the project applies, and it applies for each root, `TERN_WT_HOME` included. When that run fails, `create` uses plain git and adds a warning. omp 18.8.6 moves an invalid `.omp/config.yml` aside to `.omp/config.yml.broken-<id>` when it reads it, so this probe can change the repository.
 
 A worktree at `<root>/<repo>/<slug>` is a managed worktree. Each other worktree in the root is omp-owned: `create` opens it where it is, `list` does not show it, `branches` marks it with `owner: "omp"`, and `remove` refuses it with `not_managed`. `create` matches an omp-owned worktree by its branch. omp checks out pull request `<n>` on the branch `pr-<n>`, also for a pull request from the same repository, where `create --pr` targets the head branch. Thus, when no worktree has the head branch, `create` reuses the omp-owned worktree on `pr-<n>` when the git config key `branch.pr-<n>.ompPrHeadRef` that omp writes is not set or names the head branch.
+
+When the main checkout has the branch, also the head branch of `create --pr`, `create` opens the main checkout where it is, with `owner: "main"` and the status `reused`. `create` does not offer Relocate for the main checkout, also with `--relocate`. git cannot move the main working tree, and a move of the branch into a new worktree must first change the `HEAD` of the main checkout. The user did not ask for that change.
 
 `omp worktree clear` deletes each worktree in the root that omp sees as orphaned, also without `--all`, and `--all` deletes each one, all with no check for uncommitted changes. omp sees a live managed worktree as orphaned when git has `worktree.useRelativePaths=true`, or when the main checkout moved. The plugin cannot stop that, so the docs tell the user to run `omp worktree clear --dry-run` first.
 
@@ -134,7 +146,7 @@ The window half finds the session of a repository from the folders of the panes 
 
 When a teardown fails, an error toast gives the cause in its title, `Teardown failed: <cause>`, with no second line. The title wraps, so a long cause stays readable. For a worktree with work to lose, the cause lists at most 10 files. The hard-to-rebuild files get the first positions in the 10, and the changes fill the positions that are left. The cause gives the changes first, then the hard-to-rebuild files, then `and <n> more` for the files that it does not show. In the message of a different error, the folder name replaces the path of the worktree: a full path in the worktree root is so long that the error after it does not fit in the toast or the picker.
 
-A picker then lists Retry, then Force delete. Its placeholder is the title of the toast, `Teardown failed: <cause>`, so the user sees the cause while they select, also after the toast goes. The placeholder does not name the worktree: the tab and the picker before it name the worktree, and a short cause fits in the placeholder in full. Escape keeps the worktree, and after the close keys it also keeps the tab. Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work.
+A picker then lists Retry, then Force delete. Its placeholder is the title of the toast, `Teardown failed: <cause>`, so the user sees the cause while they select, also after the toast goes. The placeholder does not name the worktree: the tab and the picker before it name the worktree, and a short cause fits in the placeholder in full. Escape keeps the worktree, and after the close keys it also keeps the tab. Tear down and Force delete are the two steps of a removal: Tear down stops when the worktree has work to lose, and only Force delete discards that work. Tear down, Retry and Force delete each show a `Deleting worktree <branch>…` toast while `remove` runs, because a teardown can run for seconds and the tab stays open until it ends.
 
 ### The worktree index
 
@@ -143,7 +155,7 @@ The worktree index lists each worktree in the worktree root, managed and omp-own
 Three writes change the index:
 
 - A `list --all` result replaces the whole index. A `list --all` runs when the window starts. A refresh also runs it when the `cwd` of a pane moves to a folder in the worktree root that the index does not have, and when a tab or pane opens in such a folder. A refresh also runs it when a pane in an indexed worktree gets focus or ends a shell command. At most one `list --all` runs at a time, and a refresh starts at most one in each 2 s. A refresh request in that gap waits, and a timer runs it one time at the end of the gap. When a `list --all` gives no answer in 120 s, the timeout of each CLI call, the next refresh starts a new one, and the window half drops the late answer of the first one. The new index keeps the value of this window for each entry that this window set or deleted at or after the start of that `list --all`.
-- When `create` answers, the window half sets the entry of the worktree, with the `owner` from the `create` answer, before it opens the tab, so the first shell of the tab gets the worktree variables.
+- When `create` answers, the window half sets the entry of the worktree, with the `owner` from the `create` answer, before it opens the tab, so the first shell of the tab gets the worktree variables. An answer with the owner `main` sets no entry: the main checkout is not in the worktree root, and its shells must not get the worktree variables or the worktree segment. Thus the tab of the main checkout is not a worktree tab, and its close opens no teardown picker.
 - A teardown that succeeds deletes the entry, also from the Carly `remove` export.
 
 Each window writes the same key. Thus `set_entry` reads `tern.kv` again and changes only its one entry, so a window keeps the entries of the other windows.
@@ -181,18 +193,22 @@ Homebrew has only lune 0.10.5. Install lune 0.11.0 from the `v0.11.0` release of
 
 Tern loads a linked plugin again when a file in its folder changes. Each load drops each pending `cx:pick` and `cx:prompt`: its callback does not run, so the step that waits on it does not start. Thus the plugin code and the Luau tests write no file into the plugin folder. `vp run test.mutation` writes `.stryker-tmp/` and `reports/` in the repository, so a Tern window that has this repository as a linked plugin loads the plugin again and again during a mutation run. For a live test during a mutation run, link a copy of the repository without `.stryker-tmp/` and `reports/`.
 
+A git command that writes in the `.git` folder of the checkout also loads the plugin again, for example the `git fetch` of an online `branches`. A load drops the state of the window half, also the run of `branches` that a press waits for. Thus a window that links this checkout opens no branch picker for this repository: `Loading branches…` shows, then nothing. The branch pickers of other repositories still open. To work on this repository from Tern, link a copy of the checkout, or install the plugin with `tern plugin install`.
+
+To run the plugin from a checkout, link it with `tern plugin link <checkout>`. The plugin then loads from the checkout, so `setup` points the two links at the checkout. After a subsequent `tern plugin install`, the load of the installed copy points the links back at it.
+
 `vp run lint:prose` runs vale from `@vvago/vale`. The install script of that package downloads the vale binary from the GitHub API with no token, and shared CI runners hit the limit for calls with no token, so the install failed with HTTP 403. `patches/@vvago%2Fvale@3.24.0.patch` sends `GITHUB_TOKEN` with that download when it is set, and the setup action gives each CI job its token. A vale update needs a new patch: run `bun patch @vvago/vale`, make the same change, and run `bun patch --commit node_modules/@vvago/vale`.
 
 ### Releases
 
 The repository uses git flow, with [git-flow-next](https://git-flow.sh/) (`brew install git-flow-next`):
 
-| Branch              | Holds                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| `main`              | The released code. This is the default branch, so `tern plugin install` and `setup` get it. |
-| `develop`           | The next release. A pull request for a change goes into `develop`.                          |
-| `release/<version>` | One release, from `develop`.                                                                |
-| `hotfix/<version>`  | One fix of a release, from `main`.                                                          |
+| Branch              | Holds                                                                            |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `main`              | The released code. This is the default branch, so `tern plugin install` gets it. |
+| `develop`           | The next release. A pull request for a change goes into `develop`.               |
+| `release/<version>` | One release, from `develop`.                                                     |
+| `hotfix/<version>`  | One fix of a release, from `main`.                                               |
 
 A release or a hotfix goes into `main` with a merge commit, and `main` then merges back into `develop`. The tag is the bare version, for example `0.1.0`, with no `v` prefix. The committed `.gitflow` file holds the settings: the branch names, the prefixes, merge commits on finish, and a push after finish. The first `git flow` command in a clone asks to copy `.gitflow` into the local configuration, and `git flow config sync` copies it again.
 

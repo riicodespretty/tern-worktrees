@@ -184,6 +184,57 @@ test("window_start writes the worktree index from list --all", function()
 	eq(omp.owner, "omp", "owner of the omp-owned worktree")
 end)
 
+-- A `tern-wt setup` answer with the action `bin` for the CLI link and `skill` for the skill link.
+local function setup_answer(bin: string, skill: string): string
+	return `\{"links":[\{"path":"/home/u/.local/bin/tern-wt","target":"/p/bin/tern-wt","action":"{bin}"},`
+		.. `\{"path":"/home/u/.omp/agent/skills/tern-worktrees","target":"/p/skills/tern-worktrees","action":"{skill}"}]}`
+end
+
+-- Loads the window half, checks that the load itself starts no `setup`, that its timer then runs `setup` one time, and
+-- that a window start runs no second one, and answers it with `stdout` and `status`. Gives the toasts that the answer
+-- added, as `level title` lines.
+local function toasts_after_setup(stdout: string, status: number): string
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
+	local plugin = Stub.load({ env = ENV })
+	eq(#argv_lines(plugin, "setup"), 0, "setup calls during the load")
+	plugin:tick(0)
+	eq(table.concat(argv_lines(plugin, "setup"), ";"), "setup", "setup calls after the timer")
+	plugin.handlers.window_start(cx)
+	eq(table.concat(argv_lines(plugin, "setup"), ";"), "setup", "setup calls after window_start")
+	local before = #cx.toasts
+	plugin:answer("setup", stdout, status, cx)
+	local lines: { string } = {}
+	for i = before + 1, #cx.toasts do
+		table.insert(lines, cx.toasts[i].level .. " " .. cx.toasts[i].title)
+	end
+	return table.concat(lines, "; ")
+end
+
+local LINKED = "info Linked tern-wt and the tern-worktrees skill"
+
+for _, case in
+	{
+		{ what = "both links created", bin = "created", skill = "created", toasts = LINKED },
+		{ what = "one link replaced", bin = "kept", skill = "replaced", toasts = LINKED },
+		{ what = "one link created", bin = "created", skill = "kept", toasts = LINKED },
+		{ what = "both links kept", bin = "kept", skill = "kept", toasts = "" },
+	}
+do
+	test(`loading the window half runs setup, and an answer with {case.what} toasts "{case.toasts}"`, function()
+		eq(toasts_after_setup(setup_answer(case.bin, case.skill), 0), case.toasts, "toasts")
+	end)
+end
+
+test("a failed setup at load toasts Setup failed with its message", function()
+	local failed =
+		'{"error":{"code":"path_conflict","message":"/home/u/.local/bin/tern-wt exists and is not a symbolic link"}}'
+	eq(
+		toasts_after_setup(failed, 1),
+		"error Setup failed: /home/u/.local/bin/tern-wt exists and is not a symbolic link",
+		"toasts"
+	)
+end)
+
 -- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
 -- `owner`.
 local function pickers_after_close_of_created_tab(owner: string): number
@@ -210,6 +261,160 @@ test("a create answer with owner tern makes a worktree tab, and owner omp does n
 	eq(pickers_after_close_of_created_tab("tern"), 1, "pickers after a close of the tab of owner tern")
 	eq(pickers_after_close_of_created_tab("omp"), 0, "pickers after a close of the tab of owner omp")
 end)
+
+-- Picks `main` in the branch picker of a window with pane 1 in `cwd`, a dir of /r/app, then answers the `create` with
+-- the main checkout of /r/app and the `resolve` after it. /r/app exists on disk, so a close of its tab would ask when
+-- the window took it for a worktree.
+local function create_main_checkout(cwd: string): (Stub.Harness, any)
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = cwd } }, 1)
+	local plugin = Stub.load({ env = ENV, files = { ["/r/app/.git"] = "" }, kv = { worktreeRoot = ROOT } })
+	local resolved = `\{"repos":[\{"dir":"{cwd}","root":"/r/app","name":"app"}]}`
+	plugin.commands.new.run(cx)
+	plugin:answer("resolve", resolved, 0, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	local picker = cx.asked[#cx.asked]
+	for _, it in picker.opts.items do
+		if it.id == "b:main" then
+			picker.next(it, nil, cx)
+		end
+	end
+	eq(#argv_lines(plugin, "create"), 1, "create calls")
+	plugin:answer("create", Stub.fixture("create-main-checkout", { repo = "/r/app" }), 0, cx)
+	plugin:answer("resolve", resolved, 0, cx)
+	return plugin, cx
+end
+
+-- The last toast of `cx` as `level title · detail`.
+local function last_toast(cx: any): string
+	local t = cx.toasts[#cx.toasts]
+	return `{t.level} {t.title} · {t.detail}`
+end
+
+-- Closes `tab`, with one pane left in /tmp, and checks that the close runs no `config` and opens no picker. A close
+-- that asks runs `config` first.
+local function expect_no_close_picker(plugin: Stub.Harness, tab: number)
+	local after = Stub.cx({ { pane = 3, tab = 3, cwd = "/tmp" } }, 3)
+	local configs = #argv_lines(plugin, "config")
+	plugin.handlers.tab_closed({ tab = tab }, after)
+	eq(#argv_lines(plugin, "config"), configs, "config calls after the close")
+	eq(#after.asked, 0, "pickers after the close")
+end
+
+test("a create answer with owner main focuses the tab of the main checkout and writes no index entry", function()
+	local plugin, cx = create_main_checkout("/r/app")
+	eq(table.concat(cx.effects, "; "), "focus 1", "effects")
+	eq((plugin.kv.worktreeIndex or {})["/r/app"], nil, "index entry of the main checkout")
+	eq(last_toast(cx), "success Opened main checkout · /r/app", "toast")
+	eq(plugin.overrides.close_tab(cx), false, "close_tab result")
+	expect_no_close_picker(plugin, 1)
+end)
+
+test("a create answer with owner main opens a tab for the main checkout when no tab shows it", function()
+	local plugin, cx = create_main_checkout(WORKTREE)
+	eq(table.concat(cx.effects, "; "), "new_tab → tab 2, pane 2; name_tab 2 main", "effects")
+	eq((plugin.kv.worktreeIndex or {})["/r/app"], nil, "index entry of the main checkout")
+	eq(last_toast(cx), "success Opened main checkout · /r/app", "toast")
+	expect_no_close_picker(plugin, 2)
+end)
+
+test("the Carly create export replies with the main checkout answer and writes no index entry", function()
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+	local replied: any = nil
+	local call = {
+		reply = function(_self: any, res: any)
+			replied = res
+		end,
+		fail = function(_self: any, err: string)
+			error(err)
+		end,
+	}
+	function call.wait(_self: any, _ms: number): any
+		return nil
+	end
+	plugin.exports.create("/r/app", "main", nil, cx, call)
+	plugin:answer("create", Stub.fixture("create-main-checkout", { repo = "/r/app" }), 0, cx)
+	plugin:answer("resolve", RESOLVED, 0, cx)
+	eq(replied ~= nil and `{replied.owner} {replied.path} {replied.status}`, "main /r/app reused", "reply")
+	eq((plugin.kv.worktreeIndex or {})["/r/app"], nil, "index entry of the main checkout")
+	eq(table.concat(cx.effects, "; "), "focus 1", "effects")
+end)
+
+-- A `branches` answer where the main checkout holds feat, the head branch of pull request 7, and a worktree holds x.
+local CHECKOUTS = [[{"name":"app","default":"main","branches":["main","feat","x"],]]
+	.. [["prs":[{"number":7,"title":"T","branch":"feat"}],"prsFailed":false,"worktrees":[]]
+	.. [[{"branch":"feat","path":"/r/app","managed":false,"owner":null,"main":true},]]
+	.. [[{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+
+-- The `level title` of the last toast after `start` runs the pending `create` of a window with pane 1 in /r/app.
+local function progress_toast(start: (plugin: Stub.Harness, cx: any) -> ()): string
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+	start(plugin, cx)
+	eq(#argv_lines(plugin, "create"), 1, "create calls")
+	local t = cx.toasts[#cx.toasts]
+	return `{t.level} {t.title}`
+end
+
+-- Picks the item `id` in the branch picker of /r/app with CHECKOUTS.
+local function pick(id: string): (plugin: Stub.Harness, cx: any) -> ()
+	return function(plugin, cx)
+		plugin.commands.new.run(cx)
+		plugin:answer("resolve", RESOLVED, 0, cx)
+		plugin:answer("branches", CHECKOUTS, 0, cx)
+		local picker = cx.asked[#cx.asked]
+		for _, it in picker.opts.items do
+			if it.id == id then
+				picker.next(it, nil, cx)
+			end
+		end
+	end
+end
+
+-- Runs the worktree row `title` of /r/app with CHECKOUTS.
+local function run_row(title: string): (plugin: Stub.Harness, cx: any) -> ()
+	return function(plugin, cx)
+		plugin.handlers.cwd({ pane = 1, path = "/r/app" }, cx)
+		plugin:answer("resolve", RESOLVED, 0, cx)
+		plugin:answer("branches", CHECKOUTS, 0, cx)
+		for _, spec in plugin.commands do
+			if spec.group == "Worktrees" and spec.title == title then
+				spec.run(cx)
+			end
+		end
+	end
+end
+
+for _, case in
+	{
+		{
+			what = "the branch of the main checkout in the branch picker",
+			start = pick("b:feat"),
+			toast = "info Opening main checkout…",
+		},
+		{
+			what = "a pull request of that branch in the branch picker",
+			start = pick("pr:7"),
+			toast = "info Opening main checkout…",
+		},
+		{
+			what = "the worktree row of that branch",
+			start = run_row("app: feat"),
+			toast = "info Opening main checkout…",
+		},
+		{
+			what = "the worktree row of that pull request",
+			start = run_row("app: #7 T"),
+			toast = "info Opening main checkout…",
+		},
+		{ what = "a branch with a worktree", start = pick("b:x"), toast = "info Reusing worktree x…" },
+		{ what = "a branch with no checkout", start = pick("b:main"), toast = "info Creating worktree main…" },
+	}
+do
+	test(`a create of {case.what} toasts "{case.toast}" before the answer`, function()
+		eq(progress_toast(case.start), case.toast, "progress toast")
+	end)
+end
 
 test("a tab that the plugin did not open becomes a worktree tab after one list --all", function()
 	local X = "/wt/worktrees/app/x"

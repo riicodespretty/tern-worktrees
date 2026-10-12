@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Feature
+
+- Make `tern plugin install github.com/riicodespretty/tern-worktrees` the one install route. Each time the plugin loads in a Tern window, also after an install into an open window, it runs `tern-wt setup`, which links `~/.local/bin/tern-wt` and the omp skill to the installed copy of the plugin. A `Linked tern-wt and the tern-worktrees skill` toast shows when a link changes, and a `Setup failed: …` toast shows when `setup` fails
+- Stop linking the Tern plugin in `tern-wt setup`. Its output has no `plugin` field, and a copied install of the plugin no longer gives `path_conflict`
+- Give `kept`, not `path_conflict`, when a second `tern-wt setup` that runs at the same time makes the same link first
+- Open the main checkout when the picked branch or the head branch of `--pr` is checked out there. Before, `create` failed with `branch_in_main_checkout`, which is gone. `create` gives `owner: "main"` and the status `reused`, and `--relocate` does not move the main checkout. The plugin focuses or opens its tab with an `Opening main checkout…` toast, then an `Opened main checkout` toast. It writes no worktree index entry for it, so its close opens no teardown picker
+
+### Fix
+
+- Show the `Deleting worktree <branch>…` toast for Tear down and Retry, not only for Force delete
+
 ## [0.2.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.2.0 "2026-10-13")
 
 ### Feature

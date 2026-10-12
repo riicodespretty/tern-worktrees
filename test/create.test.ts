@@ -119,14 +119,6 @@ describe('create command', () => {
       expect(existsSync(managedPath('nope'))).toBeFalsy();
     });
 
-    it('rejects the branch of the main checkout', async () => {
-      await expect(run(['--repo', repo.dir, '--branch', 'main', '--no-tab'])).rejects.toMatchObject({
-        code: 'branch_in_main_checkout',
-        extra: { existing: repo.dir },
-        message: `main is checked out in the main checkout at ${repo.dir}`,
-      });
-    });
-
     it('rejects a target path that holds a plain dir', async () => {
       mkdirSync(managedPath('feature-x'), { recursive: true });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({

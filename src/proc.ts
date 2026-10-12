@@ -8,7 +8,6 @@ export type ErrorCode =
   | 'not_a_repo'
   | 'not_managed'
   | 'path_conflict'
-  | 'branch_in_main_checkout'
   | 'worktree_exists_elsewhere'
   | 'dirty_worktree'
   | 'git_failed'

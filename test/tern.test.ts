@@ -3,32 +3,14 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { repoRoot } from '../src/git.ts';
 import type { TernBlock } from '../src/tern.ts';
-import {
-  blocksUnder,
-  close,
-  focus,
-  ls,
-  newSession,
-  newTab,
-  pluginLink,
-  pluginLinked,
-  rename,
-  sessionForRepo,
-  TERN_APP_BIN,
-  ternBin,
-  typeInto,
-  waitForPrompt,
-} from '../src/tern.ts';
-import type { Sandbox } from './helpers.ts';
+import { blocksUnder, close, focus, ls, newSession, newTab, rename, sessionForRepo, TERN_APP_BIN, ternBin, typeInto, waitForPrompt } from '../src/tern.ts';
 import { FIXTURE_BIN, tempDir, ternLog, tmpRepo, useSandbox, writeTernListing } from './helpers.ts';
-
-let sandbox: Sandbox;
 
 const block = (id: number, cwd: string | null): TernBlock => ({ cwd, id, title: `block ${id}` });
 
 describe('tern', () => {
   beforeEach(() => {
-    sandbox = useSandbox();
+    useSandbox();
   });
 
   describe(ternBin, () => {
@@ -154,23 +136,6 @@ describe('tern', () => {
       const third = { id: 5, name: 'third', tabs: [{ blocks: [block(30, repo.dir)], id: 6, name: 'c' }] };
       writeTernListing({ sessions: [first, second, third] });
       await expect(Promise.all([sessionForRepo(repo.dir), sessionForRepo(otherRepo.dir), sessionForRepo(tempDir('none'))])).resolves.toStrictEqual([second, first, null]);
-    });
-  });
-
-  describe(pluginLinked, () => {
-    it('reads the link file, else a copied install, else null', async () => {
-      expect(pluginLinked()).toBeNull();
-      mkdirSync(path.join(sandbox.configDir, 'plugins', 'tern-worktrees'), { recursive: true });
-      expect(pluginLinked()).toBe('installed');
-      await pluginLink('/src/tern-worktrees');
-      expect(ternLog()).toStrictEqual(['plugin link /src/tern-worktrees --json']);
-      expect(pluginLinked()).toBe('/src/tern-worktrees');
-    });
-
-    it('raises tern_failed when linking fails', async () => {
-      vi.stubEnv('FAKE_TERN_FAIL', 'plugin');
-      await expect(pluginLink('/src')).rejects.toMatchObject({ code: 'tern_failed' });
-      expect(pluginLinked()).toBeNull();
     });
   });
 });

@@ -3,7 +3,6 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { userHome } from '../paths.ts';
 import { CliError } from '../proc.ts';
-import { pluginLink, pluginLinked } from '../tern.ts';
 
 /** What `setup` did to a symbolic link. */
 export type LinkAction = 'created' | 'kept' | 'replaced';
@@ -17,7 +16,6 @@ export interface SetupLink {
 
 /** The output of `setup`. */
 export interface SetupResult {
-  plugin: 'linked' | 'already';
   links: SetupLink[];
 }
 
@@ -59,42 +57,52 @@ const linkAction = (link: string, target: string): LinkAction => {
   return onDisk(link, () => readlinkSync(link)) === target ? 'kept' : 'replaced';
 };
 
-const planLink = (link: string, target: string): SetupLink => {
+type PlannedLink = Pick<SetupLink, 'path' | 'target'>;
+
+const planLink = (link: string, target: string): PlannedLink => {
   const ancestor = existingDirAbove(link);
-  const action = linkAction(link, target);
-  if (action !== 'kept') {
+  if (linkAction(link, target) !== 'kept') {
     onDisk(ancestor, () => {
       accessSync(ancestor, constants.W_OK);
     });
   }
-  return { action, path: link, target };
+  return { path: link, target };
 };
 
-const applyLink = (link: SetupLink): void => {
-  onDisk(link.path, () => {
+/** Makes `link`. When a second `setup`, from a window that starts at the same time, made the same link first, the link is `kept`. */
+const makeLink = (link: SetupLink): SetupLink => {
+  try {
+    symlinkSync(link.target, link.path);
+    return link;
+  } catch (error) {
+    // SAFETY: `symlinkSync` throws a Node error, which has an optional string `code`.
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST' && lstatSync(link.path).isSymbolicLink() && readlinkSync(link.path) === link.target) {
+      return { ...link, action: 'kept' };
+    }
+    throw error;
+  }
+};
+
+/** Checks the link again, because a second `setup` can change it after the plan, then makes or replaces it. */
+const applyLink = (planned: PlannedLink): SetupLink => {
+  const link: SetupLink = { ...planned, action: linkAction(planned.path, planned.target) };
+  if (link.action === 'kept') {
+    return link;
+  }
+  return onDisk(link.path, () => {
     if (link.action === 'replaced') {
       unlinkSync(link.path);
     }
-    if (link.action !== 'kept') {
-      mkdirSync(path.dirname(link.path), { recursive: true });
-      symlinkSync(link.target, link.path);
-    }
+    mkdirSync(path.dirname(link.path), { recursive: true });
+    return makeLink(link);
   });
 };
 
-const checkPlugin = (pkg: string): SetupResult['plugin'] => {
-  const linked = pluginLinked();
-  if (linked !== null && linked !== pkg) {
-    throw new CliError('path_conflict', `the tern-worktrees plugin comes from ${linked}, not ${pkg}`, { path: linked });
-  }
-  return linked === pkg ? 'already' : 'linked';
-};
-
 /**
- * `setup`: links the plugin into Tern, `~/.local/bin/tern-wt` to the CLI and `~/.omp/agent/skills/tern-worktrees` to the skill.
- * It checks each link, its parent directories and the plugin before it changes anything, so a `path_conflict` keeps the machine as it was. A second run changes nothing.
+ * `setup`: links `~/.local/bin/tern-wt` to the CLI and `~/.omp/agent/skills/tern-worktrees` to the skill of the package that it runs from.
+ * It checks each link and its parent directories before it changes anything, so a `path_conflict` keeps the machine as it was. A second run changes nothing.
  */
-export const run = async (args: string[]): Promise<SetupResult> => {
+export const run = (args: string[]): SetupResult => {
   parseArgs({ args, options: {} });
   const pkg = realpathSync(path.join(import.meta.dirname, '..', '..'));
   const home = userHome();
@@ -102,12 +110,5 @@ export const run = async (args: string[]): Promise<SetupResult> => {
     planLink(path.join(home, '.local', 'bin', 'tern-wt'), path.join(pkg, 'bin', 'tern-wt')),
     planLink(path.join(home, '.omp', 'agent', 'skills', 'tern-worktrees'), path.join(pkg, 'skills', 'tern-worktrees')),
   ];
-  const plugin = checkPlugin(pkg);
-  for (const link of links) {
-    applyLink(link);
-  }
-  if (plugin === 'linked') {
-    await pluginLink(pkg);
-  }
-  return { links, plugin };
+  return { links: links.map(applyLink) };
 };

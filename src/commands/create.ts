@@ -21,8 +21,8 @@ export type CreateStatus = 'created' | 'relocated' | 'reused';
 /** How long `create` waits for the shell prompt of the tab it opened before it types the setup commands. */
 const SETUP_PROMPT_SECONDS = 30;
 
-/** Who owns the worktree that `create` gives. */
-type Owner = Exclude<WorktreeOwner, null>;
+/** Who owns the worktree that `create` gives: `tern` or `omp` as {@link worktreeOwner} says, or `main` for the main checkout. */
+type Owner = Exclude<WorktreeOwner, null> | 'main';
 
 /** The Tern tab that shows the worktree. */
 export interface CreatedTab {
@@ -33,7 +33,7 @@ export interface CreatedTab {
 
 /**
  * The output of `create`. `carried` lists the ignored files that a relocation copied into the rebuilt worktree, and is empty otherwise.
- * `owner` is `tern` for a tern-managed worktree and `omp` for an omp-owned one.
+ * `owner` is `tern` for a tern-managed worktree, `omp` for an omp-owned one and `main` for the main checkout.
  * `setup` holds the setup commands of a new worktree as one `line`. `typed` is true when `create` typed the line into the tab that it opened. `setup` is null for a reused or relocated worktree, and for a repository without setup commands.
  */
 export interface CreateResult {
@@ -94,7 +94,7 @@ interface Placement {
   relocate: boolean;
 }
 
-/** `owner` is the {@link worktreeOwner} of `path`. `carried` lists the hard-to-rebuild files that a rebuilt relocation copied into the worktree, and is empty otherwise. */
+/** `owner` is the {@link worktreeOwner} of `path`, or `main` for the main checkout. `carried` lists the hard-to-rebuild files that a rebuilt relocation copied into the worktree, and is empty otherwise. */
 interface Placed {
   branch: string;
   carried: string[];
@@ -400,7 +400,7 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
     return { branch: target.branch, carried: [], owner: samePath ? 'tern' : 'omp', path: samePath ? target.path : existing.path, status: 'reused' };
   }
   if (existing.main) {
-    throw new CliError('branch_in_main_checkout', `${target.branch} is checked out in the main checkout at ${existing.path}`, { existing: existing.path });
+    return { branch: target.branch, carried: [], owner: 'main', path: existing.path, status: 'reused' };
   }
   if (!placement.relocate) {
     throw new CliError('worktree_exists_elsewhere', `${target.branch} has a worktree at ${existing.path}; pass --relocate to move it to ${target.path}`, {
@@ -473,7 +473,7 @@ const typeSetup = async (ctx: Context, line: string, tab: CreatedTab | null): Pr
 /**
  * `create --repo <dir> (--branch <name> [--new] | --pr <number>) [--relocate] [--no-tab]`:
  * creates or reuses the tern-managed worktree of a branch or pull request, and opens or focuses its Tern tab.
- * An omp-owned worktree of the branch opens where it is, and so does the omp checkout of a same-repository pull request, on branch `pr-<n>`.
+ * An omp-owned worktree of the branch opens where it is, and so do the omp checkout of a same-repository pull request, on branch `pr-<n>`, and the main checkout.
  * omp clone mode, the omp setting `worktree.clone` in the repository, makes new worktrees through omp.
  */
 export const run = async (args: string[]): Promise<CreateResult> => {

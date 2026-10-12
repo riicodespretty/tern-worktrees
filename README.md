@@ -17,29 +17,25 @@ Each tern-managed worktree lives in the worktree root, at `<root>/<repo>/<slug>`
 
 ## Install
 
-Use one of the two routes. `tern-wt setup` reports `path_conflict` when Tern holds the plugin from a different folder.
-
-### With `tern-wt setup`
-
-```sh
-gh repo clone riicodespretty/tern-worktrees ~/Developer/riicodespretty/tern-worktrees
-~/Developer/riicodespretty/tern-worktrees/bin/tern-wt setup
-```
-
-`tern-wt setup` links the plugin into Tern, `~/.local/bin/tern-wt` to the CLI, and `~/.omp/agent/skills/tern-worktrees` to the skill. A second run keeps each link as it is.
-
-### With `tern plugin install`
-
 ```sh
 tern plugin install github.com/riicodespretty/tern-worktrees
 ```
 
-This route installs the plugin only. Link the CLI and the skill by hand to a checkout of this repository:
+Each time Tern loads the plugin in a window, the plugin runs `tern-wt setup` from its installed copy: when the window starts, and when `tern plugin install` adds or updates the plugin in an open window. `setup` links `~/.local/bin/tern-wt` to the CLI and `~/.omp/agent/skills/tern-worktrees` to the skill, the two in that copy. When it makes or changes a link, the toast `Linked tern-wt and the tern-worktrees skill` shows. When the links are correct, no toast shows. When a file or a folder that is not a symbolic link is at a link path, `setup` changes nothing, and a `Setup failed: …` toast gives the path.
+
+Put `~/.local/bin` on your `PATH`, so that your shell and your agents find `tern-wt`.
+
+To update the plugin, run:
 
 ```sh
-mkdir -p ~/.local/bin ~/.omp/agent/skills
-ln -s <checkout>/bin/tern-wt ~/.local/bin/tern-wt
-ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
+tern plugin install github.com/riicodespretty/tern-worktrees --force
+```
+
+To remove the plugin, remove it from Tern, then delete the two links:
+
+```sh
+tern plugin remove tern-worktrees
+rm ~/.local/bin/tern-wt ~/.omp/agent/skills/tern-worktrees
 ```
 
 ## Usage
@@ -53,6 +49,8 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 The first open of the branch picker for a repository in a Tern window waits for its branches and pull requests, with a `Loading branches…` toast. When the list is ready, a `Branches loaded` toast replaces it. Each subsequent open shows the last list at once and gets a new list in the background, with a `Refreshing branches…` toast. When the new list is ready, a toast tells you to reopen the picker to see the changes, or that it found no changes. When the refresh fails, an error toast gives the cause.
 
 While `tern-wt` makes the worktree, a `Creating worktree <branch>…` toast shows, or `Reusing worktree <branch>…` when the branch has a worktree. When it is done, a `Created worktree` or `Reused worktree` toast replaces it. The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab. The `Created worktree` or `Reused worktree` toast shows when the tab opens, before the plugin types the setup line. When the setup line cannot run, a `Setup not run: …` toast then replaces it and stays.
+
+When the main checkout of the repository has the branch that you picked, the plugin opens the main checkout. An `Opening main checkout…` toast shows, then an `Opened main checkout` toast replaces it. The plugin focuses the tab of the main checkout, else it opens a tab there. The plugin does not move the main checkout, and the tab of the main checkout is not a worktree tab, so its close opens no teardown picker.
 
 Each picker, prompt and confirmation of the plugin uses the Tern picker or the Tern prompt. In a picker, a path in your home folder starts with `~`.
 
@@ -98,14 +96,14 @@ When you close a worktree tab, a picker opens with the placeholder `Closing work
 
 Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys. To select an item, type to filter the list or use the arrow keys. Then press Enter. When the picker fails to open, a toast shows the error. The tab closes, and the worktree stays.
 
-After a teardown, the toast title tells you what the teardown did with the branch: `Deleted worktree and branch`, `Deleted worktree, kept branch: not merged`, or `Deleted worktree, kept branch`. Its second line names the steps that failed, for example `fetch failed`.
+While a teardown runs, a `Deleting worktree <branch>…` toast shows. After the teardown, the toast title tells you what the teardown did with the branch: `Deleted worktree and branch`, `Deleted worktree, kept branch: not merged`, or `Deleted worktree, kept branch`. Its second line names the steps that failed, for example `fetch failed`.
 
 When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can hide Keep worktree, so check the selected item before you press Enter.
 
 When the teardown fails, for example because of uncommitted changes, a new file that git does not track, or an ignored `.env` file, an error toast gives the cause, `Teardown failed: <cause>`. For a worktree with work to lose, the cause lists the files, at most 10. The ignored files that are hard to rebuild get the first positions in the 10. For the files that it does not show, the cause adds `and <n> more`. A second picker then shows the same `Teardown failed: <cause>` in its placeholder, for example `Teardown failed: 1 file with work to lose: ?? .setup-ran`, and offers:
 
 - Retry: runs the teardown again.
-- Force delete: removes the worktree and discards its uncommitted work. A `Deleting worktree <branch>…` toast shows while it runs, and a `Deleted worktree` toast replaces it when the worktree is gone.
+- Force delete: removes the worktree and discards its uncommitted work.
 
 Escape keeps the tab and the worktree.
 
@@ -194,7 +192,7 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 
 [`skills/tern-worktrees/SKILL.md`](skills/tern-worktrees/SKILL.md) is the reference for each command: its arguments, its output fields, the next step for each error code, and the rules agents follow for teardown. The commands:
 
-- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree, and opens its tab. Its `owner` field is `tern` or `omp`. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
+- `create`: makes or reuses the tern-managed worktree of a branch or a pull request, or reuses its omp-owned worktree or the main checkout, and opens its tab. Its `owner` field is `tern`, `omp` or `main`. For a new worktree, its `setup` field holds the setup commands. `create` types them into the tab that it opened.
 - `remove`: tears down a tern-managed worktree as the teardown policy says, and closes its tabs.
 - `list`: lists the tern-managed worktrees, each with its `owner` and its number of `changed` files. `--all` adds the omp-owned worktrees.
 - `branches`: lists the branches, the open pull requests and the worktrees of a repository, with the owner of each worktree and `main` true for the main checkout. `--offline` reads only local refs, with no fetch and no pull requests.
@@ -203,9 +201,9 @@ A Tern key preset or a different plugin can bind the chord first. When `cmd+shif
 - `clone`: clones a GitHub repository to the clone root.
 - `new-repo`: makes a GitHub repository, then clones it.
 - `config`: prints the options file with each default filled in.
-- `tern-wt setup`: links the plugin, the CLI and the skill.
+- `setup`: links `~/.local/bin/tern-wt` and the skill to the package that it runs from. The plugin runs it each time it loads in a Tern window.
 
-Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `branch_in_main_checkout`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `omp_failed`, `tern_failed`.
+Each command prints one JSON object. On failure it exits 1 with one of these error codes: `bad_args`, `config_invalid`, `not_a_repo`, `not_managed`, `path_conflict`, `worktree_exists_elsewhere`, `dirty_worktree`, `git_failed`, `gh_failed`, `omp_failed`, `tern_failed`.
 
 The plugin also gives Carly the exports `create`, `list` and `remove`, which run the CLI commands of the same names. For a new worktree with setup commands, the `create` export replies when the plugin typed them into the tab or gave up, at most 30 s after the tab opened, so `setup.typed` and `warnings` mean what they mean in the CLI output.
 

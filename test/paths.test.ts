@@ -2,7 +2,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { envVar, expandHome, userHome, isUnder, ompRootDir, pluginData, slug, ternConfigDir, worktreeOwner, worktreePath, worktreeRoot } from '../src/paths.ts';
+import { envVar, expandHome, userHome, isUnder, ompRootDir, pluginData, slug, worktreeOwner, worktreePath, worktreeRoot } from '../src/paths.ts';
 import type { OmpDirsEnv, WorktreeRoot } from '../src/paths.ts';
 import { ompLog, tempDir, useOmp, useSandbox } from './helpers.ts';
 import type { Sandbox } from './helpers.ts';
@@ -219,26 +219,6 @@ describe('paths', () => {
       symlinkSync(path.join(dir, 'real'), path.join(dir, 'link'));
       const root: WorktreeRoot = { dir: path.join(dir, 'link'), omp: true };
       expect(worktreeOwner(root, '/src/aoyama', path.join(dir, 'real', 'aoyama', 'feature-x'))).toBe('tern');
-    });
-  });
-
-  describe(ternConfigDir, () => {
-    it.each([
-      [{ TERN_CONFIG_DIR: '/cfg' }, 'linux', '/cfg'],
-      [{ TERN_CONFIG_DIR: '/cfg' }, 'darwin', '/cfg'],
-      [{ TERN_CONFIG_DIR: '' }, 'darwin', DARWIN_TERN],
-      [{ TERN_CONFIG_DIR: '' }, 'linux', '/home/me/.config/tern'],
-      [{ TERN_CONFIG_DIR: '', XDG_CONFIG_HOME: '/xdg' }, 'linux', '/xdg/tern'],
-    ] as const)('with %j on %s gives %s', (env, platform, expected) => {
-      for (const [name, value] of Object.entries(env)) {
-        vi.stubEnv(name, value);
-      }
-      expect(ternConfigDir(platform)).toBe(expected);
-    });
-
-    it('defaults to the current platform', () => {
-      vi.stubEnv('TERN_CONFIG_DIR', '');
-      expect(ternConfigDir()).toBe(ternConfigDir(process.platform));
     });
   });
 

@@ -16,7 +16,7 @@ export const envVar = (name: string): string | undefined => {
 /** The home directory of the user: `$HOME`, else the one the OS reports. */
 export const userHome = (): string => envVar('HOME') ?? homedir();
 
-const ternDir = (platform: NodeJS.Platform, xdgVar: 'XDG_CONFIG_HOME' | 'XDG_STATE_HOME', xdgDefault: string): string => {
+const ternStateDir = (platform: NodeJS.Platform): string => {
   const configured = envVar('TERN_CONFIG_DIR');
   if (configured !== undefined) {
     return configured;
@@ -24,15 +24,11 @@ const ternDir = (platform: NodeJS.Platform, xdgVar: 'XDG_CONFIG_HOME' | 'XDG_STA
   if (platform === 'darwin') {
     return path.join(userHome(), 'Library', 'Application Support', 'Tern');
   }
-  return path.join(envVar(xdgVar) ?? path.join(userHome(), xdgDefault), 'tern');
+  return path.join(envVar('XDG_STATE_HOME') ?? path.join(userHome(), '.local', 'state'), 'tern');
 };
 
-/** The Tern configuration directory: `$TERN_CONFIG_DIR`, else the platform default. */
-export const ternConfigDir = (platform: NodeJS.Platform = process.platform): string => ternDir(platform, 'XDG_CONFIG_HOME', '.config');
-
 /** The plugin data directory that holds the options file: `$TERN_PLUGIN_DATA`, else in the Tern state directory. */
-export const pluginData = (platform: NodeJS.Platform = process.platform): string =>
-  envVar('TERN_PLUGIN_DATA') ?? path.join(ternDir(platform, 'XDG_STATE_HOME', path.join('.local', 'state')), 'plugin-data', PLUGIN_ID);
+export const pluginData = (platform: NodeJS.Platform = process.platform): string => envVar('TERN_PLUGIN_DATA') ?? path.join(ternStateDir(platform), 'plugin-data', PLUGIN_ID);
 
 /** Expands a leading `~` to the home directory. */
 export const expandHome = (target: string): string => {

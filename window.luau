@@ -47,7 +47,7 @@ type SetupLine = { line: string, typed: boolean }
 type CreateResult = {
 	branch: string,
 	carried: { string },
-	owner: "tern" | "omp",
+	owner: "tern" | "omp" | "main",
 	path: string,
 	repo: string,
 	setup: SetupLine?,
@@ -69,6 +69,7 @@ type RemoveResult = {
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
 type ConfigResult = { teardown: string }
+type SetupResult = { links: { { path: string, target: string, action: "created" | "kept" | "replaced" } } }
 type IndexEntry = { main: string, branch: string?, changed: number, owner: "tern" | "omp" }
 type SessionIndex = {
 	byId: { [number]: SessionInfo },
@@ -904,8 +905,10 @@ local function type_setup(
 	poll(cx)
 end
 
--- The CLI made, reused or relocated the worktree of `res`. Writes its entry in the worktree index, resolves the
--- sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then starts to type its setup line.
+-- The CLI made, reused or relocated the worktree of `res`, or gave the main checkout. Writes the entry of a worktree in
+-- the worktree index, resolves the sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then
+-- starts to type its setup line. The index holds only worktrees in the worktree root, so the main checkout gets no
+-- entry.
 -- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
 -- setup step ends, or at once when the tab step raises; `res.setup.typed` and `res.warnings` then hold the outcome.
 -- A tab step that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
@@ -924,7 +927,9 @@ local function worktree_opened(
 			settled(res)
 		end
 	end
-	set_entry(res.path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
+	if res.owner ~= "main" then
+		set_entry(res.path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
+	end
 	resolve_sessions(cx, function(cx2)
 		local ok, paneOrErr, noShellReason = pcall(open_tab, cx2, res)
 		if not ok then
@@ -957,20 +962,31 @@ local function worktree_torn_down(cx: WindowCx, removed: string, repo: string)
 	refresh_branches(cx, repo)
 end
 
+-- Where the branch of a create is checked out before the create: nowhere (`new`), in a worktree (`worktree`) or in
+-- the main checkout (`main`). It selects the progress toast only.
+type Checkout = "new" | "worktree" | "main"
+
 local function create(
 	cx: WindowCx,
 	root: string,
 	extra: { string },
 	name: string,
-	exists: boolean,
+	checkout: Checkout,
 	retry: ((cx: WindowCx) -> ())?
 )
 	local args = { "create", "--repo", root, "--no-tab" }
 	for _, a in ipairs(extra) do
 		table.insert(args, a)
 	end
-	local verb = if table.find(extra, "--relocate") then "Relocating" elseif exists then "Reusing" else "Creating"
-	cx:toast("info", verb .. " worktree " .. name .. "…")
+	if table.find(extra, "--relocate") then
+		cx:toast("info", "Relocating worktree " .. name .. "…")
+	elseif checkout == "main" then
+		cx:toast("info", "Opening main checkout…")
+	elseif checkout == "worktree" then
+		cx:toast("info", "Reusing worktree " .. name .. "…")
+	else
+		cx:toast("info", "Creating worktree " .. name .. "…")
+	end
 	cli(args, function(res: CreateResult, err, cx2)
 		if err ~= nil then
 			if err.code == "bad_args" and retry ~= nil then
@@ -992,13 +1008,11 @@ local function create(
 					if id == "relocate" then
 						local again = table.clone(extra)
 						table.insert(again, "--relocate")
-						create(cx3, root, again, name, true)
+						create(cx3, root, again, name, "worktree")
 					end
 				end)
 			elseif err.code == "dirty_worktree" then
 				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(list_dirty_files(err)))
-			elseif err.code == "branch_in_main_checkout" then
-				cx2:toast("error", "Branch is checked out in the main checkout", err.existing)
 			else
 				toast_error(cx2, err)
 			end
@@ -1013,11 +1027,10 @@ local function create(
 			if type(res.carried) == "table" and #res.carried > 0 then
 				table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
 			end
-			cx3:toast(
-				"success",
-				sentence_case(tostring(res.status)) .. NO_BREAK_SPACE .. "worktree",
-				elide_start(table.concat(parts, " · "), MAX_TOAST_DETAIL)
-			)
+			local title = if res.owner == "main"
+				then "Opened main checkout"
+				else sentence_case(tostring(res.status)) .. NO_BREAK_SPACE .. "worktree"
+			cx3:toast("success", title, elide_start(table.concat(parts, " · "), MAX_TOAST_DETAIL))
 		end)
 	end)
 end
@@ -1028,7 +1041,7 @@ local function add_row(
 	title: string,
 	createArgs: { string },
 	name: string,
-	exists: boolean,
+	checkout: Checkout,
 	ids: { string }
 )
 	rootOfLiveRow[id] = root
@@ -1047,7 +1060,7 @@ local function add_row(
 			return cwd ~= nil and rootOfDir[cwd] == root
 		end,
 		run = function(cx: WindowCx)
-			create(cx, root, createArgs, name, exists)
+			create(cx, root, createArgs, name, checkout)
 		end,
 	})
 end
@@ -1056,14 +1069,20 @@ local function pr_label(pr: PullRequest): string
 	return "#" .. tostring(pr.number) .. " " .. tostring(pr.title)
 end
 
-local function branches_with_worktree(res: BranchesResult): { [string]: boolean }
-	local hasWorktree: { [string]: boolean } = {}
+-- Where each branch of `res` with a checkout is checked out: `worktree` or `main`. A branch without one is not a key.
+local function branch_checkouts(res: BranchesResult): { [string]: Checkout }
+	local checkouts: { [string]: Checkout } = {}
 	for _, w in ipairs(res.worktrees or {}) do
-		if type(w.branch) == "string" and w.main ~= true then
-			hasWorktree[w.branch] = true
+		if type(w.branch) == "string" then
+			checkouts[w.branch] = if w.main == true then "main" else "worktree"
 		end
 	end
-	return hasWorktree
+	return checkouts
+end
+
+-- The checkout of `branch` in `checkouts`, `new` when it has none.
+local function checkout_of(checkouts: { [string]: Checkout }, branch: string): Checkout
+	return checkouts[branch] or "new"
 end
 
 local function remember_cwd(pane: number, cwd: string?)
@@ -1111,7 +1130,7 @@ local function new_branch(cx: WindowCx, root: string, repoName: string, defaultB
 		if err ~= nil or text == nil or text == "" then
 			return
 		end
-		create(cx2, root, { "--branch=" .. text, "--new" }, text, false, function(cx3)
+		create(cx2, root, { "--branch=" .. text, "--new" }, text, "new", function(cx3)
 			new_branch(cx3, root, repoName, defaultBranch, text)
 		end)
 	end)
@@ -1119,7 +1138,7 @@ end
 
 -- The items of the branch picker for `res`: `New branch…`, `Other repo…`, the pull requests, then the branches.
 local function branch_picker_items(res: BranchesResult): { PickItem }
-	local hasWorktree = branches_with_worktree(res)
+	local checkouts = branch_checkouts(res)
 	local items: { PickItem } = {
 		{ id = "new", label = "New branch…", detail = "from " .. tostring(res.default), icon = "plus" },
 		{ id = "other", label = "Other repo…", icon = "folder" },
@@ -1136,7 +1155,7 @@ local function branch_picker_items(res: BranchesResult): { PickItem }
 		table.insert(items, {
 			id = "b:" .. branch,
 			label = branch,
-			detail = if hasWorktree[branch] then "worktree" else nil,
+			detail = if checkouts[branch] == "worktree" then "worktree" else nil,
 			group = "Branches",
 			icon = "branch",
 		})
@@ -1165,7 +1184,7 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 	local repoName = tostring(res.name)
 	local defaultBranch = tostring(res.default)
 	local items = branch_picker_items(res)
-	local hasWorktree = branches_with_worktree(res)
+	local checkouts = branch_checkouts(res)
 	local branchOfPr: { [string]: string } = {}
 	for _, p in ipairs(res.prs or {}) do
 		branchOfPr[tostring(p.number)] = tostring(p.branch)
@@ -1184,10 +1203,10 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 			elseif id == "other" then
 				repo_picker(cx2)
 			elseif branch ~= nil then
-				create(cx2, root, { "--branch=" .. branch }, branch, hasWorktree[branch] == true)
+				create(cx2, root, { "--branch=" .. branch }, branch, checkout_of(checkouts, branch))
 			elseif pr ~= nil then
 				local prBranch = branchOfPr[pr] or ("#" .. pr)
-				create(cx2, root, { "--pr", pr }, prBranch, hasWorktree[prBranch] == true)
+				create(cx2, root, { "--pr", pr }, prBranch, checkout_of(checkouts, prBranch))
 			end
 		end
 	)
@@ -1239,7 +1258,7 @@ end
 local function register_rows(root: string, res: BranchesResult)
 	local name: string = if type(res.name) == "string" then res.name else basename(root)
 	local prefix = "wt-" .. fnv1a(root) .. "-"
-	local hasWorktree = branches_with_worktree(res)
+	local checkouts = branch_checkouts(res)
 	local ids: { string } = {}
 	for _, pr in ipairs(res.prs or {}) do
 		local n = tostring(pr.number)
@@ -1250,20 +1269,20 @@ local function register_rows(root: string, res: BranchesResult)
 			name .. ": " .. pr_label(pr),
 			{ "--pr", n },
 			prBranch,
-			hasWorktree[prBranch] == true,
+			checkout_of(checkouts, prBranch),
 			ids
 		)
 	end
 	for _, branch in ipairs(res.branches or {}) do
 		if type(branch) == "string" then
-			local title = name .. ": " .. branch .. (if hasWorktree[branch] then " · worktree" else "")
+			local title = name .. ": " .. branch .. (if checkouts[branch] == "worktree" then " · worktree" else "")
 			add_row(
 				root,
 				prefix .. fnv1a(branch),
 				title,
 				{ "--branch", branch },
 				branch,
-				hasWorktree[branch] == true,
+				checkout_of(checkouts, branch),
 				ids
 			)
 		end
@@ -1624,10 +1643,10 @@ local function run_remove(
 	local args = { "remove", path, "--keep-tab" }
 	if force then
 		table.insert(args, "--force")
-		local entry = worktreeIndex[path]
-		local name = if entry ~= nil and entry.branch ~= nil then entry.branch else basename(path)
-		cx:toast("info", "Deleting worktree " .. name .. "…")
 	end
+	local entry = worktreeIndex[path]
+	local name = if entry ~= nil and entry.branch ~= nil then entry.branch else basename(path)
+	cx:toast("info", "Deleting worktree " .. name .. "…")
 	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
 			local title = "Teardown failed: " .. failure_message(err, path)
@@ -1778,6 +1797,26 @@ tern.override("close_pane", function(cx: WindowCx): boolean?
 	return false
 end)
 
+-- Tern has no install hook, so each load of the window half runs `tern-wt setup`: a window start, a reload, and an
+-- install into an open window. A timer starts it after the load. It links `tern-wt` and the skill to the copy of the
+-- plugin that Tern loaded, and tells the user only when a link changed or setup failed.
+local function link_cli_and_skill()
+	cli({ "setup" }, function(res: SetupResult, err, cx)
+		if err ~= nil then
+			cx:toast("error", "Setup failed: " .. tostring(err.message or "tern-wt failed"))
+			return
+		end
+		for _, link in ipairs(res.links or {}) do
+			if link.action ~= "kept" then
+				cx:toast("info", "Linked tern-wt and the tern-worktrees skill")
+				return
+			end
+		end
+	end)
+end
+
+tern.timer(0, link_cli_and_skill)
+
 tern.on("window_start", function(cx: WindowCx)
 	rebuild_managed(cx)
 	for _, pane in ipairs(cx.session:panes()) do
@@ -1899,7 +1938,7 @@ end
 
 tern.carly.export("create", {
 	sig = "(repo: string, branch: string, new: boolean?) -> {branch: string, carried: {string}, owner: string, path: string, repo: string, setup: {line: string, typed: boolean}?, status: string, warnings: {string}}",
-	doc = "Create or reuse a worktree for branch in repo (a dir inside the repo) and open it as a tab. For a new worktree, setup is the line of setup commands of its repository: the reply comes once the tab's shell prompt shows and the line is typed (typed true), or once that is given up after at most 30 s (typed false, with a setup not run warning).",
+	doc = "Create or reuse a worktree for branch in repo (a dir inside the repo) and open it as a tab. When the main checkout holds branch, it opens the main checkout where it is, with owner main. For a new worktree, setup is the line of setup commands of its repository: the reply comes once the tab's shell prompt shows and the line is typed (typed true), or once that is given up after at most 30 s (typed false, with a setup not run warning).",
 }, function(...: any): ...any
 	local args, _cx, call = export_args(...)
 	local repo, branch, isNew = args[1], args[2], args[3]
