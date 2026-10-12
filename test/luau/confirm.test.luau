@@ -262,7 +262,7 @@ test("Force delete shows a deleting toast, then a Deleted worktree toast", funct
 	cx.asked[2].next(item_by_id(cx.asked[2], "force"), nil, cx)
 	eq(#cx.toasts, 1, "toasts while remove runs")
 	eq(cx.toasts[1].level, "info", "deleting toast level")
-	eq(cx.toasts[1].title, "Deleting worktree…", "deleting toast title")
+	eq(cx.toasts[1].title, "Deleting worktree feat…", "deleting toast title")
 	plugin:answer("remove", '{"removed":"' .. WORKTREE .. '","warnings":[]}', 0, cx)
 	eq(#cx.toasts, 2, "toasts after remove answers")
 	eq(cx.toasts[2].level, "success", "done toast level")

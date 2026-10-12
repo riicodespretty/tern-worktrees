@@ -170,6 +170,25 @@ test("New branch creates the typed branch as one --branch=<name> argument", func
 	eq(creates[1], "create --repo /r/app --no-tab --branch=-bad --new", "create argv")
 end)
 
+local function last_title(cx: any): string
+	return cx.toasts[#cx.toasts].title
+end
+
+test("a create names the branch in a reusing or creating toast while it runs", function()
+	local _, cx = open_branch_picker()
+	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
+	eq(last_title(cx), "Reusing worktree x…", "branch with a worktree")
+	local _, cx2 = open_branch_picker()
+	cx2.asked[1].next(item_by_id(cx2.asked[1], "b:main"), nil, cx2)
+	eq(last_title(cx2), "Creating worktree main…", "branch without a worktree")
+	local _, cx3 = open_branch_picker()
+	cx3.asked[1].next(item_by_id(cx3.asked[1], "pr:7"), nil, cx3)
+	eq(last_title(cx3), "Creating worktree fix-login…", "pull request")
+	local _, cx4 = choose_new_branch()
+	cx4.asked[2].next("feat/y", nil, cx4)
+	eq(last_title(cx4), "Creating worktree feat/y…", "new branch")
+end)
+
 test("New branch shows the CLI's bad_args reason and prompts again with the name", function()
 	local plugin, cx = choose_new_branch()
 	cx.asked[2].next("bad..name", nil, cx)

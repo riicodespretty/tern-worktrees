@@ -910,11 +910,20 @@ local function type_setup(
 	poll(cx)
 end
 
-local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx: WindowCx) -> ())?)
+local function create(
+	cx: WindowCx,
+	root: string,
+	extra: { string },
+	name: string,
+	exists: boolean,
+	retry: ((cx: WindowCx) -> ())?
+)
 	local args = { "create", "--repo", root, "--no-tab" }
 	for _, a in ipairs(extra) do
 		table.insert(args, a)
 	end
+	local verb = if table.find(extra, "--relocate") then "Relocating" elseif exists then "Reusing" else "Creating"
+	cx:toast("info", verb .. " worktree " .. name .. "…")
 	cli(args, function(res: CreateResult, err, cx2)
 		if err ~= nil then
 			if err.code == "bad_args" and retry ~= nil then
@@ -935,7 +944,7 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 					if id == "relocate" then
 						local again = table.clone(extra)
 						table.insert(again, "--relocate")
-						create(cx3, root, again)
+						create(cx3, root, again, name, true)
 					end
 				end)
 			elseif err.code == "dirty_worktree" then
@@ -966,7 +975,15 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 	end)
 end
 
-local function add_row(root: string, id: string, title: string, createArgs: { string }, ids: { string })
+local function add_row(
+	root: string,
+	id: string,
+	title: string,
+	createArgs: { string },
+	name: string,
+	exists: boolean,
+	ids: { string }
+)
 	rootOfLiveRow[id] = root
 	table.insert(ids, id)
 	tern.command({
@@ -983,7 +1000,7 @@ local function add_row(root: string, id: string, title: string, createArgs: { st
 			return cwd ~= nil and rootOfDir[cwd] == root
 		end,
 		run = function(cx: WindowCx)
-			create(cx, root, createArgs)
+			create(cx, root, createArgs, name, exists)
 		end,
 	})
 end
@@ -1009,12 +1026,29 @@ local function register_rows(root: string, res: BranchesResult, prs: { PullReque
 	local ids: { string } = {}
 	for _, pr in ipairs(prs) do
 		local n = tostring(pr.number)
-		add_row(root, prefix .. fnv1a("pr:" .. n), name .. ": " .. pr_label(pr), { "--pr", n }, ids)
+		local prBranch = tostring(pr.branch)
+		add_row(
+			root,
+			prefix .. fnv1a("pr:" .. n),
+			name .. ": " .. pr_label(pr),
+			{ "--pr", n },
+			prBranch,
+			hasWorktree[prBranch] == true,
+			ids
+		)
 	end
 	for _, branch in ipairs(res.branches or {}) do
 		if type(branch) == "string" then
 			local title = name .. ": " .. branch .. (if hasWorktree[branch] then " · worktree" else "")
-			add_row(root, prefix .. fnv1a(branch), title, { "--branch", branch }, ids)
+			add_row(
+				root,
+				prefix .. fnv1a(branch),
+				title,
+				{ "--branch", branch },
+				branch,
+				hasWorktree[branch] == true,
+				ids
+			)
 		end
 	end
 	local currentIds: { [string]: boolean } = {}
@@ -1125,7 +1159,7 @@ local function new_branch(cx: WindowCx, root: string, repoName: string, defaultB
 		if err ~= nil or text == nil or text == "" then
 			return
 		end
-		create(cx2, root, { "--branch=" .. text, "--new" }, function(cx3)
+		create(cx2, root, { "--branch=" .. text, "--new" }, text, false, function(cx3)
 			new_branch(cx3, root, repoName, defaultBranch, text)
 		end)
 	end)
@@ -1179,6 +1213,11 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 	local repoName = tostring(res.name)
 	local defaultBranch = tostring(res.default)
 	local items = branch_picker_items(res)
+	local hasWorktree = branches_with_worktree(res)
+	local branchOfPr: { [string]: string } = {}
+	for _, p in ipairs(res.prs or {}) do
+		branchOfPr[tostring(p.number)] = tostring(p.branch)
+	end
 	choose(
 		cx,
 		{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
@@ -1193,9 +1232,10 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 			elseif id == "other" then
 				repo_picker(cx2)
 			elseif branch ~= nil then
-				create(cx2, root, { "--branch=" .. branch })
+				create(cx2, root, { "--branch=" .. branch }, branch, hasWorktree[branch] == true)
 			elseif pr ~= nil then
-				create(cx2, root, { "--pr", pr })
+				local prBranch = branchOfPr[pr] or ("#" .. pr)
+				create(cx2, root, { "--pr", pr }, prBranch, hasWorktree[prBranch] == true)
 			end
 		end
 	)
@@ -1473,7 +1513,9 @@ local function run_remove(
 	local args = { "remove", path, "--keep-tab" }
 	if force then
 		table.insert(args, "--force")
-		cx:toast("info", "Deleting worktree…")
+		local entry = worktreeIndex[path]
+		local name = if entry ~= nil and entry.branch ~= nil then entry.branch else basename(path)
+		cx:toast("info", "Deleting worktree " .. name .. "…")
 	end
 	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
