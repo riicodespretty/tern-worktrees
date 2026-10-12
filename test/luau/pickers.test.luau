@@ -8,7 +8,7 @@ local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
-"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],
+"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
 "worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":[]}]]
 
 local function same(actual: { [string]: any }, expected: { [string]: any }, what: string)

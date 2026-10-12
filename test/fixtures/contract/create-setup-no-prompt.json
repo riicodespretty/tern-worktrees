@@ -1,0 +1,18 @@
+{
+  "branch": "feature/x",
+  "carried": [],
+  "owner": "tern",
+  "path": "{{worktree}}",
+  "repo": "{{repo}}",
+  "setup": {
+    "line": "npm ci && npm test",
+    "typed": false
+  },
+  "status": "created",
+  "tab": {
+    "block": 42,
+    "opened": true,
+    "session": "work"
+  },
+  "warnings": ["setup not run: no shell prompt in 30 s"]
+}

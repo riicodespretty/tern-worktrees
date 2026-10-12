@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { git, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
+import { cliJson, contract, git, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const LINE = 'npm ci && npm test';
@@ -95,11 +95,9 @@ describe('create command', () => {
 
     it('keeps the worktree and warns when the shell shows no prompt', async () => {
       vi.stubEnv('FAKE_TERN_WAIT_STATUS', '124');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({
-        setup: { line: LINE, typed: false },
-        status: 'created',
-        warnings: ['setup not run: no shell prompt in 30 s'],
-      });
+      await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x'])).resolves.toStrictEqual(
+        contract('create-setup-no-prompt', { repo: repo.dir, worktree: managedPath('feature-x') }),
+      );
       expect(setupCalls()).toStrictEqual([WAIT]);
       expect(existsSync(managedPath('feature-x'))).toBeTruthy();
     });
@@ -120,12 +118,9 @@ describe('create command', () => {
 
     it('warns and types nothing when a tab already shows the new worktree', async () => {
       writeTernLs({ work: [repo.dir, path.join(managedPath('feature-x'), 'src')] });
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({
-        setup: { line: LINE, typed: false },
-        status: 'created',
-        tab: { block: 2, opened: false },
-        warnings: ['setup not run: the tab was open before'],
-      });
+      await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x'])).resolves.toStrictEqual(
+        contract('create-setup-open-before', { repo: repo.dir, worktree: managedPath('feature-x') }),
+      );
       expect(setupCalls()).toStrictEqual([]);
     });
 

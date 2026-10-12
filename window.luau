@@ -39,6 +39,7 @@ type BranchesResult = {
 	default: string,
 	branches: { string },
 	prs: { PullRequest },
+	prsFailed: boolean?,
 	worktrees: { BranchWorktree },
 	warnings: { string },
 }
@@ -57,7 +58,13 @@ type GithubRepo = { nameWithOwner: string, description: string? }
 type ReposResult = { owners: { string }, repos: { GithubRepo } }
 type ResolvedDir = { dir: string, root: string?, name: string? }
 type ResolveResult = { repos: { ResolvedDir } }
-type RemoveResult = { removed: string, branch: string?, branchDeleted: boolean?, warnings: { string } }
+type RemoveResult = {
+	removed: string,
+	branch: string?,
+	branchDeleted: boolean?,
+	branchKept: ("policy" | "not_merged" | "not_deleted")?,
+	warnings: { string },
+}
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
 type ConfigResult = { teardown: string }
@@ -590,19 +597,20 @@ end
 
 type DirtyListing = { changes: { string }, ignored: { string }, omitted: number }
 
-local function list_dirty_files(files: any): DirtyListing
+-- The files of a `dirty_worktree` error `err` that a toast shows: its `changes`, its `hardToRebuild` files as
+-- `ignored`, and how many of them the cap leaves out.
+local function list_dirty_files(err: any): DirtyListing
 	local shown: DirtyListing = { changes = {}, ignored = {}, omitted = 0 }
-	if type(files) ~= "table" then
-		return shown
-	end
 	local changes: { string } = {}
 	local ignored: { string } = {}
-	for i = 1, #files do
-		local entry = tostring(files[i])
-		if string.sub(entry, 1, 3) == "!! " then
-			table.insert(ignored, string.sub(entry, 4))
-		else
-			table.insert(changes, entry)
+	if type(err.changes) == "table" then
+		for _, entry in ipairs(err.changes) do
+			table.insert(changes, tostring(entry))
+		end
+	end
+	if type(err.hardToRebuild) == "table" then
+		for _, file in ipairs(err.hardToRebuild) do
+			table.insert(ignored, tostring(file))
 		end
 	end
 	local ignoredShown = math.min(#ignored, MAX_LISTED_FILES)
@@ -635,7 +643,7 @@ end
 -- The cause of a failed `remove` of the worktree at `path`: the files with work to lose of a `dirty_worktree`, else
 -- the message with the folder name of the worktree in place of `path`, then the saved files when there are some.
 local function failure_message(err: any, path: string): string
-	local summary = if err.code == "dirty_worktree" then dirty_summary(list_dirty_files(err.files)) else ""
+	local summary = if err.code == "dirty_worktree" then dirty_summary(list_dirty_files(err)) else ""
 	local parts: { string } = {
 		if summary ~= "" then summary else replace_plain(tostring(err.message), path, basename(path)),
 	}
@@ -930,7 +938,7 @@ local function create(
 					end
 				end)
 			elseif err.code == "dirty_worktree" then
-				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(list_dirty_files(err.files)))
+				cx2:toast("error", "Cannot relocate: uncommitted changes", dirty_summary(list_dirty_files(err)))
 			elseif err.code == "branch_in_main_checkout" then
 				cx2:toast("error", "Branch is checked out in the main checkout", err.existing)
 			else
@@ -1056,15 +1064,6 @@ local function fetch_interval_ms(cx: WindowCx): number
 	return 5 * 60000
 end
 
-local function pr_list_failed(res: BranchesResult): boolean
-	for _, w in ipairs(res.warnings or {}) do
-		if type(w) == "string" and string.find(w, "pr list failed:", 1, true) == 1 then
-			return true
-		end
-	end
-	return false
-end
-
 refresh = function(cx: WindowCx, root: string)
 	local state = state_of(root)
 	if state.refreshing then
@@ -1084,7 +1083,7 @@ refresh = function(cx: WindowCx, root: string)
 	cli(args, function(res: BranchesResult, err, cx2)
 		state.refreshing = false
 		if err == nil then
-			if useNetwork and not pr_list_failed(res) then
+			if useNetwork and res.prsFailed ~= true then
 				state.prs = if type(res.prs) == "table" then res.prs else {}
 			end
 			register_rows(root, res, state.prs or {})
@@ -1279,7 +1278,7 @@ refresh_picker_cache = function(cx: WindowCx, root: string, online: boolean, not
 			if before ~= nil and not online then
 				res.prs = before.prs
 				res.default = before.default
-			elseif before ~= nil and pr_list_failed(res) then
+			elseif before ~= nil and res.prsFailed == true then
 				res.prs = before.prs
 			end
 			cache.res = res
@@ -1485,31 +1484,28 @@ local function start(cx: WindowCx)
 	end)
 end
 
-local KEPT_NOT_MERGED = "kept local branch "
-
 local function deleted_title(res: RemoveResult): string
 	local title = "Deleted" .. NO_BREAK_SPACE .. "worktree"
-	local branch = res.branch
-	if type(branch) ~= "string" then
+	if type(res.branch) ~= "string" then
 		return title
 	end
 	if res.branchDeleted then
 		return title .. " and branch"
 	end
-	for _, w in ipairs(res.warnings or {}) do
-		if w == KEPT_NOT_MERGED .. branch .. ": not merged" then
-			return title .. ", kept branch: not merged"
-		end
+	if res.branchKept == "not_merged" then
+		return title .. ", kept branch: not merged"
 	end
 	return title .. ", kept branch"
 end
 
-local function short_warnings(warnings: { string }?): string?
+-- The detail line of the Deleted worktree toast: the head of each warning of `res`, without the first warning when
+-- `branchKept` is `not_merged`.
+local function short_warnings(res: RemoveResult): string?
 	local parts: { string } = {}
-	for _, w in ipairs(warnings or {}) do
-		if string.sub(w, 1, #KEPT_NOT_MERGED) ~= KEPT_NOT_MERGED then
-			table.insert(parts, string.match(w, "^(.-): ") or w)
-		end
+	local warnings = res.warnings or {}
+	for i = if res.branchKept == "not_merged" then 2 else 1, #warnings do
+		local w = warnings[i]
+		table.insert(parts, string.match(w, "^(.-): ") or w)
 	end
 	return if #parts > 0 then table.concat(parts, "; ") else nil
 end
@@ -1550,7 +1546,7 @@ local function run_remove(
 			end)
 			return
 		end
-		cx2:toast("success", deleted_title(res), short_warnings(res.warnings))
+		cx2:toast("success", deleted_title(res), short_warnings(res))
 		set_entry(res.removed, nil)
 		after_change(cx2)
 		done(cx2)

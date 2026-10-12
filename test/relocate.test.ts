@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, readlinkSy
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { ghFixture, git, ignoreGlobally, ompLog, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
+import { cliJson, contract, ghFixture, git, ignoreGlobally, ompLog, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
@@ -190,6 +190,9 @@ describe('create command', () => {
         writeFileSync(path.join(old, 'junk.txt'), 'x\n');
         writeFileSync(path.join(old, '.env'), 'SECRET=1\n');
         await expectKept(old, ['?? junk.txt']);
+        await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).resolves.toStrictEqual(
+          contract('relocate-dirty', { worktree: old }),
+        );
         expect(existsSync(path.join(old, 'junk.txt'))).toBeTruthy();
         expect(stagingDirs()).toStrictEqual([]);
         await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain('locked');

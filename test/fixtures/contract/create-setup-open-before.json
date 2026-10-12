@@ -1,0 +1,18 @@
+{
+  "branch": "feature/x",
+  "carried": [],
+  "owner": "tern",
+  "path": "{{worktree}}",
+  "repo": "{{repo}}",
+  "setup": {
+    "line": "npm ci && npm test",
+    "typed": false
+  },
+  "status": "created",
+  "tab": {
+    "block": 2,
+    "opened": false,
+    "session": "work"
+  },
+  "warnings": ["setup not run: the tab was open before"]
+}

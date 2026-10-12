@@ -126,7 +126,10 @@ local LISTED = '{"root":"/wt/worktrees","worktrees":['
 	.. '{"path":"/wt/worktrees/app/feat","repo":"/r/app","branch":"feat","dirty":true,"changed":3,"owner":"tern"},'
 	.. '{"path":"/wt/7-abc1234","repo":"/r/app","branch":null,"dirty":false,"changed":0,"owner":"omp"}]}'
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
+local BRANCHES =
+	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+local REMOVED =
+	'{"removed":"/wt/worktrees/app/feat","branch":"feat","branchDeleted":false,"branchKept":"policy","warnings":[]}'
 local CREATED = '{"branch":"x","carried":[],"owner":"tern","path":"/wt/worktrees/app/x","repo":"/r/app",'
 	.. '"status":"created","warnings":[]}'
 
@@ -387,7 +390,7 @@ test("a remove deletes the index entry", function()
 		return nil
 	end
 	plugin.exports.remove(FEAT, nil, cx, call)
-	plugin:answer("remove", '{"removed":"/wt/worktrees/app/feat","branch":"feat","warnings":[]}', 0, cx)
+	plugin:answer("remove", REMOVED, 0, cx)
 	eq(plugin.kv.worktreeIndex[FEAT], nil, "removed entry")
 	eq(plugin.kv.worktreeIndex[OMP].main, "/r/app", "other entry")
 end)
@@ -404,7 +407,7 @@ test("a teardown from the close-tab picker deletes the index entry", function()
 			cx.asked[1].next(it, nil, cx)
 		end
 	end
-	plugin:answer("remove", '{"removed":"/wt/worktrees/app/feat","branch":"feat","warnings":[]}', 0, cx)
+	plugin:answer("remove", REMOVED, 0, cx)
 	eq(plugin.kv.worktreeIndex[FEAT], nil, "removed entry")
 end)
 
@@ -426,7 +429,7 @@ local function create_in(plugin: Stub.Harness, cx: any, branch: string, path: st
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer(
 		"branches",
-		`\{"name":"app","default":"main","branches":["{branch}"],"prs":[],"worktrees":[],"warnings":[]}`,
+		`\{"name":"app","default":"main","branches":["{branch}"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}`,
 		0,
 		cx
 	)
@@ -458,7 +461,7 @@ test("a create or remove in one window keeps the entries that another window wro
 		return nil
 	end
 	b.exports.remove(FEAT, nil, cxB, call)
-	b:answer("remove", '{"removed":"/wt/worktrees/app/feat","branch":"feat","warnings":[]}', 0, cxB)
+	b:answer("remove", REMOVED, 0, cxB)
 	eq(kv.worktreeIndex[FEAT], nil, "FEAT in kv after B's remove")
 	eq(kv.worktreeIndex[X] ~= nil, true, "X in kv after B's remove")
 	local host = Stub.load({ file = "host.luau", env = ENV, kv = kv })

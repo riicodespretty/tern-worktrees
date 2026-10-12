@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/branches.ts';
 import { worktreePath, worktreeRoot } from '../src/paths.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
-import { ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
+import { cliJson, contract, ghDefaultBranchFixture, ghFixture, ghLog, git, gitShim, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 
 const GITHUB_ORIGIN = 'git@github.com:me/aoyama.git';
 
@@ -50,6 +50,7 @@ describe('branches command', () => {
           { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
           { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
         ],
+        prsFailed: false,
         repo: repo.dir,
         warnings: [],
         worktrees: [
@@ -107,7 +108,7 @@ describe('branches command', () => {
       const result = await run(['--repo', repo.dir]);
       expect(result.branches.toSorted()).toStrictEqual(['fresh', 'main']);
       expect(result.prs).toStrictEqual([]);
-      expect(result.warnings).toStrictEqual([]);
+      expect({ prsFailed: result.prsFailed, warnings: result.warnings }).toStrictEqual({ prsFailed: false, warnings: [] });
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
     });
 
@@ -127,6 +128,7 @@ describe('branches command', () => {
         default: 'main',
         name: 'aoyama',
         prs: [],
+        prsFailed: false,
         repo: repo.dir,
         warnings: [],
         worktrees: [{ branch: 'main', managed: false, owner: null, path: repo.dir }],
@@ -141,13 +143,16 @@ describe('branches command', () => {
       await useGithubOrigin(GITHUB_ORIGIN);
       ghFixture(PR_LIST, JSON.stringify(PRS));
       const offline = await run(['--repo', repo.dir, '--offline']);
-      expect({ prs: offline.prs, warnings: offline.warnings }).toStrictEqual({ prs: [], warnings: [] });
+      expect({ prs: offline.prs, prsFailed: offline.prsFailed, warnings: offline.warnings }).toStrictEqual({ prs: [], prsFailed: false, warnings: [] });
       expect(existsSync(sandbox.ghLog)).toBeFalsy();
       const online = await run(['--repo', repo.dir]);
-      expect(online.prs).toStrictEqual([
-        { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
-        { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
-      ]);
+      expect({ prs: online.prs, prsFailed: online.prsFailed }).toStrictEqual({
+        prs: [
+          { branch: 'feature/x', fork: false, number: 7, title: 'Add x' },
+          { branch: 'patch-1', fork: true, number: 9, title: 'Fork fix' },
+        ],
+        prsFailed: false,
+      });
       expect(ghLog().join('\n')).toContain('pr list');
     });
 
@@ -173,12 +178,13 @@ describe('branches command', () => {
       expect(result.warnings[0]).toMatch(/^fetch failed: \S[\s\S]*\S$/u);
     });
 
-    it('warns and gives no PRs when gh fails', async () => {
-      const repo = await tmpRepo('aoyama');
+    it('warns, gives no PRs and sets prsFailed when gh fails', async () => {
+      const repo = await tmpRepo('app');
+      await pushDatedBranch(repo, 'x', '2030-01-01T00:00:00Z');
       await useGithubOrigin(GITHUB_ORIGIN);
-      const result = await run(['--repo', repo.dir]);
-      expect(result.prs).toStrictEqual([]);
-      expect(result.warnings).toStrictEqual(['pr list failed: fake gh: no fixture']);
+      const managed = worktreePath(await worktreeRoot(), 'app', 'x');
+      await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'x');
+      await expect(cliJson(['branches', '--repo', repo.dir])).resolves.toStrictEqual(contract('branches-pr-list-failed', { repo: repo.dir, worktree: managed }));
     });
 
     it('lists local branches newest first without an origin', async () => {
@@ -193,10 +199,12 @@ describe('branches command', () => {
       await git(repo.dir, 'tag', 'v1');
       const result = await run(['--repo', repo.dir]);
       expect(result.branches[0]).toBe('newer');
-      expect({ branches: result.branches.toSorted(), default: result.default, prs: result.prs, warnings: result.warnings }).toStrictEqual({
+      const { branches, prs, prsFailed, warnings } = result;
+      expect({ branches: branches.toSorted(), default: result.default, prs, prsFailed, warnings }).toStrictEqual({
         branches: ['aaa', 'main', 'newer'],
         default: 'main',
         prs: [],
+        prsFailed: false,
         warnings: [],
       });
       expect(existsSync(sandbox.ghLog)).toBeFalsy();

@@ -1,5 +1,6 @@
 --!strict
 
+local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -8,18 +9,33 @@ local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
 local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
-"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],
+"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
 "worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":[]}]]
-local UPDATED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],
+local UPDATED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],"prsFailed":false,
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":[]}]]
-local STALE = [[{"name":"app","default":"main","branches":["main"],"prs":[],"worktrees":[],"warnings":[]}]]
-local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs":[],
+local STALE =
+	[[{"name":"app","default":"main","branches":["main"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs":[],"prsFailed":false,
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":[]}]]
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
-local PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],
-"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y"}],"warnings":["pr list failed: gh auth"]}]]
-local SAME_PR_LIST_FAILED = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],
-"worktrees":[{"branch":"x","path":"/wt/worktrees/app/x"}],"warnings":["pr list failed: gh auth"]}]]
+-- The `branches` answer of the CLI when `gh pr list` fails, for REPO with a worktree of x.
+local PR_LIST_FAILED = Stub.fixture("branches-pr-list-failed", { repo = REPO, worktree = "/wt/worktrees/app/x" })
+
+-- PR_LIST_FAILED with each key of `fields` set to its value.
+local function pr_list_failed_with(fields: { [string]: any }): string
+	local res = serde.decode("json", PR_LIST_FAILED)
+	for key, value in fields do
+		res[key] = value
+	end
+	return serde.encode("json", res)
+end
+
+-- The answer that PR_LIST_FAILED follows: the same branches and worktrees, with the pull request 7 and no warning.
+local LISTED_PRS = pr_list_failed_with({
+	prs = { { number = 7, title = "Fix login", branch = "fix-login", fork = false } },
+	prsFailed = false,
+	warnings = {},
+})
 local LOADING = "info Loading branches…"
 local LOADED = "info Branches loaded"
 local REFRESHING = "info Refreshing branches…"
@@ -27,6 +43,8 @@ local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
 local CREATED =
 	'{"branch":"y","carried":[],"owner":"tern","path":"/wt/worktrees/app/y","repo":"/r/app","status":"created","warnings":[]}'
+local REMOVED =
+	'{"removed":"/wt/worktrees/app/x","branch":"x","branchDeleted":false,"branchKept":"policy","warnings":[]}'
 
 local function argv_lines(plugin: Stub.Harness, verb: string): { string }
 	local found: { string } = {}
@@ -159,9 +177,9 @@ end)
 
 test("a background branches compares after it keeps the cached pull requests", function()
 	local plugin, cx = window()
-	first_open(plugin, cx, BRANCHES)
+	first_open(plugin, cx, LISTED_PRS)
 	open(plugin, cx)
-	plugin:answer("branches", SAME_PR_LIST_FAILED, 0, cx)
+	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	eq(toast_lines(cx), REFRESHING .. "; " .. UNCHANGED, "toasts after the refresh")
 end)
 
@@ -188,7 +206,7 @@ test("refreshes after a create or a teardown show no toasts", function()
 		return nil
 	end
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
-	plugin:answer("remove", '{"removed":"/wt/worktrees/app/x","branch":"x","warnings":[]}', 0, cx)
+	plugin:answer("remove", REMOVED, 0, cx)
 	plugin:answer("branches", STALE, 0, cx)
 	eq(toast_lines(cx), "", "toasts after the create and the teardown")
 end)
@@ -245,12 +263,68 @@ end)
 
 test("a background branches with a failed pull request list keeps the cached pull requests", function()
 	local plugin, cx = window()
-	first_open(plugin, cx, BRANCHES)
+	first_open(plugin, cx, LISTED_PRS)
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	open(plugin, cx)
-	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main b:x b:y*", "items after the failed pull request list")
+	eq(item_by_id(cx.asked[#cx.asked], "pr:7") ~= nil, true, "pr:7 after the failed pull request list")
 end)
+
+test(
+	"a background branches with prsFailed false replaces the cached pull requests, whatever its warnings say",
+	function()
+		local plugin, cx = window()
+		first_open(plugin, cx, LISTED_PRS)
+		open(plugin, cx)
+		plugin:answer("branches", pr_list_failed_with({ prsFailed = false }), 0, cx)
+		open(plugin, cx)
+		eq(item_by_id(cx.asked[#cx.asked], "pr:7"), nil, "pr:7 after an answer with no pull requests")
+	end
+)
+
+-- A window with pane 1 in REPO and `git.auto_fetch_minutes` 5, whose worktree rows run an online `branches` and get
+-- LISTED_PRS. Five minutes on, a focus on pane 1 runs the next online `branches`, which gets `stdout`.
+local function rows_after(stdout: string): (Stub.Harness, any)
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
+	cx.settings = {
+		get = function(_self: any, _key: string): any
+			return 5
+		end,
+	}
+	local plugin = Stub.load({ env = ENV })
+	plugin.handlers.window_start(cx)
+	plugin:answer("resolve", RESOLVED, 0, cx)
+	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app", "first rows branches")
+	plugin:answer("branches", LISTED_PRS, 0, cx)
+	plugin:tick(5 * 60000)
+	plugin.handlers.focus({ pane = 1 }, cx)
+	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app", "next rows branches")
+	plugin:answer("branches", stdout, 0, cx)
+	return plugin, cx
+end
+
+-- Whether the worktree row of pull request 7 shows in the command palette for pane 1.
+local function pr_row_shows(plugin: Stub.Harness, cx: any): boolean
+	for _, spec in plugin.commands do
+		if spec.title == "app: #7 Fix login" then
+			return spec.available(cx)
+		end
+	end
+	return false
+end
+
+test("the worktree rows keep their pull requests after an answer with prsFailed true", function()
+	local plugin, cx = rows_after(PR_LIST_FAILED)
+	eq(pr_row_shows(plugin, cx), true, "pull request row")
+end)
+
+test(
+	"the worktree rows drop their pull requests after an answer with prsFailed false, whatever its warnings say",
+	function()
+		local plugin, cx = rows_after(pr_list_failed_with({ prsFailed = false }))
+		eq(pr_row_shows(plugin, cx), false, "pull request row")
+	end
+)
 
 test("a second press during the first branches starts no second one and opens one picker", function()
 	local plugin, cx = window()
@@ -270,7 +344,7 @@ test("a teardown during the first branches runs one more branches after it", fun
 		return nil
 	end
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
-	plugin:answer("remove", '{"removed":"/wt/worktrees/app/x","branch":"x","warnings":[]}', 0, cx)
+	plugin:answer("remove", REMOVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the first branches answers")
 	eq(table.concat(argv_lines(plugin, "branches"), ";"), "branches --repo /r/app --offline", "rerun")
@@ -375,7 +449,7 @@ test("a teardown refreshes the cache offline", function()
 		return nil
 	end
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
-	plugin:answer("remove", '{"removed":"/wt/worktrees/app/x","branch":"x","warnings":[]}', 0, cx)
+	plugin:answer("remove", REMOVED, 0, cx)
 	local online, offline = branches_calls(plugin)
 	eq(online, 0, "online branches calls after the teardown")
 	eq(offline >= 1, true, "offline branches calls after the teardown")

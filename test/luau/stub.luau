@@ -305,4 +305,19 @@ function Stub.load(opts: Options): Harness
 	return loaded
 end
 
+-- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
+-- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
+function Stub.fixture(name: string, vars: { [string]: string }): string
+	local text = fs.readFile("test/fixtures/contract/" .. name .. ".json")
+	return (
+		string.gsub(text, "{{([%w_]+)}}", function(key: string): string
+			local value = vars[key]
+			if value == nil then
+				error(name .. ".json: no value for {{" .. key .. "}}", 0)
+			end
+			return value
+		end)
+	)
+end
+
 return Stub

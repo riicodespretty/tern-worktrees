@@ -1,5 +1,6 @@
 --!strict
 
+local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -26,7 +27,8 @@ local function config_answer(teardown: string): string
 end
 local CONFIG = config_answer("worktree+merged-branch")
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
+local BRANCHES =
+	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
 
@@ -88,16 +90,40 @@ local function fail_teardown(stdout: string): (Stub.Harness, any)
 	return plugin, cx
 end
 
+-- A `dirty_worktree` answer with 12 changes and 3 hard-to-rebuild files.
 local DIRTY = (function(): string
+	local changes: { string } = {}
+	local hardToRebuild: { string } = {}
 	local files: { string } = {}
 	for i = 1, 12 do
-		table.insert(files, '" M c' .. i .. '"')
+		table.insert(changes, " M c" .. i)
+		table.insert(files, " M c" .. i)
 	end
 	for i = 1, 3 do
-		table.insert(files, '"!! i' .. i .. '"')
+		table.insert(hardToRebuild, "i" .. i)
+		table.insert(files, "!! i" .. i)
 	end
-	return '{"error":{"code":"dirty_worktree","message":"dirty","files":[' .. table.concat(files, ",") .. "]}}"
+	return serde.encode("json", {
+		error = {
+			code = "dirty_worktree",
+			message = "dirty",
+			existing = WORKTREE,
+			files = files,
+			changes = changes,
+			hardToRebuild = hardToRebuild,
+		},
+	})
 end)()
+
+-- The contract fixture `name` for WORKTREE, with each key of `fields` set to its value.
+local function remove_answer(name: string, fields: { [string]: any }?): string
+	local res = serde.decode("json", Stub.fixture(name, { worktree = WORKTREE }))
+	local extra: { [string]: any } = fields or {}
+	for key, value in extra do
+		res[key] = value
+	end
+	return serde.encode("json", res)
+end
 
 test("relocate asks with one Relocate item", function()
 	local _, cx = open_relocate()
@@ -137,6 +163,16 @@ test("Relocate sends create with --relocate", function()
 	local creates = argv_lines(plugin, "create")
 	eq(#creates, 1, "create calls")
 	eq(creates[1], "create --repo /r/app --no-tab --branch=x --relocate", "create argv")
+end)
+
+test("a relocate of a worktree with work to lose toasts its files", function()
+	local plugin, cx = open_relocate()
+	cx.asked[2].next(item_by_id(cx.asked[2], "relocate"), nil, cx)
+	plugin:answer("create", Stub.fixture("relocate-dirty", { worktree = "/old/app/x" }), 1, cx)
+	local toast = cx.toasts[#cx.toasts]
+	eq(toast.level, "error", "toast level")
+	eq(toast.title, "Cannot relocate: uncommitted changes", "toast title")
+	eq(toast.detail, "1 file with work to lose: ?? junk.txt", "toast detail")
 end)
 
 test("closing a worktree tab lists Keep worktree first, then Tear down", function()
@@ -259,7 +295,7 @@ test("the failed-teardown picker names the file that stops the teardown, not the
 			.. WORKTREE
 			.. ' has work that removing it would lose","existing":"'
 			.. WORKTREE
-			.. '","files":["?? .setup-ran"]}}'
+			.. '","files":["?? .setup-ran"],"changes":["?? .setup-ran"],"hardToRebuild":[]}}'
 	)
 	local toast = cx.toasts[#cx.toasts]
 	eq(toast.title, "Teardown failed: 1 file with work to lose: ?? .setup-ran", "toast title")
@@ -267,6 +303,21 @@ test("the failed-teardown picker names the file that stops the teardown, not the
 	local placeholder = cx.asked[2].opts.placeholder
 	eq(placeholder, "Teardown failed: 1 file with work to lose: ?? .setup-ran", "placeholder")
 	eq(string.find(placeholder, "/", 1, true), nil, "a slash in the placeholder")
+end)
+
+test("a failed teardown toasts the changes and the hard-to-rebuild files of the CLI answer", function()
+	local _, cx = fail_teardown(Stub.fixture("remove-dirty", { worktree = WORKTREE }))
+	local title = "Teardown failed: 2 files with work to lose: ?? junk.txt; ignored, hard to rebuild: .env"
+	eq(cx.toasts[#cx.toasts].title, title, "toast title")
+	eq(cx.asked[2].opts.placeholder, title, "placeholder")
+end)
+
+test("a failed teardown reads changes and hardToRebuild, not files", function()
+	local answer = serde.decode("json", Stub.fixture("remove-dirty", { worktree = WORKTREE }))
+	answer.error.files = { "?? other.txt" }
+	local _, cx = fail_teardown(serde.encode("json", answer))
+	local title = "Teardown failed: 2 files with work to lose: ?? junk.txt; ignored, hard to rebuild: .env"
+	eq(cx.toasts[#cx.toasts].title, title, "toast title")
 end)
 
 test("a failed teardown names the worktree by its folder in the git message and keeps the saved files path", function()
@@ -305,7 +356,7 @@ test("Force delete shows a deleting toast, then a Deleted worktree toast", funct
 	eq(#cx.toasts, 1, "toasts while remove runs")
 	eq(cx.toasts[1].level, "info", "deleting toast level")
 	eq(cx.toasts[1].title, "Deleting worktree feat…", "deleting toast title")
-	plugin:answer("remove", '{"removed":"' .. WORKTREE .. '","warnings":[]}', 0, cx)
+	plugin:answer("remove", remove_answer("remove-detached"), 0, cx)
 	eq(#cx.toasts, 2, "toasts after remove answers")
 	eq(cx.toasts[2].level, "success", "done toast level")
 	eq(cx.toasts[2].title, "Deleted\u{A0}worktree", "done toast title")
@@ -319,28 +370,34 @@ local function deleted_toast(answer: string): any
 end
 
 test("the Deleted worktree toast says in its title what happened to the branch", function()
-	local kept = deleted_toast(
-		'{"removed":"'
-			.. WORKTREE
-			.. '","branch":"feat","branchDeleted":false,'
-			.. '"warnings":["kept local branch feat: not merged","fetch failed: fatal: transport \'https\' not allowed"]}'
-	)
+	local kept = deleted_toast(remove_answer("remove-kept-not-merged"))
 	eq(kept.title, "Deleted\u{A0}worktree, kept branch: not merged", "kept title")
-	eq(kept.detail, "fetch failed", "kept detail")
-	local deleted = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":true,"warnings":[]}')
+	eq(kept.detail, "merge check failed", "kept detail")
+	local deleted = deleted_toast(remove_answer("remove-deleted"))
 	eq(deleted.title, "Deleted\u{A0}worktree and branch", "deleted title")
 	eq(deleted.detail, nil, "deleted detail")
-	local policy = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":"feat","branchDeleted":false,"warnings":[]}')
+	local policy = deleted_toast(remove_answer("remove-kept-policy"))
 	eq(policy.title, "Deleted\u{A0}worktree, kept branch", "policy title")
-	local detached = deleted_toast('{"removed":"' .. WORKTREE .. '","branch":null,"branchDeleted":false,"warnings":[]}')
+	eq(policy.detail, nil, "policy detail")
+	local detached = deleted_toast(remove_answer("remove-detached"))
 	eq(detached.title, "Deleted\u{A0}worktree", "detached title")
 	local failed = deleted_toast(
 		'{"removed":"'
 			.. WORKTREE
-			.. '","branch":"feat","branchDeleted":false,"warnings":["branch feat not deleted: error: in use"]}'
+			.. '","branch":"feat","branchDeleted":false,"branchKept":"not_deleted",'
+			.. '"warnings":["branch feat not deleted: error: in use"]}'
 	)
 	eq(failed.title, "Deleted\u{A0}worktree, kept branch", "failed title")
 	eq(failed.detail, "branch feat not deleted", "failed detail")
+end)
+
+test("branchKept, not the warning text, tells the Deleted worktree toast that the branch is not merged", function()
+	local toast = deleted_toast(remove_answer("remove-kept-policy", {
+		branch = "feat",
+		warnings = { "kept local branch feat: not merged" },
+	}))
+	eq(toast.title, "Deleted\u{A0}worktree, kept branch", "title")
+	eq(toast.detail, "kept local branch feat", "detail")
 end)
 
 test("dismissing the failed teardown sends nothing and keeps the tab", function()

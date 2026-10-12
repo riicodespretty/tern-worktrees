@@ -26,15 +26,22 @@ export interface BranchWorktree {
   owner: WorktreeOwner;
 }
 
-/** The branch picker data of a repository. */
+/** The branch picker data of a repository. `prsFailed` is true when `gh pr list` failed, and false offline and when `origin` is not a GitHub repository. */
 export interface BranchesResult {
   repo: string;
   name: string;
   default: string;
   branches: string[];
   prs: PullRequest[];
+  prsFailed: boolean;
   worktrees: BranchWorktree[];
   warnings: string[];
+}
+
+/** The open pull requests. `failed` is true when `gh pr list` failed. */
+interface OpenPullRequests {
+  failed: boolean;
+  prs: PullRequest[];
 }
 
 const REMOTE_PREFIX = 'refs/remotes/origin/';
@@ -51,12 +58,12 @@ const listBranches = async (root: string, withOrigin: boolean): Promise<string[]
   return [...new Set(names)];
 };
 
-const openPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<PullRequest[]> => {
+const openPullRequests = async (repoRef: GithubRepoRef, warnings: string[]): Promise<OpenPullRequests> => {
   const { error, prs } = await listPullRequests(repoRef, ['--state', 'open', '--limit', '200'], ['number', 'title', 'headRefName', 'isCrossRepository']);
   if (error !== null) {
     warnings.push(`pr list failed: ${error}`);
   }
-  return prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title }));
+  return { failed: error !== null, prs: prs.map(pr => ({ branch: pr.headRefName, fork: pr.isCrossRepository, number: pr.number, title: pr.title })) };
 };
 
 /** `branches --repo <dir> [--offline]`: the branches, open pull requests and worktrees of the repository that holds `dir`. `--offline` reads only local refs: no fetch and no pull requests. */
@@ -76,9 +83,9 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     }
   }
   const repoRef = offline ? null : await originRepo(root);
-  const [branches, prs, repoWorktrees, defaultName, wtRoot] = await Promise.all([
+  const [branches, pullRequests, repoWorktrees, defaultName, wtRoot] = await Promise.all([
     listBranches(root, withOrigin),
-    repoRef === null ? [] : openPullRequests(repoRef, warnings),
+    repoRef === null ? { failed: false, prs: [] } : openPullRequests(repoRef, warnings),
     worktrees(root),
     defaultBranch(root, { offline }),
     worktreeRoot(),
@@ -87,7 +94,8 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
     branches,
     default: defaultName,
     name: path.basename(root),
-    prs,
+    prs: pullRequests.prs,
+    prsFailed: pullRequests.failed,
     repo: root,
     warnings,
     worktrees: repoWorktrees.map(worktree => {

@@ -1,5 +1,6 @@
 --!strict
 
+local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -8,9 +9,16 @@ local ENV = { HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
 local LINE = "npm ci && npm test"
 local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
-local NO_PROMPT = "setup not run: no shell prompt in 30 s"
-local OPEN_BEFORE = "setup not run: the tab was open before"
+local BRANCHES =
+	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+
+-- The first warning of the `create` contract fixture `name`: the CLI words for a setup that did not run.
+local function setup_warning(name: string): string
+	return serde.decode("json", Stub.fixture(name, { repo = "/r/app", worktree = PATH })).warnings[1]
+end
+
+local NO_PROMPT = setup_warning("create-setup-no-prompt")
+local OPEN_BEFORE = setup_warning("create-setup-open-before")
 local NO_TAB = "setup not run: no tab opened"
 
 -- The `create` answer for branch x, with `setup` as its JSON value.

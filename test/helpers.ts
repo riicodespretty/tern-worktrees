@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, vi } from 'vite-plus/test';
 import { buildRepo, gitWith } from '../scripts/repo-fixture.ts';
 import type { RepoFixture } from '../scripts/repo-fixture.ts';
+import { main } from '../src/cli.ts';
 import { must } from '../src/proc.ts';
 import type { TernListing } from '../src/tern.ts';
 
@@ -219,4 +220,30 @@ export const ignoreGlobally = async (...patterns: string[]): Promise<void> => {
 export const spawnCli = (args: string[]) => {
   const result = spawnSync(path.join(REPO_DIR, 'bin', 'tern-wt'), args, { encoding: 'utf-8' });
   return { status: result.status, stderr: result.stderr, stdout: result.stdout };
+};
+
+/** The folder of the contract fixtures: each one is the parsed standard output of one real CLI call, which the Luau tests also read. */
+const CONTRACT_DIR = path.join(REPO_DIR, 'test', 'fixtures', 'contract');
+
+/** A parsed JSON value. */
+export type Json = boolean | number | string | null | Json[] | { [key: string]: Json };
+
+/** Runs one tern-wt command through `main` of src/cli.ts, as the plugin does, and parses its standard output. */
+export const cliJson = async (argv: string[]): Promise<Json> => {
+  const { stdout } = await main(argv);
+  // SAFETY: each tern-wt command prints one JSON document on standard output.
+  return JSON.parse(stdout) as Json;
+};
+
+/** The fixture test/fixtures/contract/<name>.json, with each `{{key}}` replaced by `vars[key]` in JSON string form. Throws on a placeholder without a value. */
+export const contract = (name: string, vars: Record<string, string>): Json => {
+  const text = readFileSync(path.join(CONTRACT_DIR, `${name}.json`), 'utf-8');
+  const filled = text.replaceAll(/\{\{(?<key>\w+)\}\}/gu, (_match, key: string) => {
+    if (!Object.hasOwn(vars, key)) {
+      throw new Error(`${name}.json: no value for {{${key}}}`);
+    }
+    return JSON.stringify(vars[key]).slice(1, -1);
+  });
+  // SAFETY: each contract fixture is a JSON document, and each placeholder is in a JSON string.
+  return JSON.parse(filled) as Json;
 };

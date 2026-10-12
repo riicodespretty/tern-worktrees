@@ -3,7 +3,23 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
 import { gitSucceeds } from '../src/git.ts';
-import { ghFixture, git, gitShim, ignoreGlobally, logGitCalls, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs, writeTernLsRaw } from './helpers.ts';
+import {
+  cliJson,
+  contract,
+  ghFixture,
+  git,
+  gitShim,
+  ignoreGlobally,
+  logGitCalls,
+  readLog,
+  tempDir,
+  ternLog,
+  tmpRepo,
+  useGithubOrigin,
+  useSandbox,
+  writeTernLs,
+  writeTernLsRaw,
+} from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -107,7 +123,7 @@ describe('remove command', () => {
     it('deletes a branch that origin/main holds, and closes the tabs in the worktree', async () => {
       const dir = await addFeature();
       writeTernLs({ work: [repo.dir, dir, path.join(dir, 'src')] });
-      await expect(run([dir])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, closedBlocks: [2, 3], removed: dir, warnings: [] });
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-deleted', { worktree: dir }));
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
       expect(ternLog().toSorted()).toStrictEqual(['close 2 --json', 'close 3 --json', 'ls --json']);
@@ -115,7 +131,7 @@ describe('remove command', () => {
 
     it('keeps an unmerged branch', async () => {
       const dir = await addUnmerged();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, branchKept: 'not_merged', warnings: ['kept local branch feature/x: not merged'] });
       expect(existsSync(dir)).toBeFalsy();
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
@@ -125,6 +141,7 @@ describe('remove command', () => {
       await git(repo.dir, 'remote', 'set-url', 'origin', path.join(tempDir('gone'), 'missing.git'));
       const result = await run([dir]);
       expect(result.branchDeleted).toBeTruthy();
+      expect(result.branchKept).toBeNull();
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatch(/^fetch failed: fatal: .*missing\.git.*\S$/su);
     });
@@ -134,7 +151,7 @@ describe('remove command', () => {
       await repo.pushBranch('gone');
       await git(repo.dir, 'fetch', '--quiet', 'origin');
       await git(repo.origin, 'branch', '--quiet', '-D', 'gone');
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, branchKept: null, warnings: [] });
       await expect(git(repo.dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone')).resolves.toBe('refs/remotes/origin/gone\n');
     });
 
@@ -143,7 +160,7 @@ describe('remove command', () => {
       const dir = await addUnmerged();
       const tip = await git(dir, 'rev-parse', 'HEAD');
       fakeMergedPrs(['0000000000000000000000000000000000000000', tip.trim()]);
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, branchKept: null, warnings: [] });
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
     });
 
@@ -153,7 +170,7 @@ describe('remove command', () => {
       const merged = await git(dir, 'rev-parse', 'HEAD');
       fakeMergedPrs([merged.trim()]);
       await git(dir, 'commit', '--quiet', '--allow-empty', '-m', 'follow-up after the merge');
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, branchKept: 'not_merged', warnings: ['kept local branch feature/x: not merged'] });
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
@@ -161,7 +178,7 @@ describe('remove command', () => {
       await useGithubOrigin();
       fakeMergedPrs([]);
       const dir = await addUnmerged();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: ['kept local branch feature/x: not merged'] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, branchKept: 'not_merged', warnings: ['kept local branch feature/x: not merged'] });
     });
 
     it('deletes a branch that shares its name with a tag', async () => {
@@ -169,7 +186,7 @@ describe('remove command', () => {
       await git(repo.dir, 'tag', 'v1', 'main');
       const dir = managedPath('v1');
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'v1', dir, 'main');
-      await expect(run([dir])).resolves.toMatchObject({ branch: 'v1', branchDeleted: true, warnings: [] });
+      await expect(run([dir])).resolves.toMatchObject({ branch: 'v1', branchDeleted: true, branchKept: null, warnings: [] });
       await expect(hasBranch('v1')).resolves.toBeFalsy();
     });
 
@@ -178,6 +195,7 @@ describe('remove command', () => {
       const dir = await addUnmerged();
       await expect(run([dir])).resolves.toMatchObject({
         branchDeleted: false,
+        branchKept: 'not_merged',
         warnings: ['kept local branch feature/x: not merged', 'merged PR check failed: fake gh: no fixture'],
       });
     });
@@ -187,24 +205,21 @@ describe('remove command', () => {
       await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
       await git(repo.dir, 'config', 'remote.origin.followRemoteHEAD', 'never');
       const dir = await addFeature();
-      await expect(run([dir])).resolves.toMatchObject({
-        branchDeleted: false,
-        warnings: ['kept local branch feature/x: not merged', 'merge check failed: fake gh: no fixture'],
-      });
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-not-merged', { worktree: dir }));
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
     it('keeps the branch under the worktree policy', async () => {
       setTeardown('worktree');
       const dir = await addFeature();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, warnings: [] });
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-kept-policy', { worktree: dir }));
       await expect(hasBranch('feature/x')).resolves.toBeTruthy();
     });
 
     it('deletes an unmerged branch under the worktree+branch policy', async () => {
       setTeardown('worktree+branch');
       const dir = await addUnmerged();
-      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, warnings: [] });
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: true, branchKept: null, warnings: [] });
       await expect(hasBranch('feature/x')).resolves.toBeFalsy();
     });
 
@@ -213,7 +228,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       await git(repo.dir, 'worktree', 'add', '--quiet', '--force', path.join(tempDir('other'), 'wt'), 'feature/x');
       const result = await run([dir]);
-      expect(result).toMatchObject({ branchDeleted: false, removed: dir });
+      expect(result).toMatchObject({ branchDeleted: false, branchKept: 'not_deleted', removed: dir });
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatch(/^branch feature\/x not deleted: error: .*feature\/x.*\S$/su);
     });
@@ -224,6 +239,7 @@ describe('remove command', () => {
       await git(repo.dir, 'worktree', 'add', '--quiet', '--force', path.join(tempDir('other'), 'wt'), 'feature/x');
       vi.stubEnv('FAKE_TERN_FAIL', 'ls');
       const result = await run([dir]);
+      expect(result.branchKept).toBe('not_deleted');
       expect(result.warnings).toHaveLength(2);
       expect(result.warnings[0]).toMatch(/^branch feature\/x not deleted: /u);
       expect(result.warnings[1]).toBe('tabs not closed: fake tern: ls failed');
@@ -232,7 +248,7 @@ describe('remove command', () => {
     it('leaves the branches alone for a detached worktree', async () => {
       setTeardown('worktree+branch');
       const dir = await addManaged(['--detach']);
-      await expect(run([dir])).resolves.toStrictEqual({ branch: null, branchDeleted: false, closedBlocks: [], removed: dir, warnings: [] });
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-detached', { worktree: dir }));
       expect(existsSync(dir)).toBeFalsy();
     });
   });
@@ -244,7 +260,7 @@ describe('remove command', () => {
       writeFileSync(path.join(dir, '.setup-ran'), 'x\n');
       await expect(run([dir])).rejects.toMatchObject({
         code: 'dirty_worktree',
-        extra: { existing: dir, files: ['?? .setup-ran'] },
+        extra: { changes: ['?? .setup-ran'], existing: dir, files: ['?? .setup-ran'], hardToRebuild: [] },
         message: `${dir} has work that removing it would lose`,
       });
       await expect(run([dir, '--keep-tab'])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? .setup-ran'] } });
@@ -256,7 +272,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
       writeFileSync(path.join(dir, 'draft.txt'), 'draft\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? draft.txt'] } });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: ['?? draft.txt'], files: ['?? draft.txt'], hardToRebuild: [] } });
       expect(readFileSync(path.join(dir, 'draft.txt'), 'utf-8')).toBe('draft\n');
     });
 
@@ -301,7 +317,7 @@ describe('remove command', () => {
       const moved = managedPath('moved');
       renameSync(old, moved);
       await expect(run([moved])).rejects.toThrow(/is not a working tree/u);
-      await expect(run([moved, '--force'])).resolves.toMatchObject({ branch: 'feature/x', branchDeleted: true, removed: moved });
+      await expect(run([moved, '--force'])).resolves.toMatchObject({ branch: 'feature/x', branchDeleted: true, branchKept: null, removed: moved });
       expect(existsSync(moved)).toBeFalsy();
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(old);
     });
@@ -310,7 +326,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       writeTernLs({ work: [dir] });
       await shimForcedRemove('rm -rf "$7"; exit 1');
-      await expect(run([dir, '--force'])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, closedBlocks: [1], removed: dir, warnings: [] });
+      await expect(run([dir, '--force'])).resolves.toStrictEqual({ branch: 'feature/x', branchDeleted: true, branchKept: null, closedBlocks: [1], removed: dir, warnings: [] });
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(dir);
     });
 
@@ -331,11 +347,11 @@ describe('remove command', () => {
       writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'x\n');
       await expect(run([dir])).rejects.toMatchObject({
         code: 'dirty_worktree',
-        extra: { existing: dir, files: ['!! .env'] },
+        extra: { changes: [], existing: dir, files: ['!! .env'], hardToRebuild: ['.env'] },
         message: `${dir} has work that removing it would lose`,
       });
       writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
-      await expect(run([dir])).rejects.toMatchObject({ extra: { changes: ['?? junk.txt'], files: ['?? junk.txt', '!! .env'], hardToRebuild: ['.env'] } });
+      await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-dirty', { worktree: dir }));
       expect(readFileSync(path.join(dir, '.env'), 'utf-8')).toBe('SECRET=1\n');
       expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
     });

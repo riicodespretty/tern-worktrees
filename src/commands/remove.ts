@@ -10,11 +10,15 @@ import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
 import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
 
-/** The output of `remove`. */
+/** Why `remove` kept the branch: the teardown policy `worktree`, a branch that is not merged (also when the merge check failed), or a failed `git branch -D`. */
+export type BranchKept = 'not_deleted' | 'not_merged' | 'policy';
+
+/** The output of `remove`. `branchKept` is null when `remove` deleted the branch, and for a detached `HEAD`. */
 export interface RemoveResult {
   removed: string;
   branch: string | null;
   branchDeleted: boolean;
+  branchKept: BranchKept | null;
   closedBlocks: number[];
   warnings: string[];
 }
@@ -113,20 +117,20 @@ const isMerged = async (ctx: Context, branch: string): Promise<boolean> => {
   return (await isAncestor(ctx.root, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
 };
 
-const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Promise<boolean> => {
+const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Promise<BranchKept | null> => {
   if (teardown === 'worktree') {
-    return false;
+    return 'policy';
   }
   if (teardown === 'worktree+merged-branch' && !(await warnOnCliError(ctx, 'merge check failed', false, async () => await isMerged(ctx, branch)))) {
     ctx.warnings.unshift(`kept local branch ${branch}: not merged`);
-    return false;
+    return 'not_merged';
   }
   const deletion = await gitRun(ctx.root, 'branch', '-D', '--', branch);
   if (deletion.status !== 0) {
     ctx.warnings.unshift(`branch ${branch} not deleted: ${deletion.stderr.trim()}`);
-    return false;
+    return 'not_deleted';
   }
-  return true;
+  return null;
 };
 
 /**
@@ -162,6 +166,6 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
       });
   await removeWorktree(ctx, options.force);
   const closedBlocks = await closeBlocks(ctx, blocks);
-  const branchDeleted = branch !== null && (await applyPolicy(ctx, teardown, branch));
-  return { branch, branchDeleted, closedBlocks, removed: target, warnings: ctx.warnings };
+  const branchKept = branch === null ? null : await applyPolicy(ctx, teardown, branch);
+  return { branch, branchDeleted: branch !== null && branchKept === null, branchKept, closedBlocks, removed: target, warnings: ctx.warnings };
 };

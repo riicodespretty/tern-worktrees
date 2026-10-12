@@ -57,9 +57,9 @@ describe('remove command', () => {
       const dir = await addFeature();
       writeFileSync(path.join(dir, '.env'), 'SECRET=2\n');
       writeFileSync(path.join(dir, 'key.pem'), 'KEY-A\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { existing: dir, files: ['!! .env'] } });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], existing: dir, files: ['!! .env'], hardToRebuild: ['.env'] } });
       writeFileSync(path.join(dir, '.env'), 'SECRET=1 and more\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['!! .env'] } });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! .env'], hardToRebuild: ['.env'] } });
       writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/x', removed: dir, warnings: [] });
       expect(existsSync(dir)).toBeFalsy();
@@ -73,7 +73,7 @@ describe('remove command', () => {
       const dir = await addFeature();
       symlinkSync(path.join(repo.dir, '.env'), path.join(dir, '.env'));
       writeFileSync(path.join(dir, 'secrets'), '');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['!! .env', '!! secrets'] } });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! .env', '!! secrets'], hardToRebuild: ['.env', 'secrets'] } });
     });
 
     it('compares large files chunk by chunk, also when they differ only in the last chunk', async () => {
@@ -88,7 +88,7 @@ describe('remove command', () => {
       const changed = Buffer.from(ragged);
       changed[changed.length - 1] = 0;
       writeFileSync(path.join(dir, 'ragged.bin'), changed);
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['!! ragged.bin'] } });
+      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! ragged.bin'], hardToRebuild: ['ragged.bin'] } });
       writeFileSync(path.join(dir, 'ragged.bin'), ragged);
       await expect(run([dir])).resolves.toMatchObject({ removed: dir, warnings: [] });
     });

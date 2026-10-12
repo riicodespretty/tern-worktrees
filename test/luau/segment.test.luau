@@ -122,7 +122,7 @@ test("refresh runs once after a create adds an entry", function()
 	plugin:answer("resolve", '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}', 0, cx)
 	plugin:answer(
 		"branches",
-		'{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}',
+		'{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}',
 		0,
 		cx
 	)
@@ -159,7 +159,12 @@ do
 		end
 		local before = plugin.refreshes
 		plugin.exports.remove(case.path, nil, cx, call)
-		plugin:answer("remove", `\{"removed":"{case.path}","branch":"feat","warnings":[]}`, 0, cx)
+		plugin:answer(
+			"remove",
+			`\{"removed":"{case.path}","branch":"feat","branchDeleted":false,"branchKept":"policy","warnings":[]}`,
+			0,
+			cx
+		)
 		eq(plugin.refreshes - before, case.refresh.count, "refreshes")
 	end)
 end

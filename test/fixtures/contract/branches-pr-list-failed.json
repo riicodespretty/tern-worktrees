@@ -1,0 +1,13 @@
+{
+  "branches": ["x", "main"],
+  "default": "main",
+  "name": "app",
+  "prs": [],
+  "prsFailed": true,
+  "repo": "{{repo}}",
+  "warnings": ["pr list failed: fake gh: no fixture"],
+  "worktrees": [
+    { "branch": "main", "managed": false, "owner": null, "path": "{{repo}}" },
+    { "branch": "x", "managed": true, "owner": "tern", "path": "{{worktree}}" }
+  ]
+}

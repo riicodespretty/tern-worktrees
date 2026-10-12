@@ -7,6 +7,8 @@
 - Add `tern-wt config`, which prints the options file with each default filled in
 - Add `owner`, `tern` or `omp`, to the output of `create`
 - Add `changes` and `hardToRebuild` to the `dirty_worktree` error of `remove` and Relocate. `files` stays the same
+- Add `prsFailed` to the output of `branches`. It is true when `gh pr list` failed
+- Add `branchKept` to the output of `remove`: `policy`, `not_merged` or `not_deleted` when `remove` kept the branch, else null
 
 ### Fix
 

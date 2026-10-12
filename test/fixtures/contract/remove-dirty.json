@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "dirty_worktree",
+    "message": "{{worktree}} has work that removing it would lose",
+    "existing": "{{worktree}}",
+    "files": ["?? junk.txt", "!! .env"],
+    "changes": ["?? junk.txt"],
+    "hardToRebuild": [".env"]
+  }
+}
