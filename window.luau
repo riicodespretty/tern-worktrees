@@ -519,6 +519,21 @@ local function short_path(path: string): string
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
 end
 
+local function sentence_case(text: string): string
+	return string.upper(string.sub(text, 1, 1)) .. string.sub(text, 2)
+end
+
+local MAX_TOAST_DETAIL = 50
+
+local function elide_start(text: string, max: number): string
+	local length = utf8.len(text) or #text
+	if length <= max then
+		return text
+	end
+	local tailStartByte = utf8.offset(text, length - (max - 1) + 1) or (#text - (max - 1) + 1)
+	return "…" .. string.sub(text, tailStartByte)
+end
+
 -- The `:next` callback of a `cx:pick` or `cx:prompt` request. It returns at once when its `cx` is nil. Else it shows
 -- `err`, when set, in an error toast titled `title`, then calls `cb`.
 local function settle<T>(
@@ -865,7 +880,7 @@ local function type_setup(
 	end
 	local line = setup.line
 	local function give_up(cx2: WindowCx, warning: string)
-		cx2:toast("error", warning, line)
+		cx2:toast("error", sentence_case(warning), line)
 		finish(false, warning)
 	end
 	if pane == nil then
@@ -943,7 +958,11 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 		if type(res.carried) == "table" and #res.carried > 0 then
 			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
 		end
-		cx2:toast("success", tostring(res.status) .. NO_BREAK_SPACE .. "worktree", table.concat(parts, " · "))
+		cx2:toast(
+			"success",
+			sentence_case(tostring(res.status)) .. NO_BREAK_SPACE .. "worktree",
+			elide_start(table.concat(parts, " · "), MAX_TOAST_DETAIL)
+		)
 	end)
 end
 
@@ -1461,8 +1480,8 @@ local function run_remove(
 				placeholder = title,
 				icon = "branch",
 				items = {
-					{ id = "retry", label = "Retry" },
-					{ id = "force", label = "Force delete", detail = "discards uncommitted work" },
+					{ id = "retry", label = "Retry", icon = "repeat" },
+					{ id = "force", label = "Force delete", detail = "discards uncommitted work", icon = "trash" },
 				},
 			}, function(id, cx3)
 				if id == "retry" then

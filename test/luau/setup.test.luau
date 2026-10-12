@@ -63,7 +63,7 @@ end
 local function setup_toasts(cx: any): { any }
 	local found: { any } = {}
 	for _, t in cx.toasts do
-		if string.sub(t.title, 1, #"setup not run") == "setup not run" then
+		if string.sub(t.title, 1, #"Setup not run") == "Setup not run" then
 			table.insert(found, t)
 		end
 	end
@@ -102,7 +102,7 @@ test("type_setup toasts the line when no prompt shows in 30 s", function()
 	local toasts = setup_toasts(cx)
 	eq(#toasts, 1, "setup toasts at 30 s")
 	eq(toasts[1].level, "error", "toast level")
-	eq(toasts[1].title, NO_PROMPT, "toast title")
+	eq(toasts[1].title, "Setup not run: no shell prompt in 30 s", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 1000)
 	eq(#setup_toasts(cx), 1, "setup toasts after 31 s")
@@ -163,7 +163,7 @@ test("a tab that was open before gets the open-before toast and no typing", func
 	local toasts = setup_toasts(cx)
 	eq(#toasts, 1, "setup toasts")
 	eq(toasts[1].level, "error", "toast level")
-	eq(toasts[1].title, OPEN_BEFORE, "toast title")
+	eq(toasts[1].title, "Setup not run: the tab was open before", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
@@ -178,7 +178,7 @@ test("a create that opens no tab gets the no-tab toast and no typing", function(
 	local toasts = setup_toasts(cx)
 	eq(#toasts, 1, "setup toasts")
 	eq(toasts[1].level, "error", "toast level")
-	eq(toasts[1].title, NO_TAB, "toast title")
+	eq(toasts[1].title, "Setup not run: no tab opened", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
@@ -200,7 +200,7 @@ test("a parked pane moved into a new tab gets the no-new-shell toast and no typi
 	create_x(plugin, cx, UNTYPED)
 	local toasts = setup_toasts(cx)
 	eq(#toasts, 1, "setup toasts")
-	eq(toasts[1].title, NO_NEW_SHELL, "toast title")
+	eq(toasts[1].title, "Setup not run: no new shell in the tab", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
@@ -341,6 +341,41 @@ test("a Carly create that opens no tab replies at once with the no-tab warning",
 	eq(replies[1].warnings[1], NO_TAB, "warning")
 	wait_ms(plugin, 31000)
 	eq(#cx.typed, 0, "typed")
+end)
+
+local function create_toast(cx: any): any
+	for _, t in cx.toasts do
+		if t.level == "success" then
+			return t
+		end
+	end
+	error("no create toast")
+end
+
+test("a create toast starts its title with a capital and keeps a short path whole", function()
+	local plugin, cx = window()
+	create_x(
+		plugin,
+		cx,
+		`\{"branch":"x","carried":[],"path":"{PATH}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
+	)
+	local toast = create_toast(cx)
+	eq(toast.title, "Reused\u{A0}worktree", "title")
+	eq(toast.detail, PATH, "detail")
+end)
+
+test("a create toast cuts a long detail at its start and keeps its end", function()
+	local plugin, cx = window()
+	local long = "/wt/worktrees/app/" .. string.rep("very-long-folder-", 4) .. "end"
+	create_x(
+		plugin,
+		cx,
+		`\{"branch":"x","carried":[],"path":"{long}","repo":"/r/app","setup":null,"status":"reused","warnings":[]}`
+	)
+	local detail = create_toast(cx).detail
+	eq(utf8.len(detail), 50, "detail length")
+	eq(string.sub(detail, 1, #"…"), "…", "detail start")
+	eq(string.sub(detail, -#"folder-end"), "folder-end", "detail end")
 end)
 
 runner.finish()
