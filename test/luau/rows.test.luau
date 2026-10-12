@@ -121,6 +121,7 @@ test("a create runs one branches for its repository", function()
 	plugin:answer("branches", BRANCHES, 0, cx)
 	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
+	plugin:answer("resolve", RESOLVED, 0, cx)
 	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "branches calls after the create")
 end)
 

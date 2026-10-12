@@ -198,6 +198,7 @@ local function pickers_after_close_of_created_tab(owner: string): number
 		0,
 		cx
 	)
+	plugin:answer("resolve", RESOLVED, 0, cx)
 	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local before = #after.asked
 	plugin.handlers.tab_closed({ tab = 2 }, after)
@@ -344,15 +345,16 @@ test(
 )
 
 for _, gap in { 10, 0 } do
-	test(`an entry from open_tab {gap} ms after a list --all started survives its answer`, function()
+	test(`an entry from a create answer {gap} ms after a list --all started survives its answer`, function()
 		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1, { fail = { new_tab = true } })
 		local plugin = Stub.load({ env = ENV })
 		plugin.handlers.window_start(cx)
 		plugin:tick(gap)
 		pick_branch_x(plugin, cx)
 		plugin:answer("create", CREATED, 0, cx)
+		plugin:answer("resolve", RESOLVED, 0, cx)
 		plugin:answer("list", LISTED, 0, cx)
-		eq(plugin.kv.worktreeIndex["/wt/worktrees/app/x"].branch, "x", "entry from open_tab")
+		eq(plugin.kv.worktreeIndex["/wt/worktrees/app/x"].branch, "x", "entry from the create answer")
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry from list")
 	end)
 end
@@ -435,6 +437,7 @@ local function create_in(plugin: Stub.Harness, cx: any, branch: string, path: st
 		0,
 		cx
 	)
+	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
 test("a create or remove in one window keeps the entries that another window wrote to kv", function()

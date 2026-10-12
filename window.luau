@@ -804,7 +804,6 @@ end
 -- that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
 local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	local path = res.path
-	set_entry(path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
 	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), rootOfSession)
 	local tab: number? = nil
 	local shellPane: number? = nil
@@ -905,6 +904,59 @@ local function type_setup(
 	poll(cx)
 end
 
+-- The CLI made, reused or relocated the worktree of `res`. Writes its entry in the worktree index, resolves the
+-- sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then starts to type its setup line.
+-- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
+-- setup step ends, or at once when the tab step raises; `res.setup.typed` and `res.warnings` then hold the outcome.
+-- A tab step that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
+local function worktree_opened(
+	cx: WindowCx,
+	res: CreateResult,
+	opened: ((cx: WindowCx) -> ())?,
+	settled: ((res: CreateResult) -> ())?
+)
+	local function add_warning(text: string)
+		res.warnings = res.warnings or {}
+		table.insert(res.warnings, text)
+	end
+	local function settle()
+		if settled ~= nil then
+			settled(res)
+		end
+	end
+	set_entry(res.path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
+	resolve_sessions(cx, function(cx2)
+		local ok, paneOrErr, noShellReason = pcall(open_tab, cx2, res)
+		if not ok then
+			add_warning("tab not opened: " .. tostring(paneOrErr))
+		end
+		refresh_branches(cx2, res.repo)
+		if opened ~= nil then
+			opened(cx2)
+		end
+		if not ok then
+			settle()
+			return
+		end
+		local setup = res.setup
+		type_setup(cx2, paneOrErr, noShellReason, setup, function(typed, warning)
+			if setup ~= nil then
+				setup.typed = typed
+			end
+			if warning ~= nil then
+				add_warning(warning)
+			end
+			settle()
+		end)
+	end)
+end
+
+-- The CLI tore down the worktree at `removed` in the repository `repo`: deletes its index entry and refreshes `repo`.
+local function worktree_torn_down(cx: WindowCx, removed: string, repo: string)
+	set_entry(removed, nil)
+	refresh_branches(cx, repo)
+end
+
 local function create(
 	cx: WindowCx,
 	root: string,
@@ -952,22 +1004,21 @@ local function create(
 			end
 			return
 		end
-		local pane, noShellReason = open_tab(cx2, res)
-		type_setup(cx2, pane, noShellReason, res.setup)
-		refresh_branches(cx2, root)
-		local parts: { string } = { res.path }
-		local warnings = join_or_nil(res.warnings, "; ")
-		if warnings then
-			table.insert(parts, warnings)
-		end
-		if type(res.carried) == "table" and #res.carried > 0 then
-			table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
-		end
-		cx2:toast(
-			"success",
-			sentence_case(tostring(res.status)) .. NO_BREAK_SPACE .. "worktree",
-			elide_start(table.concat(parts, " · "), MAX_TOAST_DETAIL)
-		)
+		worktree_opened(cx2, res, function(cx3)
+			local parts: { string } = { res.path }
+			local warnings = join_or_nil(res.warnings, "; ")
+			if warnings then
+				table.insert(parts, warnings)
+			end
+			if type(res.carried) == "table" and #res.carried > 0 then
+				table.insert(parts, "carried " .. #res.carried .. " ignored file(s)")
+			end
+			cx3:toast(
+				"success",
+				sentence_case(tostring(res.status)) .. NO_BREAK_SPACE .. "worktree",
+				elide_start(table.concat(parts, " · "), MAX_TOAST_DETAIL)
+			)
+		end)
 	end)
 end
 
@@ -1600,8 +1651,7 @@ local function run_remove(
 			return
 		end
 		cx2:toast("success", deleted_title(res), short_warnings(res))
-		set_entry(res.removed, nil)
-		refresh_branches(cx2, res.repo)
+		worktree_torn_down(cx2, res.removed, res.repo)
 		done(cx2)
 	end)
 end
@@ -1863,31 +1913,8 @@ tern.carly.export("create", {
 	cli_or_else(argv, function(_cx, err)
 		call:fail(err_text(err))
 	end, function(res: CreateResult, cx2)
-		resolve_sessions(cx2, function(cx3)
-			local pane: number?, noShellReason: string? = nil, nil
-			local ok, openErr = pcall(function()
-				pane, noShellReason = open_tab(cx3, res)
-			end)
-			if not ok then
-				res.warnings = res.warnings or {}
-				table.insert(res.warnings, "tab not opened: " .. tostring(openErr))
-			end
-			if type(res.repo) == "string" then
-				refresh_branches(cx3, res.repo)
-			end
-			local setup = res.setup
-			if not ok or setup == nil then
-				call:reply(res)
-				return
-			end
-			type_setup(cx3, pane, noShellReason, setup, function(typed, warning)
-				setup.typed = typed
-				if warning ~= nil then
-					res.warnings = res.warnings or {}
-					table.insert(res.warnings, warning)
-				end
-				call:reply(res)
-			end)
+		worktree_opened(cx2, res, nil, function(settledRes)
+			call:reply(settledRes)
 		end)
 	end)
 	return call:wait(120000)
@@ -1918,8 +1945,7 @@ tern.carly.export("remove", {
 	end
 	cli(argv, function(res: RemoveResult, err, cx2)
 		if err == nil then
-			set_entry(res.removed, nil)
-			refresh_branches(cx2, res.repo)
+			worktree_torn_down(cx2, res.removed, res.repo)
 		end
 		reply_to(call)(res, err, cx2)
 	end)

@@ -42,7 +42,7 @@ local function window(extra: { Stub.Pane }?, fail: Stub.Fail?): (Stub.Harness, a
 	return Stub.load({ env = ENV, cx = cx }), cx, panes
 end
 
--- Picks branch x in the branch picker and answers its `create` with `answer`.
+-- Picks branch x in the branch picker, answers its `create` with `answer`, then answers the `resolve` of the create.
 local function create_x(plugin: Stub.Harness, cx: any, answer: string)
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
@@ -54,6 +54,7 @@ local function create_x(plugin: Stub.Harness, cx: any, answer: string)
 		end
 	end
 	plugin:answer("create", answer, 0, cx)
+	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
 local function find_pane(panes: { Stub.Pane }, id: number): Stub.Pane

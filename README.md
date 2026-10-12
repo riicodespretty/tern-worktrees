@@ -52,7 +52,7 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 
 The first open of the branch picker for a repository in a Tern window waits for its branches and pull requests, with a `Loading branches…` toast. When the list is ready, a `Branches loaded` toast replaces it. Each subsequent open shows the last list at once and gets a new list in the background, with a `Refreshing branches…` toast. When the new list is ready, a toast tells you to reopen the picker to see the changes, or that it found no changes. When the refresh fails, an error toast gives the cause.
 
-While `tern-wt` makes the worktree, a `Creating worktree <branch>…` toast shows, or `Reusing worktree <branch>…` when the branch has a worktree. When it is done, a `Created worktree` or `Reused worktree` toast replaces it. The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
+While `tern-wt` makes the worktree, a `Creating worktree <branch>…` toast shows, or `Reusing worktree <branch>…` when the branch has a worktree. When it is done, a `Created worktree` or `Reused worktree` toast replaces it. The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab. The `Created worktree` or `Reused worktree` toast shows when the tab opens, before the plugin types the setup line. When the setup line cannot run, a `Setup not run: …` toast then replaces it and stays.
 
 Each picker, prompt and confirmation of the plugin uses the Tern picker or the Tern prompt. In a picker, a path in your home folder starts with `~`.
 

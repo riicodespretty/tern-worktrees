@@ -83,6 +83,8 @@ When the hotkey runs, the window half sends the working directory of each pane t
 
 A new worktree tab opens in the repository session, or in a new session when the repository has none. When two sessions show the repository, the oldest session (the lowest session id) gets the tab, also when the other session is the current session. The window half does not change the other session. After a reload of the plugin, a repository can get a second session: see the parked panes below.
 
+When `create` answers, the window half runs `resolve` again before it opens the tab. This applies to each create: from the branch picker, a worktree row, Relocate, New branch and the Carly `create` export. Thus a repository session that opened after the window started gets the tab, and the window half makes no second session for its repository.
+
 When the user presses the hotkey again before a picker opens, the newest press wins: the `resolve` and `branches` calls of the older presses end with no picker, so one picker opens, and no picker opens after the user closes it.
 
 ### The branch picker cache
@@ -141,7 +143,7 @@ The worktree index lists each worktree in the worktree root, managed and omp-own
 Three writes change the index:
 
 - A `list --all` result replaces the whole index. A `list --all` runs when the window starts. A refresh also runs it when the `cwd` of a pane moves to a folder in the worktree root that the index does not have, and when a tab or pane opens in such a folder. A refresh also runs it when a pane in an indexed worktree gets focus or ends a shell command. At most one `list --all` runs at a time, and a refresh starts at most one in each 2 s. A refresh request in that gap waits, and a timer runs it one time at the end of the gap. When a `list --all` gives no answer in 120 s, the timeout of each CLI call, the next refresh starts a new one, and the window half drops the late answer of the first one. The new index keeps the value of this window for each entry that this window set or deleted at or after the start of that `list --all`.
-- `open_tab` sets the entry of the worktree, with the `owner` from the `create` answer, before it opens the tab, so the first shell of the tab gets the worktree variables.
+- When `create` answers, the window half sets the entry of the worktree, with the `owner` from the `create` answer, before it opens the tab, so the first shell of the tab gets the worktree variables.
 - A teardown that succeeds deletes the entry, also from the Carly `remove` export.
 
 Each window writes the same key. Thus `set_entry` reads `tern.kv` again and changes only its one entry, so a window keeps the entries of the other windows.
@@ -164,6 +166,8 @@ The options file lists the setup commands in the `setup` key, by the name with o
 - The plugin runs `create --no-tab` and opens the tab itself. `type_setup` then reads `at_prompt` of the new shell pane each 200 ms, for a maximum of 30 s, and types the line with `cx:run`. The Carly `create` export replies only after the plugin types the line or gives up, so `setup.typed` and the warnings tell the agent the result.
 
 When the tab was open before, when no tab opens, when the tab holds no new shell (the plugin moved a parked pane of the worktree into it), or when no prompt shows in 30 s, the line does not run. A warning of `create` or a toast of the plugin tells why. The commands run in the shell of the tab, where the user sees them and can stop them.
+
+The `Created worktree` or `Reused worktree` toast shows when the tab opens, before the plugin types the setup line. When the setup line cannot run, a `Setup not run: …` toast then replaces it and stays.
 
 ## Development
 

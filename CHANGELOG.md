@@ -21,6 +21,7 @@
 - Start a new `branches` or `list --all` when Tern dropped the answer of the last one for 120 s. Before, the worktree rows and the worktree index stopped their refreshes until the plugin reloaded
 - Open a new worktree tab in the oldest session of its repository when two or more sessions show that repository. Before, the order of a Luau table selected the session
 - Show no `worktree` text for the branch of the main checkout, in the branch picker and on its worktree row. Each entry of `worktrees` in the `branches` output has `main`, which is true for the main checkout
+- Run `resolve` again when `create` answers, as the Carly `create` export did. This applies to a create from the branch picker, a worktree row, Relocate and New branch. Thus a repository session that opened after the window started gets the tab, and no second session opens for that repository. When the tab step raises, the plugin still refreshes the worktree rows and shows the `Created worktree` or `Reused worktree` toast with `tab not opened: <error>`. The `Setup not run: …` toast shows after the success toast, so the success toast no longer replaces it
 
 ## [0.1.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.1.0 "2026-10-10")
 
