@@ -2,7 +2,7 @@
 
 Git worktrees as [Tern](https://docs.stencil.so/tern) tabs, in three parts:
 
-- The `tern-worktrees` Tern plugin. `cmd+shift+w` (W for worktree) opens the branch picker, and the branch you pick opens as a worktree tab. The command palette also lists the branches and pull requests of the current repository as worktree rows. When you close a worktree tab, the plugin offers a teardown.
+- The `tern-worktrees` Tern plugin. `cmd+shift+w` (W for worktree) opens the branch picker, and the branch you pick opens as a worktree tab. The command palette also lists the branches and pull requests of the current repository as worktree rows. When you close a worktree tab, a Tern picker offers to keep the worktree or tear it down.
 - The `tern-wt` CLI, the one implementation of each git and GitHub step. The plugin runs it, and agents run it directly.
 - The `tern-worktrees` omp skill, the contract that agents follow.
 
@@ -52,7 +52,7 @@ ln -s <checkout>/skills/tern-worktrees ~/.omp/agent/skills/tern-worktrees
 
 The worktree tab opens with the name of the branch, in the session of its repository, else in a new session named after the repository. When the worktree has a tab, the plugin focuses that tab.
 
-The branch picker, the repo picker and the questions that follow them are Tern's own picker and prompt. Each other dialog of the plugin opens where the command palette opens, and it looks like the palette. It uses the Tern theme colors, fonts, font size and interface style. In a dialog, a path in your home folder starts with `~`.
+Each picker, prompt and confirmation of the plugin is Tern's own picker or prompt. In a picker, a path in your home folder starts with `~`.
 
 ### Open a worktree from the command palette
 
@@ -79,7 +79,7 @@ The branch picker of that repository opens next.
 
 ### Relocate
 
-A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a dialog offers Relocate or Cancel. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
+A branch can have a worktree that is not in the worktree root, for example from Orca, or from `tern-wt` before you installed omp, in `~/.tern-wt/worktrees`. When you pick that branch, a picker reads `Worktree of this branch is at <path>` and offers `Relocate to <path>`. Enter relocates, and Escape keeps the worktree where it is. Relocate moves the worktree into the root. When git refuses the move, `tern-wt` makes the worktree again in the root with plain `git worktree add`, also in omp clone mode, but only when the first worktree has no work to lose. Work to lose is a changed file, a new file that git does not track, or a submodule commit that no remote holds. Then the worktree stays where it is, and a message lists that work.
 
 An omp-owned worktree of the branch needs no relocation: `tern-wt` opens its tab where it is.
 
@@ -87,19 +87,21 @@ Ignored files that are hard to rebuild, for example `.env` or `*.pem`, do not st
 
 ### Close a worktree tab
 
-When you close a worktree tab, a dialog titled "Closing a worktree tab" shows the path and what Tear down does with your teardown policy:
+When you close a worktree tab, a picker opens with the placeholder `Closing worktree tab · <path>`. It lists two items, and Keep worktree comes first, so Enter keeps the worktree:
 
-- Keep worktree (Enter): closes the tab and keeps the worktree.
-- Tear down (`⌫`): removes the worktree, applies the teardown policy to its branch, then closes the tab. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
-- Cancel (Escape): keeps the tab and the worktree.
+- Keep worktree: closes the tab and keeps the worktree.
+- Tear down: removes the worktree, applies the teardown policy to its branch, then closes the tab. Its dim text says what the teardown policy does with the branch. Ignored build and install output goes with the worktree. Ignored files that are hard to rebuild stop the teardown, as uncommitted changes do. A copy goes with the worktree: an ignored file with the same bytes as the file at the same path in the main checkout, for example the `.env` that an omp clone copied. A changed copy stops the teardown.
 
-When the tab closes before the dialog opens, for example from the tab bar, the dialog is titled "Worktree tab closed" and offers Keep worktree and Tear down. It opens without focus, so a key press meant for a different pane tears nothing down.
+Escape keeps the tab and the worktree. The picker has no `⌫` or `⌘⌫` keys: type to filter, or use the arrow keys, then press Enter. When the picker fails to open, a toast shows the error, and the tab closes with its worktree kept.
 
-When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, a second dialog shows the error and lists the files:
+When the tab closes before the picker opens, for example from the tab bar, the picker reads `Worktree tab closed · <path>` and offers the same two items. Escape keeps the worktree. This picker gets the focus, so a key press meant for a pane goes to the picker. A typed letter can filter out Keep worktree, so check the selected item before you press Enter.
 
-- Retry (Enter): runs the teardown again.
-- Force delete (`⌘⌫`): removes the worktree and discards its uncommitted work.
-- Cancel (Escape): keeps the tab and the worktree.
+When the teardown fails, for example because of uncommitted changes or an ignored `.env` file, an error toast names the worktree and lists the files with work to lose: at most 10, with the ignored files that are hard to rebuild counted first, then `and <n> more`. A second picker then offers:
+
+- Retry: runs the teardown again.
+- Force delete: removes the worktree and discards its uncommitted work.
+
+Escape keeps the tab and the worktree.
 
 ## Work with omp
 

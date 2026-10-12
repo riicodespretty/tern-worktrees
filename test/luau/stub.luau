@@ -8,7 +8,7 @@ local serde = require("@lune/serde")
 local PLUGIN_DIR = "/plugin"
 local DATA_DIR = "/plugin-data"
 
-export type Pane = { pane: number, tab: number?, cwd: string?, block: string?, parked: boolean? }
+export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean? }
 export type Run = { argv: { string }, cb: (result: any, cx: any) -> () }
 export type Options = {
 	file: string?,
@@ -32,12 +32,11 @@ local Stub = {}
 
 local lastCx: any = nil
 
--- Returns a fake WindowCx over `panes`. Every dialog request lands in `cx.asked`, through `ask` only.
--- A `pick` or `prompt` request keeps its options in `opts` and its `:next` callback in `next`, which the
--- test calls with `(result, err, cx)` to answer it.
+-- Returns a fake WindowCx over `panes`. Every `pick` and `prompt` request lands in `cx.asked`, with its
+-- options in `opts` and its `:next` callback in `next`, which the test calls with `(result, err, cx)` to
+-- answer it.
 function Stub.cx(panes: { Pane }, focused: number?): any
 	local asked: { any } = {}
-	local nextPane = 1000
 
 	local function ask(request: any): any
 		table.insert(asked, request)
@@ -105,9 +104,6 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 			end,
 		},
 		layout = {
-			float = function(_self: any, _pane: number, ...: any): (boolean, string?)
-				return true, nil
-			end,
 			focus = function(_self: any, _pane: number) end,
 			close = function(_self: any, _pane: number) end,
 		},
@@ -115,12 +111,6 @@ function Stub.cx(panes: { Pane }, focused: number?): any
 			switch = function(_self: any, _id: number) end,
 		},
 	}
-
-	function cx.new_block(_self: any, kind: string, args: { string }?, ...: any): number?
-		nextPane += 1
-		ask({ kind = kind, args = args })
-		return nextPane
-	end
 
 	function cx.toast(self: any, level: string, title: string, detail: string?)
 		table.insert(self.toasts, { level = level, title = title, detail = detail })
@@ -194,7 +184,6 @@ function Stub.load(opts: Options): Harness
 				return false
 			end,
 		},
-		css = function(_name: string, _rules: string) end,
 		getenv = function(name: string): string?
 			return env[name]
 		end,

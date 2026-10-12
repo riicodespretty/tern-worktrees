@@ -1,0 +1,262 @@
+--!strict
+
+local Stub = require("./stub")
+local harness = require("./harness")
+local test, eq = harness.test, harness.eq
+
+local ENV = { TERN_WT_HOME = "/wt", HOME = "/home/u" }
+local WORKTREE = "/wt/worktrees/app/feat"
+local OTHER = "/wt/worktrees/app/fix"
+local FILES = {
+	[WORKTREE .. "/.git"] = "gitdir: /src/app/.git/worktrees/feat\n",
+	[OTHER .. "/.git"] = "gitdir: /src/app/.git/worktrees/fix\n",
+}
+local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
+local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],"prs":[],"worktrees":[],"warnings":[]}]]
+local ELSEWHERE =
+	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
+
+local function argvs(h: Stub.Harness, verb: string): { string }
+	local found: { string } = {}
+	for _, run in h.runs do
+		if run.argv[2] == verb then
+			table.insert(found, table.concat(run.argv, " ", 2))
+		end
+	end
+	return found
+end
+
+local function item(request: any, id: string): any
+	for _, it in request.opts.items do
+		if it.id == id then
+			return it
+		end
+	end
+	error("no item " .. id)
+end
+
+-- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE.
+local function open_relocate(): (Stub.Harness, any)
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	local h = Stub.load({ env = ENV })
+	h.commands.new.run(cx)
+	h:answer("resolve", RESOLVED, 0, cx)
+	h:answer("branches", BRANCHES, 0, cx)
+	cx.asked[1].next(item(cx.asked[1], "b:x"), nil, cx)
+	h:answer("create", ELSEWHERE, 1, cx)
+	eq(#cx.asked, 2, "dialogs opened")
+	eq(cx.asked[2].kind, "pick", "dialog kind")
+	return h, cx
+end
+
+-- Presses the close key on the last tab of WORKTREE.
+local function close_worktree_tab(): (Stub.Harness, any)
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
+	local h = Stub.load({ env = ENV, files = FILES })
+	eq(h.overrides.close_tab(cx), true, "close_tab result")
+	eq(#cx.asked, 1, "dialogs opened")
+	eq(cx.asked[1].kind, "pick", "dialog kind")
+	return h, cx
+end
+
+-- Tears WORKTREE down from the close-tab picker and fails it with `stdout`.
+local function fail_teardown(stdout: string): (Stub.Harness, any)
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(item(cx.asked[1], "teardown"), nil, cx)
+	h:answer("remove", stdout, 1, cx)
+	eq(#cx.asked, 2, "dialogs opened")
+	eq(cx.asked[2].kind, "pick", "dialog kind")
+	return h, cx
+end
+
+local DIRTY = (function(): string
+	local files: { string } = {}
+	for i = 1, 12 do
+		table.insert(files, '" M c' .. i .. '"')
+	end
+	for i = 1, 3 do
+		table.insert(files, '"!! i' .. i .. '"')
+	end
+	return '{"error":{"code":"dirty_worktree","message":"dirty","files":[' .. table.concat(files, ",") .. "]}}"
+end)()
+
+test("relocate asks with one Relocate item", function()
+	local _, cx = open_relocate()
+	local opts = cx.asked[2].opts
+	eq(opts.placeholder, "Worktree of this branch is at /old/app/x", "placeholder")
+	eq(#opts.items, 1, "items")
+	eq(opts.items[1].id, "relocate", "items[1].id")
+	eq(opts.items[1].label, "Relocate to …/worktrees/app/x", "items[1].label")
+	eq(opts.items[1].icon, "folder", "items[1].icon")
+end)
+
+test("dismissing relocate sends no create", function()
+	local h, cx = open_relocate()
+	cx.asked[2].next(nil, nil, cx)
+	eq(#argvs(h, "create"), 0, "create calls")
+end)
+
+test("a relocate pick err sends no create", function()
+	local h, cx = open_relocate()
+	cx.asked[2].next(item(cx.asked[2], "relocate"), "boom", cx)
+	eq(#argvs(h, "create"), 0, "create calls")
+end)
+
+test("Relocate sends create with --relocate", function()
+	local h, cx = open_relocate()
+	cx.asked[2].next(item(cx.asked[2], "relocate"), nil, cx)
+	local creates = argvs(h, "create")
+	eq(#creates, 1, "create calls")
+	eq(creates[1], "create --repo /r/app --no-tab --branch=x --relocate", "create argv")
+end)
+
+test("closing a worktree tab lists Keep worktree first, then Tear down", function()
+	local _, cx = close_worktree_tab()
+	local opts = cx.asked[1].opts
+	eq(opts.placeholder, "Closing worktree tab · …/worktrees/app/feat", "placeholder")
+	eq(opts.icon, "branch", "icon")
+	eq(#opts.items, 2, "items")
+	eq(opts.items[1].id, "keep", "items[1].id")
+	eq(opts.items[1].label, "Keep worktree", "items[1].label")
+	eq(opts.items[1].detail, "closes the tab, keeps the worktree", "items[1].detail")
+	eq(opts.items[2].id, "teardown", "items[2].id")
+	eq(opts.items[2].label, "Tear down", "items[2].label")
+	eq(
+		opts.items[2].detail,
+		"Tear down removes the worktree, and deletes the branch if it is merged.",
+		"items[2].detail"
+	)
+end)
+
+test("dismissing the close-tab picker sends no remove and keeps the tab", function()
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(nil, nil, cx)
+	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#cx.commands, 0, "commands run")
+end)
+
+test("Keep worktree closes the tab and sends no remove", function()
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(item(cx.asked[1], "keep"), nil, cx)
+	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#cx.commands, 1, "commands run")
+	eq(cx.commands[1], "close_tab", "command")
+end)
+
+test("Tear down sends remove <path> --keep-tab", function()
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(item(cx.asked[1], "teardown"), nil, cx)
+	local removes = argvs(h, "remove")
+	eq(#removes, 1, "remove calls")
+	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab", "remove argv")
+	eq(#cx.commands, 0, "commands run before remove ends")
+end)
+
+test("a pick err while closing a tab still closes the tab", function()
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(nil, "boom", cx)
+	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(cx.commands[1], "close_tab", "command")
+end)
+
+test("a pick err with Tear down picked keeps the worktree and closes the tab", function()
+	local h, cx = close_worktree_tab()
+	cx.asked[1].next(item(cx.asked[1], "teardown"), "boom", cx)
+	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(cx.commands[1], "close_tab", "command")
+end)
+
+test("a closed tab with two worktrees asks twice, and Escape keeps both", function()
+	local live = Stub.cx({
+		{ pane = 1, tab = 1, cwd = WORKTREE },
+		{ pane = 2, tab = 1, cwd = OTHER },
+	}, 1)
+	local h = Stub.load({ env = ENV, files = FILES })
+	h.handlers.window_start(live)
+	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
+	h.handlers.tab_closed({ tab = 1 }, cx)
+	eq(#cx.asked, 1, "dialogs opened")
+	eq(cx.asked[1].opts.placeholder, "Worktree tab closed · …/worktrees/app/feat", "placeholder")
+	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
+	cx.asked[1].next(nil, nil, cx)
+	eq(#cx.asked, 2, "dialogs opened")
+	eq(cx.asked[2].kind, "pick", "dialog kind")
+	eq(cx.asked[2].opts.placeholder, "Worktree tab closed · …/worktrees/app/fix", "placeholder")
+	cx.asked[2].next(nil, nil, cx)
+	eq(#argvs(h, "remove"), 0, "remove calls")
+	eq(#cx.commands, 0, "commands run")
+end)
+
+test("a failed teardown toasts the files, ignored ones first in the 10", function()
+	local _, cx = fail_teardown(DIRTY)
+	local toast = cx.toasts[#cx.toasts]
+	eq(toast.level, "error", "toast level")
+	eq(toast.title, "Teardown failed: …/worktrees/app/feat", "toast title")
+	eq(
+		toast.detail,
+		"15 files with work to lose:  M c1,  M c2,  M c3,  M c4,  M c5,  M c6,  M c7; "
+			.. "ignored, hard to rebuild: i1, i2, i3; and 5 more",
+		"toast detail"
+	)
+	local opts = cx.asked[2].opts
+	eq(#opts.items, 2, "items")
+	eq(opts.items[1].id, "retry", "items[1].id")
+	eq(opts.items[1].label, "Retry", "items[1].label")
+	eq(opts.items[2].id, "force", "items[2].id")
+	eq(opts.items[2].label, "Force delete", "items[2].label")
+	eq(opts.items[2].detail, "discards uncommitted work", "items[2].detail")
+end)
+
+test("a failed teardown toasts the shortened message and the saved files", function()
+	local _, cx = fail_teardown(
+		'{"error":{"code":"git_failed","message":"cannot remove '
+			.. WORKTREE
+			.. '","staging":"'
+			.. WORKTREE
+			.. '.carry"}}'
+	)
+	eq(
+		cx.toasts[#cx.toasts].detail,
+		"cannot remove …/worktrees/app/feat · Saved files: …/worktrees/app/feat.carry",
+		"toast detail"
+	)
+end)
+
+test("Retry sends remove again", function()
+	local h, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item(cx.asked[2], "retry"), nil, cx)
+	local removes = argvs(h, "remove")
+	eq(#removes, 1, "remove calls")
+	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab", "remove argv")
+end)
+
+test("Force delete sends remove with --force", function()
+	local h, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item(cx.asked[2], "force"), nil, cx)
+	local removes = argvs(h, "remove")
+	eq(#removes, 1, "remove calls")
+	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab --force", "remove argv")
+end)
+
+test("dismissing the failed teardown sends nothing and keeps the tab", function()
+	local h, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(nil, nil, cx)
+	eq(#h.runs, 0, "CLI calls")
+	eq(#cx.commands, 0, "commands run")
+end)
+
+test("a failed-teardown pick err with Force delete picked sends nothing", function()
+	local h, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item(cx.asked[2], "force"), "boom", cx)
+	eq(#h.runs, 0, "CLI calls")
+	eq(#cx.commands, 0, "commands run")
+end)
+
+test("a failed-teardown pick err with Retry picked sends nothing", function()
+	local h, cx = fail_teardown(DIRTY)
+	cx.asked[2].next(item(cx.asked[2], "retry"), "boom", cx)
+	eq(#h.runs, 0, "CLI calls")
+	eq(#cx.commands, 0, "commands run")
+end)
+
+harness.finish()

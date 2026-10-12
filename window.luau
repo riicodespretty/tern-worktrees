@@ -1,13 +1,7 @@
 --!strict
 
 local CLI = tern.plugin.dir .. "/bin/tern-wt"
-local DIALOG = "tern-worktrees.dialog"
-local FLOAT_SHEET = "dialog-float"
 local NO_BREAK_SPACE = "\u{A0}"
-
-local floatOk, floatSource = pcall(tern.fs.read, tern.plugin.dir .. "/dialog-float.css")
-local floatRules: string? = if floatOk then floatSource else nil
-tern.css(FLOAT_SHEET, "")
 
 local function env(name: string): string?
 	local value = tern.getenv(name)
@@ -41,40 +35,7 @@ local POLICY = {
 	["worktree+branch"] = "Tear down removes the worktree and deletes the branch.",
 }
 
--- NOTE: The dialog protocol constants and the Button type below must match the block at the top of host.luau. Change both files together.
-local TITLE_PREFIX = "twt:"
-local MODE_CONFIRM: "confirm" = "confirm"
-local ACTION_SELECT: "select" = "select"
-local ACTION_NEW: "new" = "new"
-local ACTION_BUTTON: "button" = "button"
-local ACTION_TEXT: "text" = "text"
-local ACTION_CANCEL: "cancel" = "cancel"
-local KIND_CANCEL: "cancel" = "cancel"
-
-type Answer =
-	{ action: typeof(ACTION_CANCEL) }
-	| { action: typeof(ACTION_BUTTON), id: string }
-	| { action: typeof(ACTION_SELECT), id: string }
-	| { action: typeof(ACTION_NEW), text: string }
-	| { action: typeof(ACTION_TEXT), text: string }
-type AnswerCb = (answer: Answer, cx: WindowCx) -> ()
 type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
-type ButtonKey = "backspace" | "cmd+backspace"
-type Button = {
-	id: string,
-	label: string,
-	kind: ("primary" | "danger" | typeof(KIND_CANCEL))?,
-	key: ButtonKey?,
-}
-type ConfirmOptions = {
-	title: string,
-	path: string,
-	message: string,
-	listing: { string }?,
-	buttons: { Button },
-	reveal: boolean?,
-}
-type ConfirmDialog = ConfirmOptions & { mode: typeof(MODE_CONFIRM) }
 type PullRequest = { number: number, title: string, branch: string }
 type BranchWorktree = { branch: string?, path: string }
 type BranchesResult = {
@@ -100,7 +61,6 @@ type ResolveResult = { repos: { ResolvedDir } }
 type RemoveResult = { branch: string?, warnings: { string } }
 type ListResult = { root: string, worktrees: { any } }
 type RootResult = { root: string }
-type Pending = { reqid: string, cb: AnswerCb }
 type RootState = {
 	rows: { string }?,
 	prs: { PullRequest }?,
@@ -116,8 +76,6 @@ type SessionIndex = {
 type Config = { hotkeys: { new: { string } }, teardown: string }
 type Repo = { root: string, name: string }
 
-local pending: { [number]: Pending } = {}
-local counter = 0
 local startCount = 0
 local managed: { [number]: { string } } = {}
 local handled: { [string]: boolean } = {}
@@ -313,7 +271,7 @@ end
 local function tab_paths(cx: WindowCx, tab: number): { string }
 	local paths: { string } = {}
 	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab == tab and not pending[pane.pane] then
+		if pane.tab == tab then
 			local path = managed_path(pane.cwd)
 			if path ~= nil and table.find(paths, path) == nil then
 				table.insert(paths, path)
@@ -326,7 +284,7 @@ end
 local function close_tab(cx: WindowCx, tab: number)
 	local target: number? = nil
 	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab == tab and not pending[pane.pane] then
+		if pane.tab == tab then
 			target = pane.pane
 			break
 		end
@@ -380,95 +338,6 @@ local function rebuild_managed(cx: WindowCx)
 	end
 end
 
-local function end_wait(pane: number)
-	pending[pane] = nil
-	if next(pending) == nil then
-		tern.css(FLOAT_SHEET, "")
-	end
-end
-
-local function begin_wait(pane: number, entry: Pending)
-	if next(pending) == nil and floatRules ~= nil then
-		tern.css(FLOAT_SHEET, floatRules)
-	end
-	pending[pane] = entry
-end
-
-local staleSwept = false
-
-local function close_stale_dialogs(cx: WindowCx, focused: number?): boolean
-	if staleSwept then
-		return false
-	end
-	staleSwept = true
-	local closedFocused = false
-	for _, pane in ipairs(cx.session:panes()) do
-		if pane.block == DIALOG and pending[pane.pane] == nil then
-			cx.layout:close(pane.pane)
-			closedFocused = closedFocused or pane.pane == focused
-		end
-	end
-	return closedFocused
-end
-
-local function focus_flow_dialog(cx: WindowCx): boolean
-	local index = session_index(cx)
-	local current = index.current
-	if current == nil then
-		return false
-	end
-	for pane in pairs(pending) do
-		if session_of_tab(index, cx.session:tab_of(pane)) == current.id then
-			cx.layout:focus(pane)
-			return true
-		end
-	end
-	return false
-end
-
-local function parse_answer(decoded: any): Answer
-	if type(decoded) ~= "table" then
-		return { action = ACTION_CANCEL }
-	end
-	local action, id, text = decoded.action, decoded.id, decoded.text
-	if action == ACTION_BUTTON and type(id) == "string" then
-		return { action = ACTION_BUTTON, id = id }
-	elseif action == ACTION_SELECT and type(id) == "string" then
-		return { action = ACTION_SELECT, id = id }
-	elseif action == ACTION_NEW and type(text) == "string" then
-		return { action = ACTION_NEW, text = text }
-	elseif action == ACTION_TEXT and type(text) == "string" then
-		return { action = ACTION_TEXT, text = text }
-	end
-	return { action = ACTION_CANCEL }
-end
-
-local function ask(cx: WindowCx, req: ConfirmDialog, cb: AnswerCb, reveal: boolean?): boolean
-	counter += 1
-	local reqid = tostring(tern.now()) .. "-" .. tostring(counter)
-	local pane = cx:new_block(DIALOG, { reqid, tern.json.encode(req) }, "beside", { focus = false })
-	if pane == nil then
-		cx:toast("error", "Worktree dialog unavailable")
-		return false
-	end
-	local floated, reason
-	if reveal == false then
-		floated, reason = cx.layout:float(pane, nil, nil, { focus = false })
-	else
-		floated, reason = cx.layout:float(pane)
-	end
-	if not floated then
-		cx.layout:close(pane)
-		cx:toast("error", "Worktree dialog unavailable", reason)
-		return false
-	end
-	if reveal ~= false then
-		cx.layout:focus(pane)
-	end
-	begin_wait(pane, { reqid = reqid, cb = cb })
-	return true
-end
-
 local MAX_PATH = 72
 
 local function short_path(path: string): string
@@ -489,16 +358,6 @@ local function short_path(path: string): string
 		or (#short - (keptChars - headChars) + 1)
 	local headEndByte = (utf8.offset(short, headChars + 1) or (headChars + 1)) - 1
 	return string.sub(short, 1, headEndByte) .. "…" .. string.sub(short, tailStartByte)
-end
-
-local function confirm(cx: WindowCx, req: ConfirmOptions, cb: AnswerCb): boolean
-	local dialog = table.clone(req) :: ConfirmDialog
-	dialog.mode = MODE_CONFIRM
-	dialog.reveal = nil
-	local listing = req.listing
-	dialog.listing = if listing ~= nil and #listing > 0 then tern.json.array(listing) else nil
-	dialog.buttons = tern.json.array(req.buttons)
-	return ask(cx, dialog, cb, req.reveal)
 end
 
 -- Every `:next` of `cx:pick` and `cx:prompt` returns at once when its `cx` is nil, and toasts `err`.
@@ -597,18 +456,6 @@ local function list_dirty_files(files: any): DirtyListing
 	return shown
 end
 
-local function dirty_lines(shown: DirtyListing): { string }
-	local listing: { string } = table.clone(shown.changes)
-	if #shown.ignored > 0 then
-		table.insert(listing, "Ignored files that are hard to rebuild:")
-		table.move(shown.ignored, 1, #shown.ignored, #listing + 1, listing)
-	end
-	if shown.omitted > 0 then
-		table.insert(listing, "and " .. shown.omitted .. " more")
-	end
-	return listing
-end
-
 local function dirty_summary(shown: DirtyListing): string
 	local parts: { string } = {}
 	if #shown.changes > 0 then
@@ -628,19 +475,16 @@ local function dirty_summary(shown: DirtyListing): string
 	return total .. noun .. " with work to lose: " .. table.concat(parts, "; ")
 end
 
-local function failure_message(err: any, path: string): (string, { string })
-	local lines: { string } = {}
-	local listing = if err.code == "dirty_worktree" then dirty_lines(list_dirty_files(err.files)) else {}
-	if #listing > 0 then
-		table.insert(lines, "Removing this worktree loses these changes:")
-	else
-		table.insert(lines, replace_plain(tostring(err.message), path, short_path(path)))
-	end
+local function failure_message(err: any, path: string): string
+	local summary = if err.code == "dirty_worktree" then dirty_summary(list_dirty_files(err.files)) else ""
+	local parts: { string } = {
+		if summary ~= "" then summary else replace_plain(tostring(err.message), path, short_path(path)),
+	}
 	local saved = staging_line(err)
 	if saved ~= nil then
-		table.insert(lines, replace_plain(saved, path, short_path(path)))
+		table.insert(parts, replace_plain(saved, path, short_path(path)))
 	end
-	return table.concat(lines, "\n"), listing
+	return table.concat(parts, " · ")
 end
 
 local function fnv1a(text: string): string
@@ -731,7 +575,7 @@ local function open_tab(cx: WindowCx, res: CreateResult)
 	local index = session_index(cx)
 	local parked: number? = nil
 	for _, pane in ipairs(cx.session:panes()) do
-		if is_under(pane.cwd, path) and not pending[pane.pane] then
+		if is_under(pane.cwd, path) then
 			if pane.parked then
 				parked = parked or pane.pane
 			else
@@ -825,16 +669,18 @@ local function create(cx: WindowCx, root: string, extra: { string }, retry: ((cx
 				cx2:toast("error", tostring(err.message))
 				retry(cx2)
 			elseif err.code == "worktree_exists_elsewhere" then
-				confirm(cx2, {
-					title = "Branch has a worktree elsewhere",
-					path = short_path(tostring(err.existing)),
-					message = "Relocate it to " .. short_path(tostring(err.target)) .. "?",
-					buttons = {
-						{ id = "relocate", label = "Relocate", kind = "primary" },
-						{ id = "cancel", label = "Cancel", kind = KIND_CANCEL },
+				local existing = tostring(err.existing)
+				choose(cx2, {
+					placeholder = "Worktree of this branch is at " .. short_path(existing),
+					items = {
+						{
+							id = "relocate",
+							label = "Relocate to " .. short_path(tostring(err.target)),
+							icon = "folder",
+						},
 					},
-				}, function(answer, cx3)
-					if answer.action == ACTION_BUTTON and answer.id == "relocate" then
+				}, function(item, cx3, pickErr)
+					if pickErr == nil and item ~= nil and item.id == "relocate" then
 						local again = table.clone(extra)
 						table.insert(again, "--relocate")
 						create(cx3, root, again)
@@ -1213,10 +1059,6 @@ repo_picker = function(cx: WindowCx)
 end
 
 local function start(cx: WindowCx)
-	close_stale_dialogs(cx)
-	if focus_flow_dialog(cx) then
-		return
-	end
 	startCount += 1
 	local started = startCount
 	flush(cx)
@@ -1247,21 +1089,18 @@ local function run_remove(
 	end
 	cli(args, function(res: RemoveResult, err, cx2)
 		if err ~= nil then
-			local message, listing = failure_message(err, path)
-			confirm(cx2, {
-				title = "Teardown failed",
-				path = short_path(path),
-				message = message,
-				listing = listing,
-				buttons = {
-					{ id = "retry", label = "Retry", kind = "primary" },
-					{ id = "force", label = "Force delete", kind = "danger", key = "cmd+backspace" },
-					{ id = "cancel", label = "Cancel", kind = KIND_CANCEL },
+			cx2:toast("error", "Teardown failed: " .. short_path(path), failure_message(err, path))
+			choose(cx2, {
+				placeholder = "Teardown failed · " .. short_path(path),
+				icon = "branch",
+				items = {
+					{ id = "retry", label = "Retry" },
+					{ id = "force", label = "Force delete", detail = "discards uncommitted work" },
 				},
-			}, function(answer, cx3)
-				if answer.action == ACTION_BUTTON and answer.id == "retry" then
+			}, function(item, cx3, pickErr)
+				if pickErr == nil and item ~= nil and item.id == "retry" then
 					run_remove(cx3, path, false, done, stop)
-				elseif answer.action == ACTION_BUTTON and answer.id == "force" then
+				elseif pickErr == nil and item ~= nil and item.id == "force" then
 					run_remove(cx3, path, true, done, stop)
 				else
 					stop(cx3)
@@ -1295,38 +1134,37 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 			advance(cx2)
 		end
 	end
+	local function keep(cx2: WindowCx)
+		if tab ~= nil then
+			handled[path] = true
+		end
+		advance(cx2)
+	end
 	local policy = config().teardown
-	local teardown: Button = { id = "teardown", label = "Tear down", kind = "danger", key = "backspace" }
-	local keep: Button = { id = "keep", label = "Keep worktree" }
-	local buttons: { Button } = if tab ~= nil
-		then { keep, teardown, { id = "cancel", label = "Cancel", kind = KIND_CANCEL } }
-		else { keep, teardown }
-	local where = if tab ~= nil
-		then "The worktree stays on disk when the tab closes."
-		else "The worktree is still on disk."
-	return confirm(cx, {
-		title = if tab ~= nil then "Closing a worktree tab" else "Worktree tab closed",
-		path = short_path(path),
-		message = where .. " " .. (POLICY[policy] or ("Teardown policy: " .. policy)),
-		buttons = buttons,
-		reveal = tab ~= nil,
-	}, function(answer, cx2)
-		if answer.action == ACTION_BUTTON and answer.id == "teardown" then
+	local where = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
+	-- `choose` already toasts a pick `err`. An `err` counts as Keep, so a closing tab can always close.
+	choose(cx, {
+		placeholder = where .. short_path(path),
+		icon = "branch",
+		items = {
+			{ id = "keep", label = "Keep worktree", detail = "closes the tab, keeps the worktree" },
+			{ id = "teardown", label = "Tear down", detail = POLICY[policy] or ("Teardown policy: " .. policy) },
+		},
+	}, function(item, cx2, err)
+		if err == nil and item ~= nil and item.id == "teardown" then
 			run_remove(cx2, path, false, function(cx3)
 				if tab ~= nil then
 					handled[path] = true
 				end
 				advance(cx3)
 			end, stop)
-		elseif answer.action == ACTION_BUTTON and answer.id == "keep" then
-			if tab ~= nil then
-				handled[path] = true
-			end
-			advance(cx2)
+		elseif err ~= nil or (item ~= nil and item.id == "keep") then
+			keep(cx2)
 		else
 			stop(cx2)
 		end
 	end)
+	return true
 end
 
 local function intercept(cx: WindowCx, tab: number?): boolean
@@ -1355,10 +1193,7 @@ tern.command({
 
 tern.override("close_tab", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()
-	if close_stale_dialogs(cx, focused) then
-		return true
-	end
-	if focused == nil or pending[focused] then
+	if focused == nil then
 		return false
 	end
 	return intercept(cx, cx.session:tab_of(focused))
@@ -1366,10 +1201,7 @@ end)
 
 tern.override("close_pane", function(cx: WindowCx): boolean?
 	local focused = cx.session:focused()
-	if close_stale_dialogs(cx, focused) then
-		return true
-	end
-	if focused == nil or pending[focused] then
+	if focused == nil then
 		return false
 	end
 	local tab = cx.session:tab_of(focused)
@@ -1382,7 +1214,6 @@ tern.override("close_pane", function(cx: WindowCx): boolean?
 end)
 
 tern.on("window_start", function(cx: WindowCx)
-	close_stale_dialogs(cx)
 	rebuild_managed(cx)
 	for _, pane in ipairs(cx.session:panes()) do
 		remember_cwd(pane.pane, pane.cwd)
@@ -1407,13 +1238,11 @@ end)
 
 for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
-		close_stale_dialogs(cx)
 		rebuild_managed(cx)
 	end)
 end
 
 tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
-	close_stale_dialogs(cx)
 	rebuild_managed(cx)
 	remember_cwd(ev.pane, ev.path)
 	if ev.pane == cx.session:focused() then
@@ -1422,7 +1251,6 @@ tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
 end)
 
 tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
-	close_stale_dialogs(cx)
 	local pane = cx.session:pane(ev.pane)
 	if pane ~= nil then
 		remember_cwd(ev.pane, pane.cwd)
@@ -1433,7 +1261,6 @@ tern.on("focus", function(ev: FocusEvent, cx: WindowCx)
 end)
 
 tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
-	close_stale_dialogs(cx)
 	local cwd: string? = cwdOfPane[ev.pane]
 	if cwd == nil then
 		local pane = cx.session:pane(ev.pane)
@@ -1442,34 +1269,8 @@ tern.on("command_finished", function(ev: CommandFinishedEvent, cx: WindowCx)
 	refresh_dir(cx, cwd)
 end)
 
-tern.on("title", function(ev: TitleEvent, cx: WindowCx)
-	local entry = pending[ev.pane]
-	if entry == nil then
-		local pane = cx.session:pane(ev.pane)
-		if pane ~= nil and pane.block == DIALOG and string.sub(ev.title, 1, #TITLE_PREFIX) == TITLE_PREFIX then
-			cx.layout:close(ev.pane)
-		end
-		return
-	end
-	local prefix = TITLE_PREFIX .. entry.reqid .. ":"
-	if string.sub(ev.title, 1, #prefix) ~= prefix then
-		return
-	end
-	local ok, decoded = pcall(tern.json.decode, string.sub(ev.title, #prefix + 1))
-	local answer = parse_answer(if ok then decoded else nil)
-	end_wait(ev.pane)
-	cx.layout:close(ev.pane)
-	entry.cb(answer, cx)
-end)
-
-tern.on("pane_closed", function(ev: PaneEvent, cx: WindowCx)
+tern.on("pane_closed", function(ev: PaneEvent, _cx: WindowCx)
 	cwdOfPane[ev.pane] = nil
-	local entry = pending[ev.pane]
-	if entry == nil then
-		return
-	end
-	end_wait(ev.pane)
-	entry.cb({ action = ACTION_CANCEL }, cx)
 end)
 
 tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)

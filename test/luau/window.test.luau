@@ -14,6 +14,7 @@ test("close_tab asks once for the last tab on a managed worktree", function()
 	})
 	eq(h.overrides.close_tab(cx), true, "close_tab result")
 	eq(#cx.asked, 1, "dialogs opened")
+	eq(cx.asked[1].kind, "pick", "dialog kind")
 end)
 
 test("close_tab leaves a worktree of another repository alone", function()
