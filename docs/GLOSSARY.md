@@ -26,6 +26,10 @@ _Avoid_: Copy mode, fast checkout
 A Tern tab with its panes in a managed worktree.
 _Avoid_: Branch tab
 
+**Repository session**:
+The one Tern session that holds the tabs of one repository: its main checkout and its worktree tabs. The plugin opens each worktree tab there, and makes the session when the repository has none.
+_Avoid_: Project session, workspace
+
 **Worktree row**:
 A row in the Tern command palette that opens the worktree tab of one branch or pull request.
 _Avoid_: Palette entry, worktree command
@@ -49,6 +53,10 @@ _Avoid_: Adopt, migrate, import
 **Hard-to-rebuild file**:
 An ignored file that no build or install makes again, for example a `.env` file. Its loss counts as work to lose. Ignored build output and installed packages are not hard to rebuild. At teardown, a copy with the bytes of the file at the same path in the main checkout also does not count.
 _Avoid_: Secret file, precious file
+
+**Work to lose**:
+The changes, the new files that git does not track, the submodule commits that no remote holds, and the hard-to-rebuild files that a delete of a worktree destroys.
+_Avoid_: Dirty files, losses
 
 ### Teardown
 

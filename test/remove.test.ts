@@ -335,7 +335,7 @@ describe('remove command', () => {
         message: `${dir} has work that removing it would lose`,
       });
       writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
-      await expect(run([dir])).rejects.toMatchObject({ extra: { files: ['?? junk.txt', '!! .env'] } });
+      await expect(run([dir])).rejects.toMatchObject({ extra: { changes: ['?? junk.txt'], files: ['?? junk.txt', '!! .env'], hardToRebuild: ['.env'] } });
       expect(readFileSync(path.join(dir, '.env'), 'utf-8')).toBe('SECRET=1\n');
       expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
     });

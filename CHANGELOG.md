@@ -6,6 +6,7 @@
 
 - Add `tern-wt config`, which prints the options file with each default filled in
 - Add `owner`, `tern` or `omp`, to the output of `create`
+- Add `changes` and `hardToRebuild` to the `dirty_worktree` error of `remove` and Relocate. `files` stays the same
 
 ### Fix
 

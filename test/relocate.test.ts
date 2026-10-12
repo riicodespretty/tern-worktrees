@@ -47,10 +47,10 @@ const submoduleWorktree = async (): Promise<string> => {
   return old;
 };
 
-const expectKept = async (old: string, files: string[]): Promise<void> => {
+const expectKept = async (old: string, changes: string[]): Promise<void> => {
   await expect(run(['--repo', repo.dir, '--branch', 'feature/s', '--relocate', '--no-tab'])).rejects.toMatchObject({
     code: 'dirty_worktree',
-    extra: { existing: old, files },
+    extra: { changes, existing: old, files: changes, hardToRebuild: [] },
     message: `${old} has work that recreating it would lose`,
   });
   await expect(currentBranch(old)).resolves.toBe('feature/s');

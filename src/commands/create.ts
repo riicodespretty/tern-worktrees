@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { fetchOrigin, gitMust, gitRun, gitSucceeds, hardToRebuild, hasOrigin, requireRepoRoot, worktreeLosses, worktrees } from '../git.ts';
+import { fetchOrigin, gitMust, gitRun, gitSucceeds, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { defaultBranch, ghMust, ghMustWith, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
@@ -13,6 +13,7 @@ import type { WorktreeOwner, WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { nameWithOwner } from '../repo-ref.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
+import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
 
 /** How `create` got the worktree. */
 export type CreateStatus = 'created' | 'relocated' | 'reused';
@@ -320,11 +321,9 @@ const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Pr
   if (moved.status === 0) {
     return null;
   }
-  const files = await worktreeLosses(existing.path);
-  if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${existing.path} has work that recreating it would lose`, { existing: existing.path, files });
-  }
-  const carry: Carry = { files: await hardToRebuild(existing.path), staging: mkdtempSync(path.join(tmpdir(), 'tern-wt-carry-')) };
+  const work = await findWorkToLose(existing.path, null);
+  stopOnWorkToLose(existing.path, 'recreating', { changes: work.changes, hardToRebuild: [] });
+  const carry: Carry = { files: work.hardToRebuild, staging: mkdtempSync(path.join(tmpdir(), 'tern-wt-carry-')) };
   await afterStaging(carry, async () => {
     copyAll(existing.path, carry.staging, carry.files);
     await gitMust(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);

@@ -3,11 +3,12 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { currentBranch, fetchOrigin, gitMust, gitRun, hardToRebuildChanges, isAncestor, linkedWorktreeRoot, requireRepoRoot, worktreeLosses } from '../git.ts';
+import { currentBranch, fetchOrigin, gitMust, gitRun, isAncestor, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
 import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
 import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
+import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
 
 /** The output of `remove`. */
 export interface RemoveResult {
@@ -56,14 +57,6 @@ const warnOnCliError = async <T>(ctx: Context, label: string, fallback: T, actio
   }
 };
 
-/** Throws `dirty_worktree` when the worktree has {@link worktreeLosses} or `ignored` holds a hard-to-rebuild file. */
-const stopOnLosses = async (ctx: Context, ignored: string[]): Promise<void> => {
-  const files = [...(await worktreeLosses(ctx.target)), ...ignored.map(file => `!! ${file}`)];
-  if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${ctx.target} has work that removing it would lose`, { existing: ctx.target, files });
-  }
-};
-
 const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
   if (force) {
     const forcedRemoval = await gitRun(ctx.root, 'worktree', 'remove', '--force', '--force', ctx.target);
@@ -73,7 +66,7 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
     }
     return;
   }
-  await stopOnLosses(ctx, await hardToRebuildChanges(ctx.target, ctx.root));
+  stopOnWorkToLose(ctx.target, 'removing', await findWorkToLose(ctx.target, ctx.root));
   const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
   if (removal.status === 0) {
     return;
