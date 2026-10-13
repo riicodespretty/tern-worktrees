@@ -4,7 +4,7 @@ import { loadConfig } from './config.ts';
 import { checkoutAt, gitMust, gitRun } from './git.ts';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
-import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
+import { nameWithOwner, parseGithubUrl, parseRepoRef } from './repo-ref.ts';
 import type { GithubRepoRef } from './repo-ref.ts';
 
 /** The path of the clone of a GitHub repository. `cloned` is true when this call ran `gh repo clone`, and false when it reused a clone that was there before. */
@@ -27,8 +27,6 @@ export interface GhPullRequest {
   headRefOid: string;
   isCrossRepository: boolean;
 }
-
-const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)\/(?<name>[^/]+?)(?:\.git)?$/u;
 
 /** Runs `gh <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when gh fails. */
 export const ghRun = async (...args: string[]): Promise<RunResult> => await run(['gh', ...args]);
@@ -75,8 +73,7 @@ export interface Origin {
 export const readOrigin = async (root: string): Promise<Origin> => {
   const result = await gitRun(root, 'remote', 'get-url', 'origin');
   const url = result.stdout.trim();
-  const groups = GITHUB_URL.exec(url)?.groups;
-  return { github: groups ? { name: groups.name, owner: groups.owner } : null, present: url !== '' };
+  return { github: parseGithubUrl(url), present: url !== '' };
 };
 
 /** The default branch: `origin/HEAD`, else what GitHub reports for `repoRef`, else the current branch. When `repoRef` is null, it does not ask GitHub. */

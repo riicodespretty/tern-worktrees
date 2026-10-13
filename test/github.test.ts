@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { cloneDestination, defaultBranch, ghMust, ghRun, ghTry, listPullRequests, readOrigin } from '../src/github.ts';
-import { nameWithOwner } from '../src/repo-ref.ts';
 import type { Sandbox } from './helpers.ts';
 import { ghDefaultBranchFixture, ghFixture, ghLog, git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
@@ -13,32 +12,18 @@ describe('github helpers', () => {
     sandbox = useSandbox();
   });
 
-  describe(nameWithOwner, () => {
-    it('joins the owner and the name', () => {
-      expect(nameWithOwner({ name: 'name', owner: 'owner' })).toBe('owner/name');
-    });
-  });
-
   describe(readOrigin, () => {
-    it.each([
-      ['git@github.com:riicodespretty/tern-worktrees.git', 'riicodespretty', 'tern-worktrees'],
-      ['git@github.com:owner/name', 'owner', 'name'],
-      ['https://github.com/owner/name.git', 'owner', 'name'],
-      ['https://github.com/owner/some.repo', 'owner', 'some.repo'],
-    ])('parses %s', async (url, owner, name) => {
+    it('gives the GitHub owner and name of a GitHub origin', async () => {
       const repo = await tmpRepo();
-      await git(repo.dir, 'remote', 'set-url', 'origin', url);
-      await expect(readOrigin(repo.dir)).resolves.toStrictEqual({ github: { name, owner }, present: true });
+      await git(repo.dir, 'remote', 'set-url', 'origin', 'git@github.com:owner/name.git');
+      await expect(readOrigin(repo.dir)).resolves.toStrictEqual({ github: { name: 'name', owner: 'owner' }, present: true });
     });
 
-    it.each(['https://gitlab.com/owner/name.git', 'https://github.com/owner/name/extra', 'xgit@github.com:owner/name', 'git@github.com:owner/name.git.bak/x'])(
-      'gives a present origin without GitHub for %s',
-      async url => {
-        const repo = await tmpRepo();
-        await git(repo.dir, 'remote', 'set-url', 'origin', url);
-        await expect(readOrigin(repo.dir)).resolves.toStrictEqual({ github: null, present: true });
-      },
-    );
+    it('gives a present origin without GitHub for a non-GitHub origin', async () => {
+      const repo = await tmpRepo();
+      await git(repo.dir, 'remote', 'set-url', 'origin', 'https://gitlab.com/owner/name.git');
+      await expect(readOrigin(repo.dir)).resolves.toStrictEqual({ github: null, present: true });
+    });
 
     it('gives present false and a null github without an origin remote', async () => {
       const repo = await tmpRepo();
