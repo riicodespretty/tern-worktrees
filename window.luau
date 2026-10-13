@@ -202,11 +202,10 @@ local function managed_worktree(cwd: string?): string?
 	return if entry ~= nil and entry.owner == "tern" then path else nil
 end
 
--- Writes the managed worktrees of each tab with panes into `managed`, from the worktree index in memory.
-local function rebuild_managed(cx: WindowCx)
-	flush(cx)
+-- The managed worktrees of each tab in `panes`, once each; a tab with panes and none maps to an empty list.
+local function managed_by_tab(panes: { PaneInfo }): { [number]: { string } }
 	local found: { [number]: { string } } = {}
-	for _, pane in ipairs(cx.session:panes()) do
+	for _, pane in ipairs(panes) do
 		local tab = pane.tab
 		if tab ~= nil then
 			local paths = found[tab] or {}
@@ -217,7 +216,12 @@ local function rebuild_managed(cx: WindowCx)
 			end
 		end
 	end
-	for tab, paths in pairs(found) do
+	return found
+end
+
+-- Writes the managed worktrees of each tab with panes into `managed`, from the worktree index in memory.
+local function rebuild_managed(panes: { PaneInfo })
+	for tab, paths in pairs(managed_by_tab(panes)) do
 		if #paths > 0 then
 			managed[tab] = paths
 		else
@@ -263,7 +267,8 @@ local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 		listing = nil
 		if err == nil then
 			apply_list(res, startedAt)
-			rebuild_managed(cx2)
+			flush(cx2)
+			rebuild_managed(cx2.session:panes())
 		end
 		cb(if err == nil then res else nil, cx2)
 		if listAgain then
@@ -401,19 +406,6 @@ local function switch_to(cx: WindowCx, sid: number?)
 	end
 end
 
-local function tab_paths(cx: WindowCx, tab: number): { string }
-	local paths: { string } = {}
-	for _, pane in ipairs(cx.session:panes()) do
-		if pane.tab == tab then
-			local path = managed_worktree(pane.cwd)
-			if path ~= nil and table.find(paths, path) == nil then
-				table.insert(paths, path)
-			end
-		end
-	end
-	return paths
-end
-
 local function close_tab(cx: WindowCx, tab: number)
 	local target: number? = nil
 	for _, pane in ipairs(cx.session:panes()) do
@@ -444,6 +436,17 @@ local function pane_under(cx: WindowCx, path: string, exceptTab: number?): boole
 		end
 	end
 	return false
+end
+
+-- The paths of `paths` that exist on disk and have no pane outside tab `exceptTab` (nil: no pane at all).
+local function to_ask(cx: WindowCx, paths: { string }, exceptTab: number?): { string }
+	local found: { string } = {}
+	for _, path in ipairs(paths) do
+		if tern.fs.exists(path) and not pane_under(cx, path, exceptTab) then
+			table.insert(found, path)
+		end
+	end
+	return found
 end
 
 local MAX_PATH = 72
@@ -867,12 +870,8 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	if tab ~= nil and plan.kind ~= "open" then
 		cx.layout:name_tab(tab, res.branch)
 	end
-	if tab ~= nil and res.owner == "tern" then
-		local paths = managed[tab] or {}
-		managed[tab] = paths
-		if table.find(paths, path) == nil then
-			table.insert(paths, path)
-		end
+	if tab ~= nil then
+		rebuild_managed(cx.session:panes())
 	end
 	if shellPane ~= nil then
 		return shellPane, nil
@@ -1771,12 +1770,7 @@ local function intercept(cx: WindowCx, tab: number?): boolean
 	if tab == nil then
 		return false
 	end
-	local paths: { string } = {}
-	for _, path in ipairs(tab_paths(cx, tab)) do
-		if tern.fs.exists(path) and not pane_under(cx, path, tab) then
-			table.insert(paths, path)
-		end
-	end
+	local paths = to_ask(cx, managed_by_tab(cx.session:panes())[tab] or {}, tab)
 	if #paths == 0 then
 		return false
 	end
@@ -1854,7 +1848,8 @@ end
 tern.timer(0, link_cli_and_skill)
 
 tern.on("window_start", function(cx: WindowCx)
-	rebuild_managed(cx)
+	flush(cx)
+	rebuild_managed(cx.session:panes())
 	for _, pane in ipairs(cx.session:panes()) do
 		remember_cwd(pane.pane, pane.cwd)
 	end
@@ -1874,7 +1869,8 @@ end)
 
 for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
-		rebuild_managed(cx)
+		flush(cx)
+		rebuild_managed(cx.session:panes())
 		local root = ROOT
 		if root == nil then
 			return
@@ -1889,7 +1885,8 @@ for _, name in ipairs({ "tab_created", "pane_created" }) do
 end
 
 tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
-	rebuild_managed(cx)
+	flush(cx)
+	rebuild_managed(cx.session:panes())
 	remember_cwd(ev.pane, ev.path)
 	if ev.pane == cx.session:focused() then
 		refresh_dir(cx, ev.path)
@@ -1936,13 +1933,14 @@ tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)
 	if paths == nil then
 		return
 	end
-	local open: { string } = {}
+	local fresh: { string } = {}
 	for _, path in ipairs(paths) do
-		if not handled[path] and tern.fs.exists(path) and not pane_under(cx, path, nil) then
-			table.insert(open, path)
+		if not handled[path] then
+			table.insert(fresh, path)
 		end
 		handled[path] = nil
 	end
+	local open = to_ask(cx, fresh, nil)
 	if #open > 0 then
 		ask_teardown(cx, nil, open)
 	end

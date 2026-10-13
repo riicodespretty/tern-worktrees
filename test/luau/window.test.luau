@@ -75,16 +75,37 @@ for _, case in
 		},
 	} :: { OwnerCase }
 do
-	test(`close_tab {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
-		local cx = Stub.cx(case.panes, 1)
-		local plugin = Stub.load({
+	local files = if case.exists then { [WORKTREE .. "/.git"] = "" } else {}
+	local function load(): Stub.Harness
+		return Stub.load({
 			env = ENV,
-			files = if case.exists then { [WORKTREE .. "/.git"] = "" } else {},
+			files = files,
 			kv = { worktreeRoot = ROOT, worktreeIndex = { [WORKTREE] = case.entry } },
 		})
+	end
+
+	test(`close_tab {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
+		local cx = Stub.cx(case.panes, 1)
+		local plugin = load()
 		eq(plugin.overrides.close_tab(cx), case.asks, "close_tab result")
 		plugin:answer("config", CONFIG, 0, cx)
 		eq(#cx.asked, if case.asks then 1 else 0, "pickers and prompts opened")
+	end)
+
+	test(`tab_closed {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
+		local live = Stub.cx(case.panes, 1)
+		local rest: { Stub.Pane } = {}
+		for _, pane in case.panes do
+			if pane.tab ~= 1 then
+				table.insert(rest, pane)
+			end
+		end
+		local after = Stub.cx(rest, if #rest > 0 then rest[1].pane else nil)
+		local plugin = load()
+		plugin.handlers.window_start(live)
+		plugin.handlers.tab_closed({ tab = 1 }, after)
+		plugin:answer("config", CONFIG, 0, after)
+		eq(#after.asked, if case.asks then 1 else 0, "pickers and prompts opened")
 	end)
 end
 
