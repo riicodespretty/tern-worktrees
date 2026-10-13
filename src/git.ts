@@ -30,8 +30,6 @@ export const isAncestor = async (dir: string, commit: string, of: string): Promi
 
 const mainCheckoutOf = (commonDir: string): string | null => (commonDir.endsWith('/.git') ? path.dirname(commonDir) : null);
 
-const notARepoError = (dir: string): CliError => new CliError('not_a_repo', `${dir} is not in a git repository`);
-
 const commonDirArgs = ['rev-parse', '--path-format=absolute', '--git-common-dir'];
 
 /** The main checkout of the repository that holds `dir`, or null when `dir` is not in a repository with a checkout. */
@@ -44,7 +42,7 @@ export const repoRoot = async (dir: string): Promise<string | null> => {
 export const requireRepoRoot = async (dir: string): Promise<string> => {
   const root = await repoRoot(dir);
   if (root === null) {
-    throw notARepoError(dir);
+    throw new CliError('not_a_repo', `${dir} is not in a git repository`);
   }
   return root;
 };
@@ -77,7 +75,7 @@ export const checkoutAt = async (dir: string): Promise<Checkout | null> => {
 export const requireCheckoutAt = async (dir: string): Promise<Checkout> => {
   const checkout = await checkoutAt(dir);
   if (checkout === null) {
-    throw notARepoError(dir);
+    throw new CliError('not_a_repo', `${dir} is not in a git repository`);
   }
   return checkout;
 };
