@@ -6,11 +6,9 @@ local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
-"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
-"worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
-{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+local RESOLVED = Stub.fixture("resolve", { repo = REPO })
+-- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
+local BRANCHES = Stub.fixture("branches", { repo = REPO, worktree = "/wt/worktrees/app/x" })
 -- A `branches` answer with the main checkout and a worktree of y that is not in the worktree root.
 local OUTSIDE_ROOT = [[{"name":"app","default":"main","branches":["main","y"],"prs":[],"prsFailed":false,
 "worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
@@ -71,12 +69,12 @@ test("the branch picker lists New branch, Other repo, pull requests, then branch
 		{ id = "pr:7", label = "#7 Fix login · fix-login", group = "Pull requests", icon = "merge" },
 		"items[3]"
 	)
-	same(opts.items[4], { id = "b:main", label = "main", group = "Branches", icon = "branch" }, "items[4]")
 	same(
-		opts.items[5],
+		opts.items[4],
 		{ id = "b:x", label = "x", detail = "worktree", group = "Branches", icon = "branch" },
-		"items[5]"
+		"items[4]"
 	)
+	same(opts.items[5], { id = "b:main", label = "main", group = "Branches", icon = "branch" }, "items[5]")
 end)
 
 test(
@@ -232,21 +230,25 @@ end)
 test("GitHub repositories open a clone picker grouped by owner", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[{"nameWithOwner":"o/a","description":"An app"}]}', 0, cx)
+	plugin:answer("repos", Stub.answer("repos", {}), 0, cx)
 	eq(#cx.asked, 2, "pickers and prompts opened")
 	local opts = cx.asked[2].opts
 	eq(opts.placeholder, "Search GitHub repositories", "placeholder")
 	eq(opts.icon, "globe", "icon")
 	eq(opts.action, "clone", "action")
-	same(opts.items[1], { id = "gh:o/a", label = "o/a", detail = "An app", group = "o", icon = "globe" }, "items[1]")
+	same(
+		opts.items[1],
+		{ id = "gh:me/aoyama", label = "me/aoyama", detail = "Main app", group = "me", icon = "globe" },
+		"items[1]"
+	)
 	cx.asked[2].next(opts.items[1], nil, cx)
-	eq(plugin:pending("clone")[1], "clone o/a", "clone argv")
+	eq(plugin:pending("clone")[1], "clone me/aoyama", "clone argv")
 end)
 
 test("an empty GitHub repository list opens no picker", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[]}', 0, cx)
+	plugin:answer("repos", Stub.answer("repos", {}, { repos = {} }), 0, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	local last = cx.toasts[#cx.toasts]
 	eq(last.level, "info", "toast level")
@@ -256,7 +258,7 @@ end)
 test("an empty owner list opens no picker", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "newrepo"), nil, cx)
-	plugin:answer("repos", '{"owners":[],"repos":[]}', 0, cx)
+	plugin:answer("repos", Stub.answer("repos", {}, { owners = {}, repos = {} }), 0, cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(#cx.toasts, 1, "toasts")
 end)
@@ -264,7 +266,7 @@ end)
 test("owner, name and visibility create the repository", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "newrepo"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[]}', 0, cx)
+	plugin:answer("repos", Stub.answer("repos", {}, { repos = {} }), 0, cx)
 
 	local owner = cx.asked[2]
 	same(
@@ -272,32 +274,32 @@ test("owner, name and visibility create the repository", function()
 		{ placeholder = "Search owners", icon = "user", action = "choose", items = owner.opts.items },
 		"owner"
 	)
-	owner.next(Stub.item(owner, "o"), nil, cx)
+	owner.next(Stub.item(owner, "me"), nil, cx)
 
 	local name = cx.asked[3]
 	eq(name.kind, "prompt", "name request kind")
 	same(
 		name.opts,
-		{ placeholder = "Name of the new repository under o", icon = "folder-plus", action = "continue" },
+		{ placeholder = "Name of the new repository under me", icon = "folder-plus", action = "continue" },
 		"name"
 	)
 	name.next("n", nil, cx)
 
 	local visibility = cx.asked[4]
-	eq(visibility.opts.placeholder, "Visibility of o/n", "visibility placeholder")
+	eq(visibility.opts.placeholder, "Visibility of me/n", "visibility placeholder")
 	eq(visibility.opts.action, "create", "visibility action")
 	same(visibility.opts.items[1], { id = "private", label = "Private", icon = "lock" }, "items[1]")
 	same(visibility.opts.items[2], { id = "public", label = "Public", icon = "globe" }, "items[2]")
 	visibility.next(Stub.item(visibility, "private"), nil, cx)
 
-	eq(plugin:pending("new-repo")[1], "new-repo o/n --visibility private", "new-repo argv")
+	eq(plugin:pending("new-repo")[1], "new-repo me/n --visibility private", "new-repo argv")
 end)
 
 test("an empty repository name ends the flow", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "newrepo"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[]}', 0, cx)
-	cx.asked[2].next(Stub.item(cx.asked[2], "o"), nil, cx)
+	plugin:answer("repos", Stub.answer("repos", {}, { repos = {} }), 0, cx)
+	cx.asked[2].next(Stub.item(cx.asked[2], "me"), nil, cx)
 	cx.asked[3].next("", nil, cx)
 	cx.asked[3].next(nil, nil, cx)
 	eq(#cx.asked, 3, "pickers and prompts opened")
@@ -306,18 +308,18 @@ end)
 test("dismissing or failing the GitHub repository picker clones nothing", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[{"nameWithOwner":"o/a"}]}', 0, cx)
+	plugin:answer("repos", Stub.answer("repos", {}), 0, cx)
 	cx.asked[2].next(nil, nil, cx)
 	cx.asked[2].next(nil, "gone", cx)
-	cx.asked[2].next(Stub.item(cx.asked[2], "gh:o/a"), "gone", cx)
+	cx.asked[2].next(Stub.item(cx.asked[2], "gh:me/aoyama"), "gone", cx)
 	eq(#plugin:pending("clone"), 0, "clone calls")
 end)
 
 test("dismissing or failing the visibility picker makes no repository", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "newrepo"), nil, cx)
-	plugin:answer("repos", '{"owners":["o"],"repos":[]}', 0, cx)
-	cx.asked[2].next(Stub.item(cx.asked[2], "o"), nil, cx)
+	plugin:answer("repos", Stub.answer("repos", {}, { repos = {} }), 0, cx)
+	cx.asked[2].next(Stub.item(cx.asked[2], "me"), nil, cx)
 	cx.asked[3].next("n", nil, cx)
 	cx.asked[4].next(nil, nil, cx)
 	cx.asked[4].next(nil, "gone", cx)

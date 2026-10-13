@@ -5,7 +5,7 @@ import { run as clone } from '../src/commands/clone.ts';
 import { run as newRepo } from '../src/commands/new-repo.ts';
 import { run as repos } from '../src/commands/repos.ts';
 import type { Sandbox } from './helpers.ts';
-import { ghFixture, ghLog, git, logGitCalls, readLog, tempDir, useSandbox } from './helpers.ts';
+import { cliJson, contract, ghFixture, ghLog, git, logGitCalls, readLog, tempDir, useSandbox } from './helpers.ts';
 
 const LIST_ARGS = ['--limit', '200', '--json', 'nameWithOwner,isPrivate,description'];
 const AOYAMA_ORIGIN = 'git@github.com:me/aoyama.git';
@@ -81,11 +81,7 @@ describe('GitHub repo commands', () => {
 
     it('lists only the user when the user has no orgs', async () => {
       ghFixture(['org', 'list'], '');
-      await expect(repos([])).resolves.toStrictEqual({
-        owners: ['me'],
-        repos: meRepos.map(repo => ({ ...repo, local: null })),
-        warnings: [],
-      });
+      await expect(cliJson(['repos'])).resolves.toStrictEqual(contract('repos', {}));
     });
 
     it('warns when gh cannot list the orgs', async () => {

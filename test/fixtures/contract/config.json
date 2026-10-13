@@ -1,0 +1,6 @@
+{
+  "cloneRoot": "{{home}}/Developer",
+  "hotkeys": { "new": ["cmd+shift+w"] },
+  "setup": {},
+  "teardown": "worktree+merged-branch"
+}

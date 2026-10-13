@@ -6,13 +6,11 @@ local test, eq = runner.test, runner.eq
 
 local ENV = { HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
-local LINE = "npm ci && npm test"
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
+local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 local HOME_RESOLVED = '{"repos":[{"dir":"/home/u","root":null,"name":null}]}'
-local BRANCHES =
-	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
-local CREATED =
-	`\{"branch":"x","carried":[],"owner":"tern","path":"{PATH}","repo":"/r/app","setup":\{"line":"{LINE}","typed":false},"status":"created","warnings":[]}`
+local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
+-- The `create` answer for branch x, with an untyped setup line.
+local CREATED = Stub.answer("create-setup-no-tab", { branch = "x", repo = "/r/app", worktree = PATH })
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
 

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { main } from '../src/cli.ts';
 import { run } from '../src/commands/config.ts';
 import { loadConfig, TEARDOWNS } from '../src/config.ts';
-import { REPO_DIR, useSandbox } from './helpers.ts';
+import { cliJson, contract, REPO_DIR, useSandbox } from './helpers.ts';
 
 let file = '';
 
@@ -28,8 +28,8 @@ describe('config command', () => {
     vi.stubEnv('HOME', '/home/me');
   });
 
-  it('gives the options with each default filled in without a file', () => {
-    expect(run([])).toStrictEqual({ cloneRoot: '/home/me/Developer', hotkeys: { new: ['cmd+shift+w'] }, setup: {}, teardown: 'worktree+merged-branch' });
+  it('gives the options with each default filled in without a file', async () => {
+    await expect(cliJson(['config'])).resolves.toStrictEqual(contract('config', { home: '/home/me' }));
   });
 
   it('gives the values of the options file', () => {

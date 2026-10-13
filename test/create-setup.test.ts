@@ -40,12 +40,9 @@ describe('create command', () => {
     });
 
     it('leaves the setup commands to the caller with --no-tab', async () => {
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({
-        setup: { line: LINE, typed: false },
-        status: 'created',
-        tab: null,
-        warnings: [],
-      });
+      await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual(
+        contract('create-setup-no-tab', { branch: 'feature/x', repo: repo.dir, worktree: managedPath('feature-x') }),
+      );
       expect(ternLog()).toStrictEqual([]);
     });
 

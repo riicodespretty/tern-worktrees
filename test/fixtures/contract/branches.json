@@ -1,0 +1,13 @@
+{
+  "branches": ["x", "main"],
+  "default": "main",
+  "name": "app",
+  "prs": [{ "branch": "fix-login", "fork": false, "number": 7, "title": "Fix login" }],
+  "prsFailed": false,
+  "repo": "{{repo}}",
+  "warnings": [],
+  "worktrees": [
+    { "branch": "main", "main": true, "managed": false, "owner": null, "path": "{{repo}}" },
+    { "branch": "x", "main": false, "managed": true, "owner": "tern", "path": "{{worktree}}" }
+  ]
+}

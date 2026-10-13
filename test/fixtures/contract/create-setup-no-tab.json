@@ -1,0 +1,14 @@
+{
+  "branch": "{{branch}}",
+  "carried": [],
+  "owner": "tern",
+  "path": "{{worktree}}",
+  "repo": "{{repo}}",
+  "setup": {
+    "line": "npm ci && npm test",
+    "typed": false
+  },
+  "status": "created",
+  "tab": null,
+  "warnings": []
+}

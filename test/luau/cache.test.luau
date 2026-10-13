@@ -1,16 +1,14 @@
 --!strict
 
-local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES = [[{"name":"app","default":"main","branches":["main","x"],
-"prs":[{"number":7,"title":"Fix login","branch":"fix-login"}],"prsFailed":false,
-"worktrees":[{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+local RESOLVED = Stub.fixture("resolve", { repo = REPO })
+-- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
+local BRANCHES = Stub.fixture("branches", { repo = REPO, worktree = "/wt/worktrees/app/x" })
 local UPDATED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],"prsFailed":false,
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
 local STALE =
@@ -19,32 +17,15 @@ local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs
 "worktrees":[{"branch":"y","path":"/wt/worktrees/app/y","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
 -- The `branches` answer of the CLI when `gh pr list` fails, for REPO with a worktree of x.
-local PR_LIST_FAILED = Stub.fixture("branches-pr-list-failed", { repo = REPO, worktree = "/wt/worktrees/app/x" })
-
--- PR_LIST_FAILED with each key of `fields` set to its value.
-local function pr_list_failed_with(fields: { [string]: any }): string
-	local res = serde.decode("json", PR_LIST_FAILED)
-	for key, value in fields do
-		res[key] = value
-	end
-	return serde.encode("json", res)
-end
-
--- The answer that PR_LIST_FAILED follows: the same branches and worktrees, with the pull request 7 and no warning.
-local LISTED_PRS = pr_list_failed_with({
-	prs = { { number = 7, title = "Fix login", branch = "fix-login", fork = false } },
-	prsFailed = false,
-	warnings = {},
-})
+local PR_LIST_FAILED_VARS: { [string]: string } = { repo = REPO, worktree = "/wt/worktrees/app/x" }
+local PR_LIST_FAILED = Stub.fixture("branches-pr-list-failed", PR_LIST_FAILED_VARS)
 local LOADING = "info Loading branches…"
 local LOADED = "info Branches loaded"
 local REFRESHING = "info Refreshing branches…"
 local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
-local CREATED =
-	'{"branch":"y","carried":[],"owner":"tern","path":"/wt/worktrees/app/y","repo":"/r/app","status":"created","warnings":[]}'
-local REMOVED = '{"removed":"/wt/worktrees/app/x","repo":"/r/app","branch":"x","branchDeleted":false,'
-	.. '"branchKept":"policy","warnings":[]}'
+local CREATED = Stub.answer("create-created", { branch = "y", repo = REPO, worktree = "/wt/worktrees/app/y" })
+local REMOVED = Stub.answer("remove-kept-policy", { repo = REPO, worktree = "/wt/worktrees/app/x" }, { branch = "x" })
 
 -- Takes the pending `branches` runs out of the fake CLI, as a callback that Tern drops, and returns them.
 local function drop_branches(plugin: Stub.Harness): { Stub.Run }
@@ -155,7 +136,7 @@ end)
 
 test("a background branches compares after it keeps the cached pull requests", function()
 	local plugin, cx = window(0)
-	first_open(plugin, cx, LISTED_PRS)
+	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	eq(toast_lines(cx), REFRESHING .. "; " .. UNCHANGED, "toasts after the refresh")
@@ -239,7 +220,7 @@ end)
 
 test("a background branches with a failed pull request list keeps the cached pull requests", function()
 	local plugin, cx = window(0)
-	first_open(plugin, cx, LISTED_PRS)
+	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	open(plugin, cx)
@@ -250,9 +231,14 @@ test(
 	"a background branches with prsFailed false replaces the cached pull requests, whatever its warnings say",
 	function()
 		local plugin, cx = window(0)
-		first_open(plugin, cx, LISTED_PRS)
+		first_open(plugin, cx, BRANCHES)
 		open(plugin, cx)
-		plugin:answer("branches", pr_list_failed_with({ prsFailed = false }), 0, cx)
+		plugin:answer(
+			"branches",
+			Stub.answer("branches-pr-list-failed", PR_LIST_FAILED_VARS, { prsFailed = false }),
+			0,
+			cx
+		)
 		open(plugin, cx)
 		local found, item = pcall(Stub.item, cx.asked[#cx.asked], "pr:7")
 		eq(if found then item else nil, nil, "pr:7 after an answer with no pull requests")
@@ -260,7 +246,7 @@ test(
 )
 
 -- A window with pane 1 in REPO and `git.auto_fetch_minutes` 5, whose worktree rows run an online `branches` and get
--- LISTED_PRS. Five minutes on, a focus on pane 1 runs the next online `branches`, which gets `stdout`.
+-- BRANCHES. Five minutes on, a focus on pane 1 runs the next online `branches`, which gets `stdout`.
 local function rows_after(stdout: string): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
 	cx.settings = {
@@ -272,7 +258,7 @@ local function rows_after(stdout: string): (Stub.Harness, any)
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "first rows branches")
-	plugin:answer("branches", LISTED_PRS, 0, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(5 * 60000)
 	plugin.handlers.focus({ pane = 1 }, cx)
 	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "next rows branches")
@@ -298,7 +284,8 @@ end)
 test(
 	"the worktree rows drop their pull requests after an answer with prsFailed false, whatever its warnings say",
 	function()
-		local plugin, cx = rows_after(pr_list_failed_with({ prsFailed = false }))
+		local plugin, cx =
+			rows_after(Stub.answer("branches-pr-list-failed", PR_LIST_FAILED_VARS, { prsFailed = false }))
 		eq(pr_row_shows(plugin, cx), false, "pull request row")
 	end
 )

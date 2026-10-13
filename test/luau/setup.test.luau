@@ -8,9 +8,9 @@ local test, eq = runner.test, runner.eq
 local ENV = { HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
 local LINE = "npm ci && npm test"
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES =
-	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
+local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
+local CREATE_VARS: { [string]: string } = { branch = "x", repo = "/r/app", worktree = PATH }
 
 -- The first warning of the `create` contract fixture `name`: the CLI words for a setup that did not run.
 local function setup_warning(name: string): string
@@ -21,12 +21,13 @@ local NO_PROMPT = setup_warning("create-setup-no-prompt")
 local OPEN_BEFORE = setup_warning("create-setup-open-before")
 local NO_TAB = "setup not run: no tab opened"
 
--- The `create` answer for branch x, with `setup` as its JSON value.
-local function created(setup: string): string
-	return `\{"branch":"x","carried":[],"owner":"tern","path":"{PATH}","repo":"/r/app","setup":{setup},"status":"created","warnings":[]}`
+-- The `create` answer for branch x, with `setup` as its value.
+local function created(setup: { [string]: any }): string
+	return Stub.answer("create-setup-no-tab", CREATE_VARS, { setup = setup })
 end
 
-local UNTYPED = created(`\{"line":"{LINE}","typed":false}`)
+-- The `create` answer for branch x, with the untyped setup line LINE of the fixture.
+local UNTYPED = Stub.answer("create-setup-no-tab", CREATE_VARS)
 
 -- The shell pane of the new tab that a create opens in a `window()`, not yet at the prompt.
 local SHELL = 2
@@ -122,13 +123,13 @@ end)
 
 for _, case in
 	{
-		{ what = "typed is true", setup = `\{"line":"{LINE}","typed":true}` },
-		{ what = "setup is null", setup = "null" },
+		{ what = "typed is true", answer = created({ line = LINE, typed = true }) },
+		{ what = "setup is null", answer = Stub.answer("create-created", CREATE_VARS) },
 	}
 do
 	test(`type_setup does nothing when {case.what}`, function()
 		local plugin, cx, panes = window()
-		create_x(plugin, cx, created(case.setup))
+		create_x(plugin, cx, case.answer)
 		find_pane(panes, SHELL).at_prompt = true
 		plugin:tick(31000)
 		eq(#cx.typed, 0, "typed")

@@ -234,4 +234,22 @@ describe('branches command', () => {
       await expect(run(['--repo', repo.dir])).rejects.toMatchObject({ code: 'git_failed', message: 'for-each-ref broke' });
     });
   });
+
+  describe('contract fixtures', () => {
+    it('answers branches through main as the contract fixture', async () => {
+      const repo = await tmpRepo('app');
+      await pushDatedBranch(repo, 'x', '2030-01-01T00:00:00Z');
+      await useGithubOrigin(GITHUB_ORIGIN);
+      ghFixture(PR_LIST, JSON.stringify([{ headRefName: 'fix-login', isCrossRepository: false, number: 7, title: 'Fix login' }]));
+      const managed = worktreePath(await worktreeRoot(), 'app', 'x');
+      await git(repo.dir, 'worktree', 'add', '--quiet', managed, 'x');
+      await expect(cliJson(['branches', '--repo', repo.dir])).resolves.toStrictEqual(contract('branches', { repo: repo.dir, worktree: managed }));
+    });
+
+    it('answers branches --offline through main as the contract fixture', async () => {
+      const repo = await tmpRepo('app');
+      await pushDatedBranch(repo, 'x', '2030-01-01T00:00:00Z');
+      await expect(cliJson(['branches', '--repo', repo.dir, '--offline'])).resolves.toStrictEqual(contract('branches-offline', { repo: repo.dir }));
+    });
+  });
 });

@@ -6,7 +6,6 @@ local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
 local ENV = { HOME = "/home/u" }
-local LINE = "npm ci"
 local NO_SHELL = "setup not run: no new shell in the tab"
 
 -- The `resolve` answer for each folder of the tests: /r/app and its worktrees are in the repository /r/app.
@@ -28,16 +27,7 @@ end
 
 -- The `create` answer for `branch` of /r/app, with an untyped setup line.
 local function created(branch: string): string
-	return serde.encode("json", {
-		branch = branch,
-		carried = {},
-		owner = "tern",
-		path = worktree(branch),
-		repo = "/r/app",
-		setup = { line = LINE, typed = false },
-		status = "created",
-		warnings = {},
-	})
+	return Stub.answer("create-setup-no-tab", { branch = branch, repo = "/r/app", worktree = worktree(branch) })
 end
 
 -- Runs the Carly `create` of `branch` (default x) over `cx`, answers `create` and `resolve`, and returns the replies.

@@ -623,4 +623,15 @@ function Stub.fixture(name: string, vars: { [string]: string }): string
 	)
 end
 
+-- The fixture `name` with `vars` as in `Stub.fixture`, with each top-level key of `fields` set to its value, as JSON
+-- text.
+function Stub.answer(name: string, vars: { [string]: string }, fields: { [string]: any }?): string
+	local res = serde.decode("json", Stub.fixture(name, vars))
+	local extra: { [string]: any } = fields or {}
+	for key, value in extra do
+		res[key] = value
+	end
+	return serde.encode("json", res)
+end
+
 return Stub

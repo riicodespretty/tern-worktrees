@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
 import { gitRun } from '../src/git.ts';
 import {
+  cliJson,
+  contract,
   FIXTURE_BIN,
   ghFixture,
   ghLog,
@@ -78,8 +80,9 @@ describe('create command', () => {
   describe('branches', () => {
     it('creates a tracking worktree for a remote branch, then reuses it', async () => {
       const target = managedPath('feature-x');
-      const created = await run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab']);
-      expect(created).toStrictEqual({ branch: 'feature/x', carried: [], owner: 'tern', path: target, repo: repo.dir, setup: null, status: 'created', tab: null, warnings: [] });
+      await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual(
+        contract('create-created', { branch: 'feature/x', repo: repo.dir, worktree: target }),
+      );
       await expect(currentBranch(target)).resolves.toBe('feature/x');
       await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
       await expect(run(['--repo', target, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ owner: 'tern', path: target, status: 'reused', warnings: [] });

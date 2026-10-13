@@ -21,14 +21,10 @@ local function managed_kv(): { [string]: any }
 	}
 end
 
--- A `tern-wt config` answer with the teardown policy `teardown`.
-local function config_answer(teardown: string): string
-	return `\{"teardown":"{teardown}","cloneRoot":"/home/u/Developer","hotkeys":\{"new":["cmd+shift+w"]},"setup":\{}}`
-end
-local CONFIG = config_answer("worktree+merged-branch")
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES =
-	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+local CONFIG_VARS: { [string]: string } = { home = "/home/u" }
+local CONFIG = Stub.fixture("config", CONFIG_VARS)
+local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
+local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
 
@@ -96,15 +92,8 @@ local DIRTY = (function(): string
 	})
 end)()
 
--- The contract fixture `name` for WORKTREE, with each key of `fields` set to its value.
-local function remove_answer(name: string, fields: { [string]: any }?): string
-	local res = serde.decode("json", Stub.fixture(name, { repo = "/r/app", worktree = WORKTREE }))
-	local extra: { [string]: any } = fields or {}
-	for key, value in extra do
-		res[key] = value
-	end
-	return serde.encode("json", res)
-end
+-- The vars of the `remove` contract fixtures for WORKTREE.
+local REMOVE_VARS: { [string]: string } = { repo = "/r/app", worktree = WORKTREE }
 
 test("relocate asks with one Relocate item", function()
 	local _, cx = open_relocate()
@@ -171,7 +160,7 @@ test("closing a worktree tab lists Keep worktree first, then Tear down", functio
 end)
 
 test("the Tear down item shows the teardown policy that tern-wt config gives", function()
-	local _, cx = close_worktree_tab(config_answer("worktree+branch"))
+	local _, cx = close_worktree_tab(Stub.answer("config", CONFIG_VARS, { teardown = "worktree+branch" }))
 	eq(cx.asked[1].opts.items[2].detail, "removes worktree, deletes branch", "items[2].detail")
 end)
 
@@ -369,7 +358,7 @@ test("Force delete shows a deleting toast, then a Deleted worktree toast", funct
 	eq(#cx.toasts, 1, "toasts while remove runs")
 	eq(cx.toasts[1].level, "info", "deleting toast level")
 	eq(cx.toasts[1].title, "Deleting worktree feat…", "deleting toast title")
-	plugin:answer("remove", remove_answer("remove-detached"), 0, cx)
+	plugin:answer("remove", Stub.answer("remove-detached", REMOVE_VARS), 0, cx)
 	eq(#cx.toasts, 2, "toasts after remove answers")
 	eq(cx.toasts[2].level, "success", "done toast level")
 	eq(cx.toasts[2].title, "Deleted\u{A0}worktree", "done toast title")
@@ -383,16 +372,16 @@ local function deleted_toast(answer: string): any
 end
 
 test("the Deleted worktree toast says in its title what happened to the branch", function()
-	local kept = deleted_toast(remove_answer("remove-kept-not-merged"))
+	local kept = deleted_toast(Stub.answer("remove-kept-not-merged", REMOVE_VARS))
 	eq(kept.title, "Deleted\u{A0}worktree, kept branch: not merged", "kept title")
 	eq(kept.detail, "merge check failed", "kept detail")
-	local deleted = deleted_toast(remove_answer("remove-deleted"))
+	local deleted = deleted_toast(Stub.answer("remove-deleted", REMOVE_VARS))
 	eq(deleted.title, "Deleted\u{A0}worktree and branch", "deleted title")
 	eq(deleted.detail, nil, "deleted detail")
-	local policy = deleted_toast(remove_answer("remove-kept-policy"))
+	local policy = deleted_toast(Stub.answer("remove-kept-policy", REMOVE_VARS))
 	eq(policy.title, "Deleted\u{A0}worktree, kept branch", "policy title")
 	eq(policy.detail, nil, "policy detail")
-	local detached = deleted_toast(remove_answer("remove-detached"))
+	local detached = deleted_toast(Stub.answer("remove-detached", REMOVE_VARS))
 	eq(detached.title, "Deleted\u{A0}worktree", "detached title")
 	local failed = deleted_toast(
 		'{"removed":"'
@@ -405,7 +394,7 @@ test("the Deleted worktree toast says in its title what happened to the branch",
 end)
 
 test("branchKept, not the warning text, tells the Deleted worktree toast that the branch is not merged", function()
-	local toast = deleted_toast(remove_answer("remove-kept-policy", {
+	local toast = deleted_toast(Stub.answer("remove-kept-policy", REMOVE_VARS, {
 		branch = "feat",
 		warnings = { "kept local branch feat: not merged" },
 	}))

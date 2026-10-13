@@ -1,0 +1,8 @@
+{
+  "owners": ["me"],
+  "repos": [
+    { "description": "Main app", "isPrivate": true, "local": null, "nameWithOwner": "me/aoyama" },
+    { "description": "", "isPrivate": false, "local": null, "nameWithOwner": "me/other" }
+  ],
+  "warnings": []
+}

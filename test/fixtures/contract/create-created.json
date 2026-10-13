@@ -1,0 +1,11 @@
+{
+  "branch": "{{branch}}",
+  "carried": [],
+  "owner": "tern",
+  "path": "{{worktree}}",
+  "repo": "{{repo}}",
+  "setup": null,
+  "status": "created",
+  "tab": null,
+  "warnings": []
+}

@@ -1,5 +1,6 @@
 --!strict
 
+local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -7,8 +8,7 @@ local test, eq = runner.test, runner.eq
 local ENV = { HOME = "/home/u" }
 local ROOT = "/wt/worktrees"
 local WORKTREE = "/wt/worktrees/app/feat"
-local CONFIG = '{"teardown":"worktree+merged-branch","cloneRoot":"/home/u/Developer","hotkeys":{"new":["cmd+shift+w"]},'
-	.. '"setup":{}}'
+local CONFIG = Stub.fixture("config", { home = "/home/u" })
 
 type OwnerCase = {
 	what: string,
@@ -116,16 +116,12 @@ end)
 
 local FEAT = "/wt/worktrees/app/feat"
 local OMP = "/wt/7-abc1234"
-local LISTED = '{"root":"/wt/worktrees","worktrees":['
-	.. '{"path":"/wt/worktrees/app/feat","repo":"/r/app","branch":"feat","dirty":true,"changed":3,"owner":"tern"},'
-	.. '{"path":"/wt/7-abc1234","repo":"/r/app","branch":null,"dirty":false,"changed":0,"owner":"omp"}]}'
-local RESOLVED = '{"repos":[{"dir":"/r/app","root":"/r/app","name":"app"}]}'
-local BRANCHES =
-	[[{"name":"app","default":"main","branches":["main","x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
-local REMOVED = '{"removed":"/wt/worktrees/app/feat","repo":"/r/app","branch":"feat","branchDeleted":false,'
-	.. '"branchKept":"policy","warnings":[]}'
-local CREATED = '{"branch":"x","carried":[],"owner":"tern","path":"/wt/worktrees/app/x","repo":"/r/app",'
-	.. '"status":"created","warnings":[]}'
+local LISTED = Stub.fixture("list-all", { root = ROOT, repo = "/r/app", feat = FEAT, omp = OMP })
+local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
+local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
+local REMOVED = Stub.answer("remove-kept-policy", { repo = "/r/app", worktree = FEAT }, { branch = "feat" })
+local CREATE_X: { [string]: string } = { branch = "x", repo = "/r/app", worktree = "/wt/worktrees/app/x" }
+local CREATED = Stub.answer("create-created", CREATE_X)
 
 -- Starts a window with one pane in `cwd`, and answers its `list --all` with LISTED.
 local function started(cwd: string): (Stub.Harness, any)
@@ -166,8 +162,18 @@ end)
 
 -- A `tern-wt setup` answer with the action `bin` for the CLI link and `skill` for the skill link.
 local function setup_answer(bin: string, skill: string): string
-	return `\{"links":[\{"path":"/home/u/.local/bin/tern-wt","target":"/p/bin/tern-wt","action":"{bin}"},`
-		.. `\{"path":"/home/u/.omp/agent/skills/tern-worktrees","target":"/p/skills/tern-worktrees","action":"{skill}"}]}`
+	local answer = serde.decode(
+		"json",
+		Stub.fixture("setup", {
+			binLink = "/home/u/.local/bin/tern-wt",
+			binTarget = "/p/bin/tern-wt",
+			skillLink = "/home/u/.omp/agent/skills/tern-worktrees",
+			skillTarget = "/p/skills/tern-worktrees",
+		})
+	)
+	answer.links[1].action = bin
+	answer.links[2].action = skill
+	return serde.encode("json", answer)
 end
 
 -- Loads the window half, checks that the load itself starts no `setup`, that its timer then runs `setup` one time, and
@@ -218,17 +224,12 @@ end)
 -- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
 -- `owner`.
 local function pickers_after_close_of_created_tab(owner: string): number
-	local X = "/wt/worktrees/app/x"
+	local X = CREATE_X.worktree
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
 	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
 	pick_branch_x(plugin, cx)
-	plugin:answer(
-		"create",
-		`\{"branch":"x","carried":[],"owner":"{owner}","path":"{X}","repo":"/r/app","status":"created","warnings":[]}`,
-		0,
-		cx
-	)
+	plugin:answer("create", Stub.answer("create-created", CREATE_X, { owner = owner }), 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local before = #after.asked
@@ -579,20 +580,10 @@ end
 local function create_in(plugin: Stub.Harness, cx: any, branch: string, path: string)
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer(
-		"branches",
-		`\{"name":"app","default":"main","branches":["{branch}"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}`,
-		0,
-		cx
-	)
+	plugin:answer("branches", Stub.answer("branches-offline", { repo = "/r/app" }, { branches = { branch } }), 0, cx)
 	local picker = cx.asked[#cx.asked]
 	picker.next(Stub.item(picker, "b:" .. branch), nil, cx)
-	plugin:answer(
-		"create",
-		`\{"branch":"{branch}","carried":[],"owner":"tern","path":"{path}","repo":"/r/app","status":"created","warnings":[]}`,
-		0,
-		cx
-	)
+	plugin:answer("create", Stub.answer("create-created", { branch = branch, repo = "/r/app", worktree = path }), 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 

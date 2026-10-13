@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run as setup } from '../src/commands/setup.ts';
 import { CliError } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { REPO_DIR, tempDir, ternLog, useSandbox } from './helpers.ts';
+import { cliJson, contract, REPO_DIR, tempDir, ternLog, useSandbox } from './helpers.ts';
 
 type RaceCall = 'accessSync' | 'symlinkSync';
 
@@ -204,8 +204,8 @@ describe(setup, () => {
     race.before = noRace;
   });
 
-  it('makes both links, then keeps them on a second run, and does not call tern', () => {
-    expect(setup([])).toStrictEqual({ links: expectedLinks('created') });
+  it('makes both links, then keeps them on a second run, and does not call tern', async () => {
+    await expect(cliJson(['setup'])).resolves.toStrictEqual(contract('setup', { binLink, binTarget, skillLink, skillTarget }));
     expect([readlinkSync(binLink), readlinkSync(skillLink)]).toStrictEqual([binTarget, skillTarget]);
     raceOnce('symlinkSync', failOnSymlink);
     expect(setup([])).toStrictEqual({ links: expectedLinks('kept') });

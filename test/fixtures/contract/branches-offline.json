@@ -1,0 +1,10 @@
+{
+  "branches": ["x", "main"],
+  "default": "main",
+  "name": "app",
+  "prs": [],
+  "prsFailed": false,
+  "repo": "{{repo}}",
+  "warnings": [],
+  "worktrees": [{ "branch": "main", "main": true, "managed": false, "owner": null, "path": "{{repo}}" }]
+}

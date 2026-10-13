@@ -1,0 +1,6 @@
+{
+  "links": [
+    { "action": "created", "path": "{{binLink}}", "target": "{{binTarget}}" },
+    { "action": "created", "path": "{{skillLink}}", "target": "{{skillTarget}}" }
+  ]
+}

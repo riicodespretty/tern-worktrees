@@ -1,0 +1,8 @@
+{
+  "root": "{{root}}",
+  "warnings": [],
+  "worktrees": [
+    { "branch": null, "changed": 0, "dirty": false, "owner": "omp", "path": "{{omp}}", "repo": "{{repo}}" },
+    { "branch": "feat", "changed": 3, "dirty": true, "owner": "tern", "path": "{{feat}}", "repo": "{{repo}}" }
+  ]
+}

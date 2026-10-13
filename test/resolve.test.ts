@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/resolve.ts';
-import { git, logGitCalls, readLog, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { cliJson, contract, git, logGitCalls, readLog, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 describe('resolve command', () => {
   beforeEach(() => {
@@ -25,6 +25,11 @@ describe('resolve command', () => {
           { dir: repo.dir, name: 'aoyama', owner: 'virtusize', root: repo.dir },
         ],
       });
+    });
+
+    it('answers resolve through main as the contract fixture', async () => {
+      const repo = await tmpRepo('app');
+      await expect(cliJson(['resolve', repo.dir])).resolves.toStrictEqual(contract('resolve', { repo: repo.dir }));
     });
 
     it('runs git once per distinct dir', async () => {
