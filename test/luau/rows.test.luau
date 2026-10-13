@@ -162,6 +162,38 @@ test("the row of a branch that leaves the answer does not show", function()
 	eq(shows(plugin, cx, "app: main"), true, "row of main after x left the answer")
 end)
 
+test("the row of a branch with a worktree sends create with --branch=<name>", function()
+	local plugin, cx = window(0)
+	trigger(plugin, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	rows(plugin)[X_ROW].run(cx)
+	eq(table.concat(plugin:pending("create"), "; "), "create --repo /r/app --no-tab --branch=x", "create argv")
+end)
+
+test("the branch picker and the row of a dash-led branch send the same create", function()
+	local dashed =
+		[[{"name":"app","default":"main","branches":["-x"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
+	local plugin, cx = window(0)
+	press(plugin, cx)
+	plugin:answer("branches", dashed, 0, cx)
+	cx.asked[1].next(Stub.item(cx.asked[1], "b:-x"), nil, cx)
+	rows(plugin)["app: -x"].run(cx)
+	eq(
+		table.concat(plugin:pending("create"), "; "),
+		"create --repo /r/app --no-tab --branch=-x; create --repo /r/app --no-tab --branch=-x",
+		"create argv of the pick, then of the row"
+	)
+end)
+
+test("the row of a pull request sends create with --pr and toasts its head branch", function()
+	local plugin, cx = window(0)
+	trigger(plugin, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	rows(plugin)[PR_ROW].run(cx)
+	eq(table.concat(plugin:pending("create"), "; "), "create --repo /r/app --no-tab --pr 7", "create argv")
+	eq(cx.toasts[#cx.toasts].title, "Creating worktree fix-login…", "toast title")
+end)
+
 test("a background trigger runs online when git.auto_fetch_minutes is due, and a press counts as online", function()
 	local plugin, cx = window(5)
 	trigger(plugin, cx)

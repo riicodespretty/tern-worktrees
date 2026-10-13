@@ -353,6 +353,13 @@ test("the Carly create export replies with the main checkout answer and writes n
 	eq(table.concat(cx.effects, "; "), "focus 1", "effects")
 end)
 
+test("the Carly create export passes the branch as one --branch=<name> argument", function()
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+	plugin.exports.create("/r/app", "-x", nil, cx, Stub.call())
+	eq(table.concat(plugin:pending("create"), "; "), "create --repo /r/app --branch=-x --no-tab", "create argv")
+end)
+
 -- A `branches` answer where the main checkout holds feat, the head branch of pull request 7, and a worktree holds x.
 local CHECKOUTS = [[{"name":"app","default":"main","branches":["main","feat","x"],]]
 	.. [["prs":[{"number":7,"title":"T","branch":"feat"}],"prsFailed":false,"worktrees":[]]

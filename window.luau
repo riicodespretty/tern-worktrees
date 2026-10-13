@@ -1109,24 +1109,64 @@ local function add_row(
 	})
 end
 
-local function pr_label(pr: PullRequest): string
-	return "#" .. tostring(pr.number) .. " " .. tostring(pr.title)
-end
+-- One pull request or branch of a `branches` answer, as the branch picker, the worktree rows and `create` see it.
+-- `key` is the picker id, `rowKey` the key of the worktree row id, and `branch` the name of the progress toast.
+type BranchTarget = {
+	key: string,
+	rowKey: string,
+	branch: string,
+	createArgs: { string },
+	checkout: Checkout,
+	pickLabel: string,
+	rowLabel: string,
+	detail: string?,
+	group: string,
+	icon: string,
+}
 
--- Where each branch of `res` with a checkout is checked out: `worktree` or `main`. A branch without one is not a key.
-local function branch_checkouts(res: BranchesResult): { [string]: Checkout }
+-- The targets of `res`: the pull requests, then the branches, each in the order of `res`.
+local function branch_targets(res: BranchesResult): { BranchTarget }
 	local checkouts: { [string]: Checkout } = {}
 	for _, w in ipairs(res.worktrees or {}) do
 		if type(w.branch) == "string" then
 			checkouts[w.branch] = if w.main == true then "main" else "worktree"
 		end
 	end
-	return checkouts
-end
-
--- The checkout of `branch` in `checkouts`, `new` when it has none.
-local function checkout_of(checkouts: { [string]: Checkout }, branch: string): Checkout
-	return checkouts[branch] or "new"
+	local targets: { BranchTarget } = {}
+	for _, pr in ipairs(res.prs or {}) do
+		local n = tostring(pr.number)
+		local branch = tostring(pr.branch)
+		local label = "#" .. n .. " " .. tostring(pr.title)
+		table.insert(targets, {
+			key = "pr:" .. n,
+			rowKey = "pr:" .. n,
+			branch = branch,
+			createArgs = { "--pr", n },
+			checkout = checkouts[branch] or "new",
+			pickLabel = label .. " · " .. branch,
+			rowLabel = label,
+			detail = nil,
+			group = "Pull requests",
+			icon = "merge",
+		})
+	end
+	for _, branch in ipairs(res.branches or {}) do
+		local checkout: Checkout = checkouts[branch] or "new"
+		local inWorktree = checkout == "worktree"
+		table.insert(targets, {
+			key = "b:" .. branch,
+			rowKey = branch,
+			branch = branch,
+			createArgs = { "--branch=" .. branch },
+			checkout = checkout,
+			pickLabel = branch,
+			rowLabel = branch .. (if inWorktree then " · worktree" else ""),
+			detail = if inWorktree then "worktree" else nil,
+			group = "Branches",
+			icon = "branch",
+		})
+	end
+	return targets
 end
 
 local function remember_cwd(pane: number, cwd: string?)
@@ -1182,27 +1222,12 @@ end
 
 -- The items of the branch picker for `res`: `New branch…`, `Other repo…`, the pull requests, then the branches.
 local function branch_picker_items(res: BranchesResult): { PickItem }
-	local checkouts = branch_checkouts(res)
 	local items: { PickItem } = {
 		{ id = "new", label = "New branch…", detail = "from " .. tostring(res.default), icon = "plus" },
 		{ id = "other", label = "Other repo…", icon = "folder" },
 	}
-	for _, pr in ipairs(res.prs or {}) do
-		table.insert(items, {
-			id = "pr:" .. tostring(pr.number),
-			label = pr_label(pr) .. " · " .. tostring(pr.branch),
-			group = "Pull requests",
-			icon = "merge",
-		})
-	end
-	for _, branch in ipairs(res.branches or {}) do
-		table.insert(items, {
-			id = "b:" .. branch,
-			label = branch,
-			detail = if checkouts[branch] == "worktree" then "worktree" else nil,
-			group = "Branches",
-			icon = "branch",
-		})
+	for _, t in ipairs(branch_targets(res)) do
+		table.insert(items, { id = t.key, label = t.pickLabel, detail = t.detail, group = t.group, icon = t.icon })
 	end
 	return items
 end
@@ -1227,12 +1252,8 @@ end
 local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResult)
 	local repoName = tostring(res.name)
 	local defaultBranch = tostring(res.default)
+	local targets = branch_targets(res)
 	local items = branch_picker_items(res)
-	local checkouts = branch_checkouts(res)
-	local branchOfPr: { [string]: string } = {}
-	for _, p in ipairs(res.prs or {}) do
-		branchOfPr[tostring(p.number)] = tostring(p.branch)
-	end
 	choose(
 		cx,
 		{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
@@ -1240,17 +1261,17 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 			if id == nil then
 				return
 			end
-			local branch = string.match(id, "^b:(.*)$")
-			local pr = string.match(id, "^pr:(.*)$")
 			if id == "new" then
 				new_branch(cx2, root, repoName, defaultBranch)
 			elseif id == "other" then
 				repo_picker(cx2)
-			elseif branch ~= nil then
-				create(cx2, root, { "--branch=" .. branch }, branch, checkout_of(checkouts, branch))
-			elseif pr ~= nil then
-				local prBranch = branchOfPr[pr] or ("#" .. pr)
-				create(cx2, root, { "--pr", pr }, prBranch, checkout_of(checkouts, prBranch))
+			else
+				for _, t in ipairs(targets) do
+					if t.key == id then
+						create(cx2, root, t.createArgs, t.branch, t.checkout)
+						break
+					end
+				end
 			end
 		end
 	)
@@ -1302,34 +1323,9 @@ end
 local function register_rows(root: string, res: BranchesResult)
 	local name: string = if type(res.name) == "string" then res.name else basename(root)
 	local prefix = "wt-" .. fnv1a(root) .. "-"
-	local checkouts = branch_checkouts(res)
 	local ids: { string } = {}
-	for _, pr in ipairs(res.prs or {}) do
-		local n = tostring(pr.number)
-		local prBranch = tostring(pr.branch)
-		add_row(
-			root,
-			prefix .. fnv1a("pr:" .. n),
-			name .. ": " .. pr_label(pr),
-			{ "--pr", n },
-			prBranch,
-			checkout_of(checkouts, prBranch),
-			ids
-		)
-	end
-	for _, branch in ipairs(res.branches or {}) do
-		if type(branch) == "string" then
-			local title = name .. ": " .. branch .. (if checkouts[branch] == "worktree" then " · worktree" else "")
-			add_row(
-				root,
-				prefix .. fnv1a(branch),
-				title,
-				{ "--branch", branch },
-				branch,
-				checkout_of(checkouts, branch),
-				ids
-			)
-		end
+	for _, t in ipairs(branch_targets(res)) do
+		add_row(root, prefix .. fnv1a(t.rowKey), name .. ": " .. t.rowLabel, t.createArgs, t.branch, t.checkout, ids)
 	end
 	local currentIds: { [string]: boolean } = {}
 	for _, id in ipairs(ids) do
@@ -1983,7 +1979,7 @@ tern.carly.export("create", {
 	if type(repo) ~= "string" or type(branch) ~= "string" then
 		error("create: repo and branch must be strings", 0)
 	end
-	local argv = { "create", "--repo", repo, "--branch", branch, "--no-tab" }
+	local argv = { "create", "--repo", repo, "--branch=" .. branch, "--no-tab" }
 	if isNew == true then
 		table.insert(argv, "--new")
 	end
