@@ -873,9 +873,14 @@ local function fill_fresh_tab(cx: WindowCx, freshTab: number?, parked: number?):
 	return freshTab, nil
 end
 
--- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or nil and the reason
--- that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
-local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
+-- The outcome of the tab step:
+-- - `shell`: a new shell opened in the tab, in the pane `pane`.
+-- - `no_shell`: no new shell opened, for the cause `reason`.
+type TabOutcome = { kind: "shell", pane: number } | { kind: "no_shell", reason: string }
+
+-- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or the reason that no new
+-- shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
+local function open_tab(cx: WindowCx, res: CreateResult): TabOutcome
 	local path = res.path
 	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), reposOfSession)
 	local tab: number? = nil
@@ -908,27 +913,26 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 		rebuild_managed(cx.session:panes())
 	end
 	if shellPane ~= nil then
-		return shellPane, nil
+		return { kind = "shell", pane = shellPane }
 	elseif tab == nil then
-		return nil, "no tab opened"
+		return { kind = "no_shell", reason = "no tab opened" }
 	elseif plan.kind == "open" then
-		return nil, "the tab was open before"
+		return { kind = "no_shell", reason = "the tab was open before" }
 	end
-	return nil, "no new shell in the tab"
+	return { kind = "no_shell", reason = "no new shell in the tab" }
 end
 
 local SETUP_POLL_MS = 200
 local SETUP_PROMPT_MS = 30000
 
--- Types `setup.line` into the shell `pane` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
+-- Types `setup.line` into the shell of `outcome` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
 -- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
--- the pane is gone. When `pane` is nil, it only shows the line in a toast with `noShellReason`.
+-- the pane is gone. When `outcome` holds no shell, it only shows the line in a toast with the reason of `outcome`.
 -- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
 -- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
 local function type_setup(
 	cx: WindowCx,
-	pane: number?,
-	noShellReason: string?,
+	outcome: TabOutcome,
 	setup: SetupLine?,
 	done: ((typed: boolean, warning: string?) -> ())?
 )
@@ -946,10 +950,11 @@ local function type_setup(
 		cx2:toast("error", sentence_case(warning), line)
 		finish(false, warning)
 	end
-	if pane == nil then
-		give_up(cx, "setup not run: " .. (noShellReason or "no tab opened"))
+	if outcome.kind == "no_shell" then
+		give_up(cx, "setup not run: " .. outcome.reason)
 		return
 	end
+	local pane = outcome.pane
 	local deadline = tern.now() + SETUP_PROMPT_MS
 	local function poll(cx2: WindowCx?)
 		if cx2 == nil then
@@ -999,9 +1004,9 @@ local function worktree_opened(
 		set_entry(res.path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
 	end
 	resolve_sessions(cx, function(cx2)
-		local ok, paneOrErr, noShellReason = pcall(open_tab, cx2, res)
+		local ok, outcome = pcall(open_tab, cx2, res)
 		if not ok then
-			add_warning("tab not opened: " .. tostring(paneOrErr))
+			add_warning("tab not opened: " .. tostring(outcome))
 		end
 		refresh_branches(cx2, res.repo)
 		if opened ~= nil then
@@ -1012,7 +1017,7 @@ local function worktree_opened(
 			return
 		end
 		local setup = res.setup
-		type_setup(cx2, paneOrErr, noShellReason, setup, function(typed, warning)
+		type_setup(cx2, outcome :: TabOutcome, setup, function(typed, warning)
 			if setup ~= nil then
 				setup.typed = typed
 			end
