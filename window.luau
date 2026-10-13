@@ -24,6 +24,16 @@ local function remembered_root(): string?
 end
 
 local ROOT: string? = remembered_root()
+
+-- Keeps the root of a `list --all` answer, without a trailing `/`, as the worktree root, also in kv.
+local function learn_root(root: any)
+	local learned = if type(root) == "string" then without_trailing_slash(root) else nil
+	if learned ~= nil and learned ~= "" and learned ~= ROOT then
+		ROOT = learned
+		pcall(tern.kv.set, ROOT_KEY, learned)
+	end
+end
+
 local DEFAULT_KEYS = { "cmd+shift+w" }
 local POLICY = {
 	worktree = "removes worktree, keeps branch",
@@ -231,6 +241,7 @@ local function rebuild_managed(panes: { PaneInfo })
 end
 
 local function apply_list(res: ListResult, startedAt: number)
+	learn_root(res.root)
 	local fresh: { [string]: IndexEntry? } = {}
 	for _, w in ipairs(res.worktrees or {}) do
 		if type(w.path) == "string" and type(w.repo) == "string" then
@@ -254,9 +265,9 @@ end
 
 local refresh_index: () -> ()
 
--- Runs `list --all`, writes the worktree index from its answer, and passes the answer, or nil on an error, to `cb`.
--- When a later `list_all` starts before the answer, the answer is dropped and `cb` does not run.
-local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
+-- Runs `list --all`, and writes the worktree index and the worktree root from its answer. When a later `list_all`
+-- starts before the answer, the answer is dropped.
+local function list_all()
 	local startedAt = tern.now()
 	listing = startedAt
 	listStartedAt = startedAt
@@ -270,7 +281,6 @@ local function list_all(cb: (res: ListResult?, cx: WindowCx) -> ())
 			flush(cx2)
 			rebuild_managed(cx2.session:panes())
 		end
-		cb(if err == nil then res else nil, cx2)
 		if listAgain then
 			listAgain = false
 			refresh_index()
@@ -298,7 +308,7 @@ refresh_index = function()
 		end)
 		return
 	end
-	list_all(function() end)
+	list_all()
 end
 
 local function basename(path: string): string
@@ -1858,13 +1868,7 @@ tern.on("window_start", function(cx: WindowCx)
 			refresh_branches(cx2, repo.root)
 		end
 	end)
-	list_all(function(res, _cx2)
-		local learned = if res ~= nil and type(res.root) == "string" then without_trailing_slash(res.root) else nil
-		if learned ~= nil and learned ~= "" and learned ~= ROOT then
-			ROOT = learned
-			pcall(tern.kv.set, ROOT_KEY, learned)
-		end
-	end)
+	list_all()
 end)
 
 for _, name in ipairs({ "tab_created", "pane_created" }) do

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fix
+
+- Learn the worktree root from each `tern-wt list --all` answer in the Tern window. Before, when the first answer failed or was dropped, a new worktree in the root did not refresh the worktree index until the next window start
+
 ## [0.3.1](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.3.1 "2026-10-13")
 
 ### Feature

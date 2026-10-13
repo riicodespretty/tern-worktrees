@@ -134,7 +134,7 @@ do
 	end)
 end
 
-test("window_start reads the worktree root from the list output", function()
+test("a list --all answer gives the worktree root without a trailing slash", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app/feat" } }, 1)
 	local plugin = Stub.load({ env = ENV, files = { ["/r/app/feat/.git"] = "" } })
 	plugin.handlers.window_start(cx)
@@ -429,7 +429,7 @@ test("a tab that the plugin did not open becomes a worktree tab after one list -
 	local X = "/wt/worktrees/app/x"
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
-	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
+	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", LISTED, 0, cx)
 	plugin:tick(2000)
@@ -452,7 +452,7 @@ end)
 test("a pane in the repository folder of the worktree root starts no repeating list --all", function()
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
-	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+	local plugin = Stub.load({ env = ENV })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", LISTED, 0, cx)
 	plugin:tick(2000)
@@ -474,7 +474,7 @@ for _, event in { "tab_created", "pane_created" } do
 		test(`{event} with new panes {case.what} starts no list --all`, function()
 			local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 			local cx = Stub.cx(panes, 1)
-			local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+			local plugin = Stub.load({ env = ENV })
 			plugin.handlers.window_start(cx)
 			plugin:answer("list", LISTED, 0, cx)
 			plugin:tick(2000)
@@ -557,6 +557,55 @@ test(
 		eq(#plugin:pending("list"), 0, "list runs after the late answer")
 	end
 )
+
+for _, lost in { "fails", "is dropped" } do
+	test(`a refresh list --all after a window_start list --all that {lost} remembers the root`, function()
+		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = FEAT .. "/src" } }, 1)
+		local plugin = Stub.load({
+			env = ENV,
+			kv = { worktreeIndex = { [FEAT] = { main = "/r/app", branch = "feat", changed = 3, owner = "tern" } } },
+		})
+		plugin.handlers.window_start(cx)
+		if lost == "fails" then
+			plugin.handlers.focus({ pane = 1 }, cx) -- sets listAgain
+			plugin:answer("list", '{"error":{"code":"cli_failed","message":"x"}}', 1, cx)
+			plugin:tick(2000)
+		else
+			local at: number? = nil
+			for i, run in plugin.runs do
+				if run.argv[2] == "list" then
+					at = i
+				end
+			end
+			assert(at ~= nil, "no list run")
+			local dropped = table.remove(plugin.runs, at) :: Stub.Run
+			dropped.cb({ stdout = LISTED, stderr = "", status = 0 }, nil)
+			plugin:tick(120001)
+			plugin.handlers.focus({ pane = 1 }, cx)
+		end
+		plugin:answer("list", LISTED, 0, cx)
+		eq(plugin.kv.worktreeRoot, ROOT, "remembered worktree root")
+		plugin:tick(2000)
+		plugin.handlers.cwd({ pane = 1, path = ROOT .. "/app/new" }, cx)
+		eq(#plugin:pending("list"), 1, "list runs for a new worktree")
+	end)
+end
+
+for _, case in
+	{
+		{ what = 'with root "/"', stdout = '{"root":"/","worktrees":[]}', status = 0 },
+		{ what = "with no root", stdout = '{"worktrees":[]}', status = 0 },
+		{ what = "with an error", stdout = '{"error":{"code":"cli_failed","message":"x"}}', status = 1 },
+	}
+do
+	test(`a list --all answer {case.what} keeps the kept root`, function()
+		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
+		local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
+		plugin.handlers.window_start(cx)
+		plugin:answer("list", case.stdout, case.status, cx)
+		eq(plugin.kv.worktreeRoot, ROOT, "kept worktree root")
+	end)
+end
 
 for _, gap in { 10, 0 } do
 	test(`an entry from a create answer {gap} ms after a list --all started survives its answer`, function()
