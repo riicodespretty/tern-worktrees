@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
@@ -118,11 +118,60 @@ export const worktrees = async (root: string): Promise<Worktree[]> => {
 
 const lines = (output: string): string[] => output.split('\n').filter(line => line !== '');
 
+const statusArgs = (ignoreSubmodules: 'all' | 'none'): string[] => ['status', '--porcelain', '--untracked-files=all', `--ignore-submodules=${ignoreSubmodules}`];
+
 /**
  * The `git status --porcelain` lines of the worktree at `dir`, submodule changes included. It lists each file that git does not track,
  * also when `status.showUntrackedFiles` hides them.
  */
-export const dirtyFiles = async (dir: string): Promise<string[]> => lines(await gitMust(dir, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'));
+export const dirtyFiles = async (dir: string): Promise<string[]> => lines(await gitMust(dir, ...statusArgs('none')));
+
+/** The number of changed files of the worktree at `dir`, and `error`, the git error when git cannot count them, else null. */
+export interface ChangedCount {
+  count: number;
+  error: string | null;
+}
+
+/**
+ * Counts the files that {@link dirtyFiles} lists, without a throw. When git fails, for example on a submodule with a broken `.git` file,
+ * `error` holds the git error and the count does not include the submodules. The count is 0 when that fails too.
+ */
+export const changedFileCount = async (dir: string): Promise<ChangedCount> => {
+  const full = await gitRun(dir, ...statusArgs('none'));
+  if (full.status === 0) {
+    return { count: lines(full.stdout).length, error: null };
+  }
+  const outer = await gitRun(dir, ...statusArgs('all'));
+  return { count: outer.status === 0 ? lines(outer.stdout).length : 0, error: full.stderr.trim() };
+};
+
+/** The submodule paths in the `.gitmodules` file of the folder `base`, relative to `base`. Git runs in `top`, because git fails in a folder with a broken `.git` file. */
+const gitmodulesPaths = async (top: string, base: string): Promise<string[]> => {
+  const result = await gitRun(top, 'config', '-z', '-f', path.join(base, '.gitmodules'), '--get-regexp', String.raw`^submodule\..*\.path$`);
+  return result.stdout
+    .split('\0')
+    .filter(entry => entry !== '')
+    .map(entry => entry.slice(entry.indexOf('\n') + 1));
+};
+
+const brokenGitfilesUnder = async (top: string, base: string): Promise<string[]> => {
+  const subs = await gitmodulesPaths(top, base);
+  const found = await Promise.all(
+    subs.map(async sub => {
+      const subDir = path.join(base, sub);
+      const gitfile = path.join(subDir, '.git');
+      const broken = lstatSync(gitfile, { throwIfNoEntry: false })?.isFile() === true && !(await gitSucceeds(subDir, 'rev-parse', '--git-dir'));
+      return [...(broken ? [gitfile] : []), ...(await brokenGitfilesUnder(top, subDir))];
+    }),
+  );
+  return found.flat();
+};
+
+/**
+ * The `.git` files of the submodules of the worktree at `dir`, at each depth, that point to no git directory. It reads the submodule paths
+ * from the `.gitmodules` files, so it also finds a submodule in a submodule with a broken `.git` file. A submodule comes before the submodules in it.
+ */
+export const brokenSubmoduleGitfiles = async (dir: string): Promise<string[]> => await brokenGitfilesUnder(dir, dir);
 
 /** The paths of the initialized submodules of the worktree at `dir`, at each depth, relative to `dir`. A submodule comes before the submodules in it. */
 export const submodules = async (dir: string): Promise<string[]> => lines(await gitMust(dir, 'submodule', 'foreach', '--quiet', '--recursive', 'printf "%s\\n" "$displaypath"'));

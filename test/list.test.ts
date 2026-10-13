@@ -1,8 +1,8 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/list.ts';
-import { git, tempDir, tmpRepo, useOmp, useSandbox } from './helpers.ts';
+import { git, logGitCalls, readLog, tempDir, tmpRepo, useOmp, useSandbox } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -23,7 +23,7 @@ describe('list command', () => {
   });
 
   it('lists nothing when the worktree root is missing', async () => {
-    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
+    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), warnings: [], worktrees: [] });
   });
 
   it('lists the managed worktrees of every repo and skips other dirs', async () => {
@@ -39,6 +39,7 @@ describe('list command', () => {
     await git(repo.dir, 'clone', '--quiet', repo.origin, path.join(worktreeRootDir(), 'aoyama', 'clone'));
     await expect(run([])).resolves.toStrictEqual({
       root: worktreeRootDir(),
+      warnings: [],
       worktrees: [
         { branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: clean, repo: repo.dir },
         { branch: null, changed: 0, dirty: false, owner: 'tern', path: detached, repo: repo.dir },
@@ -51,7 +52,7 @@ describe('list command', () => {
     const clone = path.join(worktreeRootDir(), 'aoyama');
     await git(repo.dir, 'clone', '--quiet', repo.origin, clone);
     await git(clone, 'worktree', 'add', '--quiet', '-b', 'feature/x', path.join(clone, 'feature-x'), 'origin/main');
-    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
+    await expect(run([])).resolves.toStrictEqual({ root: worktreeRootDir(), warnings: [], worktrees: [] });
   });
 
   it('does not look inside the checkout at the root of --repo', async () => {
@@ -61,7 +62,7 @@ describe('list command', () => {
     await git(clone, 'worktree', 'add', '--quiet', '-b', 'feature/x', inner, 'origin/main');
     const index = await git(inner, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
     writeFileSync(index.trim(), 'not an index');
-    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), worktrees: [] });
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), warnings: [], worktrees: [] });
   });
 
   it('counts each changed file once', async () => {
@@ -72,6 +73,7 @@ describe('list command', () => {
     writeFileSync(path.join(dir, 'junk.txt'), 'x\n');
     await expect(run([])).resolves.toStrictEqual({
       root: worktreeRootDir(),
+      warnings: [],
       worktrees: [{ branch: 'feature/x', changed: 2, dirty: true, owner: 'tern', path: dir, repo: repo.dir }],
     });
   });
@@ -82,6 +84,7 @@ describe('list command', () => {
     await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', path.join(worktreeRootDir(), 'aoyama', 'plain', 'feature-z'), 'origin/main');
     await expect(run(['--all'])).resolves.toStrictEqual({
       root: worktreeRootDir(),
+      warnings: [],
       worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
@@ -92,6 +95,7 @@ describe('list command', () => {
     await addWorktree(other, 'feature-y', '-b', 'feature/y');
     await expect(run(['--repo', mine])).resolves.toStrictEqual({
       root: worktreeRootDir(),
+      warnings: [],
       worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
@@ -102,19 +106,7 @@ describe('list command', () => {
     await addWorktree(twin, 'feature-y', '-b', 'feature/y');
     await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
       root: worktreeRootDir(),
-      worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
-    });
-  });
-
-  it('lists the worktrees of --repo when a worktree of another repo cannot be read', async () => {
-    const other = await tmpRepo('maui');
-    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
-    const broken = await addWorktree(other, 'feature-y', '-b', 'feature/y');
-    const index = await git(broken, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
-    writeFileSync(index.trim(), 'not an index');
-    await expect(run([])).rejects.toMatchObject({ code: 'git_failed' });
-    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({
-      root: worktreeRootDir(),
+      warnings: [],
       worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
@@ -128,6 +120,7 @@ describe('list command', () => {
     await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'wt/1', path.join(base, 'sandbox', 'feature-z'), 'origin/main');
     await expect(run([])).resolves.toStrictEqual({
       root: base,
+      warnings: [],
       worktrees: [{ branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir }],
     });
   });
@@ -154,6 +147,7 @@ describe('list command', () => {
       writeFileSync(path.join(deep, 'junk.txt'), 'x\n');
       await expect(run(['--all'])).resolves.toStrictEqual({
         root: base,
+        warnings: [],
         worktrees: [
           { branch: 'pr-7', changed: 0, dirty: false, owner: 'omp', path: shallow, repo: repo.dir },
           { branch: null, changed: 0, dirty: false, owner: 'omp', path: detached, repo: repo.dir },
@@ -173,6 +167,7 @@ describe('list command', () => {
       await git(clone, 'worktree', 'add', '--quiet', '-b', 'nested', path.join(clone, 'nested'), 'origin/main');
       await expect(run(['--all'])).resolves.toStrictEqual({
         root: base,
+        warnings: [],
         worktrees: [{ branch: 'pr-7', changed: 1, dirty: true, owner: 'omp', path: outer, repo: repo.dir }],
       });
     });
@@ -184,6 +179,7 @@ describe('list command', () => {
       await git(other.dir, 'worktree', 'add', '--quiet', '-b', 'pr-8', path.join(base, '8-def5678'), 'origin/main');
       await expect(run(['--all', '--repo', repo.dir])).resolves.toStrictEqual({
         root: base,
+        warnings: [],
         worktrees: [{ branch: 'pr-7', changed: 0, dirty: false, owner: 'omp', path: mine, repo: repo.dir }],
       });
     });
@@ -203,5 +199,51 @@ describe('list command', () => {
   it('rejects unknown options', async () => {
     await expect(run(['--nope'])).rejects.toMatchObject({ code: 'ERR_PARSE_ARGS_UNKNOWN_OPTION' });
     await expect(run(['--nope'])).rejects.toThrow(/'--nope'/u);
+  });
+});
+
+describe('list command with a worktree that git cannot read', () => {
+  beforeEach(async () => {
+    sandbox = useSandbox();
+    repo = await tmpRepo('aoyama');
+  });
+
+  it('lists a worktree whose changes git cannot count with 0 changes and a warning, and with --repo runs no git in the worktrees of other repos', async () => {
+    const other = await tmpRepo('maui');
+    const mine = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    const broken = await addWorktree(other, 'feature-y', '-b', 'feature/y');
+    const index = await git(broken, 'rev-parse', '--path-format=absolute', '--git-path', 'index');
+    writeFileSync(index.trim(), 'not an index');
+    writeFileSync(path.join(broken, 'junk.txt'), 'x\n');
+    const listed = { branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: mine, repo: repo.dir };
+    await expect(run([])).resolves.toStrictEqual({
+      root: worktreeRootDir(),
+      warnings: [`changed files not counted in ${broken}: fatal: ${index.trim()}: index file smaller than expected`],
+      worktrees: [listed, { branch: 'feature/y', changed: 0, dirty: false, owner: 'tern', path: broken, repo: other.dir }],
+    });
+    const log = await logGitCalls();
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual({ root: worktreeRootDir(), warnings: [], worktrees: [listed] });
+    expect(readLog(log).filter(call => call.includes(broken))).toStrictEqual([]);
+  });
+
+  it('counts the changes without the submodules of a worktree with a broken submodule .git file, and warns', async () => {
+    const sub = await tmpRepo('sub');
+    await git(repo.dir, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', sub.dir, 'sub');
+    await git(repo.dir, 'commit', '--quiet', '-m', 'add sub');
+    await git(repo.dir, 'push', '--quiet', 'origin', 'main');
+    const clean = await addWorktree(repo, 'feature-x', '-b', 'feature/x');
+    const broken = await addWorktree(repo, 'feature-y', '-b', 'feature/y');
+    cpSync(path.join(repo.dir, 'sub'), path.join(broken, 'sub'), { recursive: true });
+    writeFileSync(path.join(broken, 'junk.txt'), 'x\n');
+    const expected = {
+      root: worktreeRootDir(),
+      warnings: [`changed files not counted in ${broken}: fatal: not a git repository: sub/../.git/modules/sub`],
+      worktrees: [
+        { branch: 'feature/x', changed: 0, dirty: false, owner: 'tern', path: clean, repo: repo.dir },
+        { branch: 'feature/y', changed: 1, dirty: true, owner: 'tern', path: broken, repo: repo.dir },
+      ],
+    };
+    await expect(run([])).resolves.toStrictEqual(expected);
+    await expect(run(['--repo', repo.dir])).resolves.toStrictEqual(expected);
   });
 });

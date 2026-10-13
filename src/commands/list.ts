@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { currentBranch, dirtyFiles, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
+import { changedFileCount, currentBranch, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
 import { worktreeOwner, worktreeRoot } from '../paths.ts';
 import type { WorktreeRoot } from '../paths.ts';
 
@@ -18,10 +18,17 @@ export interface ListedWorktree {
   owner: 'tern' | 'omp';
 }
 
-/** The output of `list`. */
+/** The output of `list`. `warnings` names each worktree in the output where git could not count the changed files, with the git error. */
 export interface ListResult {
   root: string;
+  warnings: string[];
   worktrees: ListedWorktree[];
+}
+
+/** A worktree that `list` found, and the warning about its changed-file count, or null. */
+interface Found {
+  warning: string | null;
+  worktree: ListedWorktree;
 }
 
 const subdirs = (dir: string): string[] => {
@@ -35,7 +42,11 @@ const subdirs = (dir: string): string[] => {
 /** The candidate folders from `dir` down: a folder with a `.git` entry is a candidate, and the walk does not enter it. It enters each other folder. */
 const walk = (dir: string): string[] => (existsSync(path.join(dir, '.git')) ? [dir] : subdirs(dir).flatMap(walk));
 
-const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Promise<ListedWorktree | null> => {
+/**
+ * Reads the worktree at `dir`. When git cannot count its changed files, for example because a submodule has a broken `.git` file,
+ * the worktree stays in the list with the count that does not include the submodules, and gets a warning.
+ */
+const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Promise<Found | null> => {
   const repo = await linkedWorktreeRoot(dir);
   if (repo === null) {
     return null;
@@ -44,8 +55,11 @@ const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Prom
   if (owner === null || (owner === 'omp' && !all)) {
     return null;
   }
-  const [branch, changedFiles] = await Promise.all([currentBranch(dir), dirtyFiles(dir)]);
-  return { branch, changed: changedFiles.length, dirty: changedFiles.length > 0, owner, path: dir, repo };
+  const [branch, changed] = await Promise.all([currentBranch(dir), changedFileCount(dir)]);
+  return {
+    warning: changed.error === null ? null : `changed files not counted in ${dir}: ${changed.error}`,
+    worktree: { branch, changed: changed.count, dirty: changed.count > 0, owner, path: dir, repo },
+  };
 };
 
 /**
@@ -58,8 +72,10 @@ export const run = async (args: string[]): Promise<ListResult> => {
   const mainCheckout = repo === undefined ? null : await requireRepoRoot(repo);
   const startDir = mainCheckout === null || all ? root.dir : path.join(root.dir, path.basename(mainCheckout));
   const found = await Promise.all(walk(startDir).map(async dir => await readWorktree(root, dir, all)));
+  const listed = found.filter((entry): entry is Found => entry !== null && (mainCheckout === null || entry.worktree.repo === mainCheckout));
   return {
     root: root.dir,
-    worktrees: found.filter((entry): entry is ListedWorktree => entry !== null && (mainCheckout === null || entry.repo === mainCheckout)),
+    warnings: listed.flatMap(entry => (entry.warning === null ? [] : [entry.warning])),
+    worktrees: listed.map(entry => entry.worktree),
   };
 };

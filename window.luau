@@ -77,11 +77,14 @@ type SessionIndex = {
 	current: SessionInfo?,
 }
 type Repo = { root: string, name: string }
+-- The repositories of a session: `first`, the root of the first pane, in pane order, of its tabs; `shown`, the root
+-- of each pane in its tabs; and `main`, the root of each pane in its tabs that is in the main checkout of that root.
+type SessionRepos = { first: string, shown: { [string]: boolean }, main: { [string]: boolean } }
 
 local startCount = 0
 local managed: { [number]: { string } } = {}
 local handled: { [string]: boolean } = {}
-local rootOfSession: { [number]: string } = {}
+local reposOfSession: { [number]: SessionRepos } = {}
 local localRepos: { Repo } = {}
 local queuedErrors: { string } = {}
 local configWarned = false
@@ -644,26 +647,42 @@ end
 -- Tab placement: the repository of each session, where the worktree tab of a `create` answer goes, and the effects
 -- that put it there.
 
--- The repository root of each session: the root of the first pane, in pane order, of its tabs. A session of
--- `previous` that is open and has no tab keeps its root. A session that closed drops out.
+-- Whether `cwd`, whose repository root is `root`, is the main checkout `root` or a folder in it, not a folder of a
+-- linked worktree in the index.
+local function in_main_checkout(cwd: string, root: string): boolean
+	local path = index_lookup(cwd)
+	return is_under(cwd, root) and (path == nil or path == root)
+end
+
+-- The repositories of each session, from the panes in its tabs. A session of `previous` that is open and has no tab
+-- keeps its repositories. A session that closed drops out.
 local function repos_of_sessions(
 	panes: { PaneInfo },
 	index: SessionIndex,
 	rootOf: { [string]: string | false },
-	previous: { [number]: string }
-): { [number]: string }
-	local repos: { [number]: string } = {}
+	previous: { [number]: SessionRepos }
+): { [number]: SessionRepos }
+	local repos: { [number]: SessionRepos } = {}
 	for _, pane in ipairs(panes) do
 		local sid = session_of_tab(index, pane.tab)
-		local root = pane.cwd and rootOf[pane.cwd]
-		if sid ~= nil and type(root) == "string" and repos[sid] == nil then
-			repos[sid] = root
+		local cwd = pane.cwd
+		local root = if cwd ~= nil then rootOf[cwd] else nil
+		if sid ~= nil and cwd ~= nil and type(root) == "string" then
+			local facts = repos[sid]
+			if facts == nil then
+				facts = { first = root, shown = {}, main = {} }
+				repos[sid] = facts
+			end
+			facts.shown[root] = true
+			if in_main_checkout(cwd, root) then
+				facts.main[root] = true
+			end
 		end
 	end
-	for id, root in pairs(previous) do
+	for id, facts in pairs(previous) do
 		local entry = index.byId[id]
 		if entry ~= nil and #entry.tabs == 0 then
-			repos[id] = root
+			repos[id] = facts
 		end
 	end
 	return repos
@@ -680,7 +699,7 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 		end
 	end
 	if #cwds == 0 then
-		table.clear(rootOfSession)
+		table.clear(reposOfSession)
 		table.clear(localRepos)
 		cb(cx)
 		return
@@ -700,10 +719,10 @@ local function resolve_sessions(cx: WindowCx, cb: (cx: WindowCx) -> ())
 				table.insert(localRepos, { root = repoRoot, name = r.name or basename(repoRoot) })
 			end
 		end
-		local repos = repos_of_sessions(cx2.session:panes(), session_index(cx2), rootOfDir, rootOfSession)
-		table.clear(rootOfSession)
-		for id, root in pairs(repos) do
-			rootOfSession[id] = root
+		local repos = repos_of_sessions(cx2.session:panes(), session_index(cx2), rootOfDir, reposOfSession)
+		table.clear(reposOfSession)
+		for id, facts in pairs(repos) do
+			reposOfSession[id] = facts
 		end
 		cb(cx2)
 	end)
@@ -723,14 +742,28 @@ type Placement =
 	| { kind: "empty_session", session: number, switch: number?, parked: number? }
 	| { kind: "new_session", name: string, parked: number? }
 
+-- The rank of the open session `info`, with the repositories `facts`, as the session of the repository `repo`: 1 when
+-- a pane in its tabs is in the main checkout, 2 when its name is the name of the repository, 3 when a pane in its
+-- tabs is in the repository, else nil.
+local function session_rank(repo: string, info: SessionInfo, facts: SessionRepos?): number?
+	if facts ~= nil and facts.main[repo] then
+		return 1
+	elseif info.name == basename(repo) then
+		return 2
+	elseif facts ~= nil and facts.shown[repo] then
+		return 3
+	end
+	return nil
+end
+
 -- Where the worktree tab of `path`, in the repository `repo`, goes. The repository session is the open session with
--- the lowest id of the sessions whose root in `repoOf` is `repo`. Reads facts only and runs no effect.
+-- the best rank, and of those the lowest id. Reads facts only and runs no effect.
 local function place(
 	path: string,
 	repo: string,
 	panes: { PaneInfo },
 	index: SessionIndex,
-	repoOf: { [number]: string }
+	repoOf: { [number]: SessionRepos }
 ): Placement
 	local parked: number? = nil
 	for _, pane in ipairs(panes) do
@@ -745,9 +778,11 @@ local function place(
 		end
 	end
 	local sid: number? = nil
-	for id, root in pairs(repoOf) do
-		if root == repo and index.byId[id] ~= nil and (sid == nil or id < sid) then
-			sid = id
+	local best = math.huge
+	for id, info in pairs(index.byId) do
+		local rank = session_rank(repo, info, repoOf[id])
+		if rank ~= nil and (rank < best or (rank == best and sid ~= nil and id < sid)) then
+			sid, best = id, rank
 		end
 	end
 	if sid == nil then
@@ -805,7 +840,7 @@ end
 -- that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
 local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 	local path = res.path
-	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), rootOfSession)
+	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), reposOfSession)
 	local tab: number? = nil
 	local shellPane: number? = nil
 	if plan.kind == "open" then
@@ -825,7 +860,7 @@ local function open_tab(cx: WindowCx, res: CreateResult): (number?, string?)
 		tab, shellPane = fill_fresh_tab(cx, if pane ~= nil then cx.session:tab_of(pane) else nil, plan.parked)
 	else
 		local created = cx.sessions:create({ name = plan.name, cwd = path })
-		rootOfSession[created.id] = res.repo
+		reposOfSession[created.id] = { first = res.repo, shown = { [res.repo] = true }, main = {} }
 		local info = session_index(cx).byId[created.id]
 		tab, shellPane = fill_fresh_tab(cx, if info ~= nil then info.tabs[1] else nil, plan.parked)
 	end
@@ -1598,7 +1633,8 @@ local function start(cx: WindowCx)
 			return
 		end
 		local cur = session_index(cx2).current
-		local root = if cur ~= nil then rootOfSession[cur.id] else nil
+		local facts = if cur ~= nil then reposOfSession[cur.id] else nil
+		local root = if facts ~= nil then facts.first else nil
 		if root ~= nil then
 			branch_picker(cx2, root)
 		else

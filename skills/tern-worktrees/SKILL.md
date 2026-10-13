@@ -34,7 +34,7 @@ Makes the tern-managed worktree of a branch, or reuses it. Then opens its tab, o
 
 When the main checkout has the branch, also the head branch of `--pr`, `create` opens the main checkout where it is. `--relocate` does not apply: the main checkout does not move.
 
-When omp is installed and the omp setting `worktree.clone` is true in the repository, `create` makes the worktree with `omp worktree add`, also when `TERN_WT_HOME` is set. A rebuilt relocation uses plain git. The new worktree starts as a copy-on-write clone of the main checkout, so it has the ignored files of the main checkout, for example `.env` and `node_modules`. A new branch gets the same upstream as plain `git worktree add -b` gives it, `origin/<default>` with the git defaults. Each line that omp prints to standard error, for example that the clone fell back to a checkout, becomes a warning that starts with `omp:`. When `omp config list --json` fails in the repository, `create` uses plain git and adds a warning that starts with `omp config list`. omp moves an invalid `.omp/config.yml` of the repository aside to `.omp/config.yml.broken-<id>` when it reads it.
+When omp is installed and the omp setting `worktree.clone` is true in the repository, `create` makes the worktree with `omp worktree add`, also when `TERN_WT_HOME` is set. A rebuilt relocation uses plain git. The new worktree starts as a copy-on-write clone of the main checkout, so it has the ignored files of the main checkout, for example `.env` and `node_modules`. The clone also copies the `.git` file of each submodule, which then points to no git folder. `create` deletes each of these files, copies the submodule git folders of the main checkout into the git folder of the worktree, and runs `git submodule update`. Thus git works in each submodule, each submodule is at the recorded commit, and the files of the clone stay. A new branch gets the same upstream as plain `git worktree add -b` gives it, `origin/<default>` with the git defaults. Each line that omp prints to standard error, for example that the clone fell back to a checkout, becomes a warning that starts with `omp:`. When `omp config list --json` fails in the repository, `create` uses plain git and adds a warning that starts with `omp config list`. omp moves an invalid `.omp/config.yml` of the repository aside to `.omp/config.yml.broken-<id>` when it reads it.
 
 - `--repo`: a dir in the repository.
 - `--branch`: a local branch or a branch on `origin`. A name that git rejects gives `bad_args`.
@@ -67,13 +67,14 @@ Output: `{"removed", "repo", "branch", "branchDeleted", "branchKept", "closedBlo
 
 - `--all`: also list the omp-owned worktrees, at all depths in the worktree root. `list` does not look in a worktree or a main checkout.
 
-Output: `{"root", "worktrees": [{"path", "repo", "branch", "dirty", "changed", "owner"}]}`. Without `--all`, `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`.
+Output: `{"root", "warnings", "worktrees": [{"path", "repo", "branch", "dirty", "changed", "owner"}]}`. Without `--all`, `list` shows the tern-managed worktrees only. With `--repo`, `list` shows only the worktrees of the repository that contains `<dir>`.
 
 - `repo`: the main checkout.
 - `branch`: null for a detached `HEAD`.
 - `changed`: the number of files with changes. Each changed or new file counts one time, and submodule changes also count.
 - `dirty`: true when `changed` is more than 0.
 - `owner`: `tern` for a tern-managed worktree and `omp` for an omp-owned worktree.
+- `warnings`: one entry for each worktree in the output where git cannot count the changes, for example because a submodule has a broken `.git` file. The entry starts with `changed files not counted in <path>:` and gives the git error. That worktree stays in `worktrees`. Its `changed` does not include the submodules, and it is 0 when git cannot count the changes without the submodules too. Empty when git counts all worktrees.
 
 ### `branches`
 

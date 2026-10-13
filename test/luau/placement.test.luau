@@ -13,7 +13,10 @@ local NO_SHELL = "setup not run: no new shell in the tab"
 local RESOLVED = serde.encode("json", {
 	repos = {
 		{ dir = "/r/app", root = "/r/app", name = "app" },
+		{ dir = "/r/app/src", root = "/r/app", name = "app" },
+		{ dir = "/r/app/.wt/z", root = "/r/app", name = "app" },
 		{ dir = "/r/other", root = "/r/other", name = "other" },
+		{ dir = "/o/app-w", root = "/r/app", name = "app" },
 		{ dir = "/wt/worktrees/app/x", root = "/r/app", name = "app" },
 		{ dir = "/wt/worktrees/app/y", root = "/r/app", name = "app" },
 	},
@@ -310,6 +313,79 @@ for _, ids in { { oldest = 1, later = 3 }, { oldest = 2, later = 5 } } do
 			eq(tabs_of(cx, later), `{later}`, "tabs of the current session")
 		end
 	)
+end
+
+-- The session that gets the new tab of a worktree of /r/app, when two or more sessions could get it. /o/app-w is a
+-- linked worktree of /r/app outside it, /r/app/.wt/z is a linked worktree of /r/app in it, and /r/app/src is a folder
+-- of the main checkout. Session 4 is current.
+for _, case in
+	{
+		{
+			what = "a session with the main checkout beats a lower id session whose first pane is a linked worktree",
+			panes = { { pane = 1, tab = 1, cwd = "/o/app-w" }, { pane = 2, tab = 2, cwd = "/r/app/src" } },
+			sessions = { { id = 4, name = "Default", tabs = { 1 } }, { id = 9, name = "work", tabs = { 2 } } },
+			want = 9,
+		},
+		{
+			what = "a session with the main checkout beats a lower id session named after the repository",
+			panes = { { pane = 1, tab = 1, cwd = "/o/app-w" }, { pane = 2, tab = 2, cwd = "/r/app" } },
+			sessions = { { id = 4, name = "app", tabs = { 1 } }, { id = 9, name = "work", tabs = { 2 } } },
+			want = 9,
+		},
+		{
+			what = "a linked worktree in the main checkout folder is not the main checkout",
+			panes = { { pane = 1, tab = 1, cwd = "/r/app/.wt/z" }, { pane = 2, tab = 2, cwd = "/r/app" } },
+			sessions = { { id = 4, name = "Default", tabs = { 1 } }, { id = 9, name = "work", tabs = { 2 } } },
+			want = 9,
+		},
+		{
+			what = "a session named after the repository beats a lower id session without the main checkout",
+			panes = { { pane = 1, tab = 1, cwd = "/o/app-w" }, { pane = 2, tab = 2, cwd = worktree("y") } },
+			sessions = { { id = 4, name = "Default", tabs = { 1 } }, { id = 9, name = "app", tabs = { 2 } } },
+			want = 9,
+		},
+		{
+			what = "a session named after the repository that shows no folder of it beats a session that shows one",
+			panes = { { pane = 1, tab = 1, cwd = "/o/app-w" }, { pane = 2, tab = 2, cwd = "/r/other" } },
+			sessions = { { id = 4, name = "Default", tabs = { 1 } }, { id = 9, name = "app", tabs = { 2 } } },
+			want = 9,
+		},
+		{
+			what = "with no main checkout and no name, the lowest id of the sessions that show the repository wins",
+			panes = {
+				{ pane = 1, tab = 1, cwd = "/r/other" },
+				{ pane = 2, tab = 2, cwd = "/o/app-w" },
+				{ pane = 3, tab = 3, cwd = worktree("y") },
+			},
+			sessions = {
+				{ id = 4, name = "Default", tabs = { 1 } },
+				{ id = 9, name = "b", tabs = { 3 } },
+				{ id = 7, name = "a", tabs = { 2 } },
+			},
+			want = 7,
+		},
+		{
+			what = "a session whose first pane is in another repository and a later pane in the repository shows it",
+			panes = { { pane = 1, tab = 1, cwd = "/r/other" }, { pane = 2, tab = 2, cwd = "/o/app-w" } },
+			sessions = { { id = 4, name = "Default", tabs = { 1, 2 } } },
+			want = 4,
+		},
+	}
+do
+	test(case.what, function()
+		local cx = Stub.cx(case.panes, 1, { sessions = case.sessions, current = 4 })
+		local index = { ["/r/app/.wt/z"] = { main = "/r/app", branch = "z", changed = 0, owner = "omp" } }
+		local plugin = Stub.load({ env = ENV, cx = cx, kv = { worktreeIndex = index } })
+		carly_create(plugin, cx)
+		local named: number? = nil
+		for tab, name in cx.names do
+			if name == "x" then
+				named = tab
+			end
+		end
+		eq(#cx.records, #case.sessions, "sessions")
+		eq(session_of_tab(cx, named), case.want, "session of the new tab")
+	end)
 end
 
 test("a new session with no tab opens no tab", function()

@@ -2,7 +2,8 @@
 # A fake omp for the tests.
 # `config list --json` prints `.fake-omp.json` of the working directory when it is there, else `$FAKE_OMP_DIR/config.json`.
 # `worktree add -q -C <repo> <args>` runs `git -C <repo> worktree add <args>`, with `--no-track` when `<args>` make a branch,
-# so it sets no upstream, as omp does. Then it copies the ignored `.env` of `<repo>`, as the clone of omp does.
+# so it sets no upstream, as omp does. Then it copies the ignored `.env` of `<repo>`, and each submodule folder of `<repo>` with a `.git`
+# entry, its `.git` file included, over the new worktree, as the clone of omp does.
 # It prints `$FAKE_OMP_WARN` to standard error when it is set, and `$FAKE_OMP_FAIL` names a verb that fails.
 if [ -n "${FAKE_OMP_LOG:-}" ]; then
 	printf '%s\n' "$*" >>"$FAKE_OMP_LOG"
@@ -39,6 +40,14 @@ case "$verb ${2:-}" in
 	done
 	if [ -f "$repo/.env" ]; then
 		cp "$repo/.env" "$dest/.env"
+	fi
+	if [ -f "$repo/.gitmodules" ]; then
+		git config -f "$repo/.gitmodules" --get-regexp '^submodule\..*\.path$' | while read -r _ sub; do
+			if [ -e "$repo/$sub/.git" ]; then
+				rm -rf "${dest:?}/$sub"
+				cp -R "$repo/$sub" "$dest/$sub"
+			fi
+		done
 	fi
 	if [ -n "${FAKE_OMP_WARN:-}" ]; then
 		echo "$FAKE_OMP_WARN" >&2

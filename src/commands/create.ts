@@ -1,9 +1,9 @@
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync } from 'node:fs';
+import { constants, copyFileSync, cpSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { fetchOrigin, gitMust, gitRun, gitSucceeds, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
+import { brokenSubmoduleGitfiles, fetchOrigin, gitMust, gitRun, gitSucceeds, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { defaultBranch, ghMust, ghMustWith, originRepo } from '../github.ts';
 import type { GhPullRequest } from '../github.ts';
@@ -309,7 +309,34 @@ const afterStaging = async <T>(carry: Carry, step: () => Promise<T>): Promise<T>
   }
 };
 
+/**
+ * Makes the submodules of the worktree at `dir` usable again after omp cloned the main checkout into it. The clone copies the `.git` file
+ * of each submodule, and its relative path then points through the `.git` file of the worktree, so git fails in the submodule. This copies
+ * the submodule git directories of the main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the file
+ * system can, then removes each broken `.git` file. `git submodule update` then connects each submodule to its copy and checks out the
+ * recorded commit. The cloned files stay, also the ignored build output, and no submodule is fetched again. When the copy fails, the
+ * `.git` files stay and a `submodule repair failed:` warning tells why.
+ */
+const repairClonedSubmodules = async (ctx: Context, dir: string): Promise<void> => {
+  const broken = await brokenSubmoduleGitfiles(dir);
+  if (broken.length === 0) {
+    return;
+  }
+  try {
+    const [from, to] = await Promise.all([ctx.root, dir].map(async checkout => await gitMust(checkout, 'rev-parse', '--path-format=absolute', '--git-path', 'modules')));
+    cpSync(from.trim(), to.trim(), { mode: constants.COPYFILE_FICLONE, recursive: true });
+  } catch (error) {
+    // SAFETY: the git step throws a CliError, and the copy throws an Error from node:fs.
+    ctx.warnings.push(`submodule repair failed: ${(error as Error).message}`);
+    return;
+  }
+  for (const gitfile of broken) {
+    rmSync(gitfile);
+  }
+};
+
 const updateSubmodules = async (ctx: Context, dir: string): Promise<void> => {
+  await repairClonedSubmodules(ctx, dir);
   const result = await gitRun(dir, 'submodule', 'update', '--init', '--recursive');
   if (result.status !== 0) {
     ctx.warnings.push(`submodule update failed: ${result.stderr.trim()}`);

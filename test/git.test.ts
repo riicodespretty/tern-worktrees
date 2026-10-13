@@ -1,10 +1,31 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { dirtyFiles, fetchOrigin, gitMust, gitMustWith, gitRun, gitSucceeds, hasOrigin, isAncestor, repoRoot, requireRepoRoot, worktrees } from '../src/git.ts';
-import { git, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import {
+  brokenSubmoduleGitfiles,
+  changedFileCount,
+  dirtyFiles,
+  fetchOrigin,
+  gitMust,
+  gitMustWith,
+  gitRun,
+  gitSucceeds,
+  hasOrigin,
+  isAncestor,
+  repoRoot,
+  requireRepoRoot,
+  worktrees,
+} from '../src/git.ts';
+import { git, gitShim, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
+
+/** Makes the folder `dir` with a `.git` file that points to no git directory, and gives the path of that file. */
+const brokenGitfile = (dir: string): string => {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, '.git'), 'gitdir: ../nowhere\n');
+  return path.join(dir, '.git');
+};
 
 describe('git helpers', () => {
   beforeEach(() => {
@@ -168,6 +189,46 @@ describe('git helpers', () => {
 
     it('raises git_failed outside a repo', async () => {
       await expect(dirtyFiles(tempDir('plain'))).rejects.toMatchObject({ code: 'git_failed' });
+    });
+  });
+
+  describe(changedFileCount, () => {
+    it('counts the changed and untracked files with no error', async () => {
+      const repo = await tmpRepo();
+      writeFileSync(path.join(repo.dir, 'README.md'), 'changed\n');
+      writeFileSync(path.join(repo.dir, 'new.txt'), 'new\n');
+      await expect(changedFileCount(repo.dir)).resolves.toStrictEqual({ count: 2, error: null });
+    });
+
+    it('gives 0 and the git error outside a repo', async () => {
+      await expect(changedFileCount(tempDir('plain'))).resolves.toStrictEqual({ count: 0, error: 'fatal: not a git repository (or any of the parent directories): .git' });
+    });
+
+    it('gives 0 when the count without the submodules fails too, also after git printed lines', async () => {
+      const repo = await tmpRepo();
+      await gitShim(`case " $* " in *" --ignore-submodules=none "*) echo 'status broke' >&2; exit 1;; *" --ignore-submodules=all "*) echo '?? partial'; exit 1;; esac`);
+      await expect(changedFileCount(repo.dir)).resolves.toStrictEqual({ count: 0, error: 'status broke' });
+    });
+  });
+
+  describe(brokenSubmoduleGitfiles, () => {
+    it('gives the .git files of the submodules at each depth that point to no git directory', async () => {
+      const top = tempDir('top');
+      const outer = brokenGitfile(path.join(top, 'lib', 'a'));
+      const inner = brokenGitfile(path.join(top, 'lib', 'a', 'n'));
+      brokenGitfile(path.join(top, 'not-a-path'));
+      writeFileSync(
+        path.join(top, '.gitmodules'),
+        '[submodule "a"]\n\tpath = lib/a\n\turl = not-a-path\n[submodule "valid"]\n\tpath = valid\n[submodule "missing"]\n\tpath = missing\n',
+      );
+      writeFileSync(path.join(top, 'lib', 'a', '.gitmodules'), '[submodule "n"]\n\tpath = n\n');
+      await git(top, 'init', '--quiet', '--separate-git-dir', path.join(tempDir('gitdirs'), 'valid'), path.join(top, 'valid'));
+      await expect(brokenSubmoduleGitfiles(top)).resolves.toStrictEqual([outer, inner]);
+    });
+
+    it('gives nothing without a .gitmodules file', async () => {
+      const repo = await tmpRepo();
+      await expect(brokenSubmoduleGitfiles(repo.dir)).resolves.toStrictEqual([]);
     });
   });
 });

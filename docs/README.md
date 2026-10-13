@@ -52,6 +52,8 @@ When the main checkout has the branch, also the head branch of `create --pr`, `c
 
 In clone mode, `create` runs `omp worktree add`, and the new worktree starts with copies of the ignored files of the main checkout, for example `.env`. omp sets no upstream, so for a new branch `create` first runs `git branch`, which applies `branch.autoSetupMerge` as `git worktree add -b` does, then lets omp check out that branch. Thus `--new` gets the same upstream in the two modes. The teardown skips an ignored file with the bytes of the file at the same path in the main checkout: it compares the sizes, then the bytes in fixed-size chunks, and stops at the first difference, so a large artifact does not load into memory. A rebuilt relocation uses plain `git worktree add`, because it copies the ignored files of the first worktree, and a clone puts the copies of the main checkout there first.
 
+omp clones the files of the main checkout, also the `.git` file of each submodule. That file holds a relative path, for example `gitdir: ../../.git/modules/<name>`. In a linked worktree, `.git` is a file, so the path goes to no git folder: `git status` fails in the worktree and in the submodule, and `git submodule update` fails. Thus `create` reads the submodule paths from the `.gitmodules` files, at each depth, and finds each `.git` file that points to no git folder. It first copies `.git/modules` of the main checkout to `modules` in the git folder of the worktree, copy-on-write where the file system can. Only after that copy succeeds, it deletes the broken `.git` files. `git submodule update --init --recursive` then finds the git folder of each submodule, writes a correct `.git` file, and checks out the recorded commit. When the copy fails, `create` keeps the `.git` files, adds the warning `submodule repair failed: <error>`, and still runs `git submodule update`. `git submodule update` does not clone into a folder that has files. To get an empty folder, `create` must delete the files that the clone mode gives. `git submodule absorbgitdirs` needs a git folder that works. A copy of the git folders needs no fetch, and the files of the clone, also the ignored build output, stay. In plain git mode, no `.git` file is broken, so this step changes nothing.
+
 ### Worktree rows
 
 The window half knows each repository from the `cwd` of a pane. With `tern.command`, it registers one Tern command in the `Worktrees` group for each branch and each open pull request of that repository. A row runs `tern-wt create`, as the branch picker does. Its `available` hook only reads tables: the row shows when the `cwd` of the active pane belongs to its repository. A branch that goes away keeps its command, and `available` hides it. Tern ranks the rows, and the plugin sets only their titles.
@@ -91,9 +93,15 @@ The native picker has no keys of its own for an item. Thus Tear down has no `⌫
 
 ### Pickers and sessions
 
-When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The current session gets the branch picker of its repository, else the repo picker opens. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
+When the hotkey runs, the window half sends the working directory of each pane to `tern-wt resolve`, which gives the repository root of each one. The repository of the current session is the root of the first pane, in pane order, of its tabs. The current session gets the branch picker of that repository, else the repo picker opens. When `resolve` fails, the picker still opens. When the root of a repository is unknown, that repository matches no session.
 
-A new worktree tab opens in the repository session, or in a new session when the repository has none. When two sessions show the repository, the oldest session (the lowest session id) gets the tab, also when the other session is the current session. The window half does not change the other session. After a reload of the plugin, a repository can get a second session: see the parked panes below.
+A new worktree tab opens in the repository session, or in a new session when the repository has none. The window half looks at all the panes in the tabs of each session, not only the first pane. It selects the repository session in this order:
+
+1. A session with a pane in the main checkout of the repository: the repository root or a folder in it. A folder of a linked worktree in the index does not count, also when that worktree is in the folder of the main checkout.
+2. A session with the name of the repository, which is the name of the folder of the repository root.
+3. A session with a pane in the repository, for example in a linked worktree.
+
+When two sessions have the same position in this order, the oldest session (the lowest session id) gets the tab, also when the other session is the current session. Thus, when the first tab of a session is in a linked worktree of the repository and a different session has the main checkout, the different session gets the tab. The window half does not change the other session. After a reload of the plugin, a repository can get a second session: see the parked panes below.
 
 When `create` answers, the window half runs `resolve` again before it opens the tab. This applies to each create: from the branch picker, a worktree row, Relocate, New branch and the Carly `create` export. Thus a repository session that opened after the window started gets the tab, and the window half makes no second session for its repository.
 
@@ -151,6 +159,8 @@ A picker then lists Retry, then Force delete. Its placeholder is the title of th
 ### The worktree index
 
 The worktree index lists each worktree in the worktree root, managed and omp-owned, by its path. Each entry gives the main checkout, the branch, the number of changed files and the owner of its worktree. It comes from `tern-wt list --all`: `--all` adds the omp-owned worktrees, and each worktree in the output has its `owner` and its number of `changed` files. The window half keeps the index in `tern.kv`, with the key `worktreeIndex`. The host half and each window read that key. After each `list --all` answer, the window half also updates its map of worktree tabs from the index.
+
+When git cannot count the changes of one worktree, for example because a submodule has a broken `.git` file, `list` still gives that worktree. Its count does not include the submodules, or is 0 when that count also fails, and `warnings` names the worktree with the git error. Thus one broken worktree does not stop the update of the index. The window half reads only `root` and `worktrees`.
 
 Three writes change the index:
 

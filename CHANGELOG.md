@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Feature
+
+- Add `warnings` to the output of `list`. It names each worktree whose changes git could not count, with the git error
+
+### Fix
+
+- Open a new worktree tab in the session that has a pane in the main checkout of the repository. Without such a session, use the session with the name of the repository. Without that session, use a session with a pane in the repository. Before, the first pane of each session gave its repository. Thus a session whose first tab was in a linked worktree got the tab
+- In omp clone mode, fix the submodules that the clone copied. Before, the copied `.git` file of each submodule pointed to no git folder, so `git status` failed in the worktree. `create` copies the submodule git folders of the main checkout into the git folder of the worktree. It then deletes the broken `.git` files and runs `git submodule update`. Each submodule is then at the recorded commit, and the files of the clone stay. When the copy fails, `create` gives a `submodule repair failed:` warning and keeps the worktree
+- Do not fail `list` when git cannot count the changes of one worktree, for example because of a broken submodule `.git` file. That worktree stays in the output with the count without its submodules, or 0. Before, one broken worktree failed `list --all`, and the worktree index of the window stopped its updates
+
 ## [0.3.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.3.0 "2026-10-13")
 
 ### Feature
