@@ -185,7 +185,7 @@ export const ghFixture = (args: string[], body: string): void => {
 export const managedPath = (dirName: string, repoName = 'aoyama'): string => path.join(activeSandbox().wtHome, 'worktrees', repoName, dirName);
 
 /** Gives the current branch of the checkout at `dir`. */
-export const currentBranch = async (dir: string): Promise<string> => {
+export const headName = async (dir: string): Promise<string> => {
   const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
   return out.trim();
 };

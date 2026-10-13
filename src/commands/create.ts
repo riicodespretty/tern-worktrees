@@ -326,7 +326,8 @@ const updateWorktreeSubmodules = async (ctx: Context, dir: string): Promise<void
 
 /**
  * Adds the worktree of `target` again after `moveOrClear` removed it, updates its submodules, then copies the carried files into it. Gives the carried files.
- * It adds the worktree again with plain git, because clone mode does not apply to a rebuild.
+ * It adds the worktree again with plain git, because clone mode does not apply to a rebuild. The branch of `target` is not new, so it passes
+ * `isNew: false`.
  */
 const rebuild = async (ctx: Context, target: Target, cleared: Cleared): Promise<string[]> =>
   await afterStaging(cleared.carry, async () => {

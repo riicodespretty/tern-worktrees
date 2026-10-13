@@ -6,7 +6,7 @@ import { gitRun } from '../src/git.ts';
 import {
   cliJson,
   contract,
-  currentBranch,
+  headName,
   FIXTURE_BIN,
   ghFixture,
   ghLog,
@@ -72,7 +72,7 @@ describe('create command', () => {
       await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual(
         contract('create-created', { branch: 'feature/x', repo: repo.dir, worktree: target }),
       );
-      await expect(currentBranch(target)).resolves.toBe('feature/x');
+      await expect(headName(target)).resolves.toBe('feature/x');
       await expect(git(target, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).resolves.toBe('origin/feature/x\n');
       await expect(run(['--repo', target, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({ owner: 'tern', path: target, status: 'reused', warnings: [] });
     });
@@ -80,7 +80,7 @@ describe('create command', () => {
     it('checks out an existing local branch', async () => {
       await git(repo.dir, 'branch', 'feature/local');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab'])).resolves.toMatchObject({ status: 'created' });
-      await expect(currentBranch(managedPath('feature-local'))).resolves.toBe('feature/local');
+      await expect(headName(managedPath('feature-local'))).resolves.toBe('feature/local');
       const merge = await gitRun(repo.dir, 'config', '--get', 'branch.feature/local.merge');
       expect(merge).toStrictEqual({ status: 1, stderr: '', stdout: '' });
     });
@@ -132,7 +132,7 @@ describe('create command', () => {
       await git(repo.dir, 'commit', '--quiet', '--allow-empty', '-m', 'local only');
       await expect(run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/y', status: 'created' });
       const target = managedPath('feature-y');
-      await expect(currentBranch(target)).resolves.toBe('feature/y');
+      await expect(headName(target)).resolves.toBe('feature/y');
       await expect(git(target, 'rev-parse', 'HEAD')).resolves.toBe(await git(repo.dir, 'rev-parse', 'origin/main'));
     });
 
@@ -185,7 +185,7 @@ describe('create command', () => {
     it('creates the worktree of a same-repo pull request', async () => {
       ghPrView();
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: managedPath('feature-x'), status: 'created' });
-      await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
+      await expect(headName(managedPath('feature-x'))).resolves.toBe('feature/x');
     });
 
     it('checks out a fork pull request as pr-<n>', async () => {
@@ -279,8 +279,8 @@ describe('create command', () => {
         `worktree add -q -C ${repo.dir} ${at('feature-local')} feature/local`,
         `worktree add -q -C ${repo.dir} --detach ${at('pr-7')} origin/main`,
       ]);
-      await expect(currentBranch(at('feature-y'))).resolves.toBe('feature/y');
-      await expect(currentBranch(at('feature-local'))).resolves.toBe('feature/local');
+      await expect(headName(at('feature-y'))).resolves.toBe('feature/y');
+      await expect(headName(at('feature-local'))).resolves.toBe('feature/local');
       expect(ghLog()).toContain('pr checkout 7 --branch pr-7');
     });
 

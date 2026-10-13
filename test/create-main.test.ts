@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { cliJson, contract, currentBranch, ghPrView, git, managedPath, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs } from './helpers.ts';
+import { cliJson, contract, headName, ghPrView, git, managedPath, ternLog, tmpRepo, useGithubOrigin, useSandbox, writeTernLs } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
@@ -19,7 +19,7 @@ describe('create command', () => {
       writeTernLs({ work: [repo.dir] });
       await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'main', ...extra])).resolves.toStrictEqual(contract('create-main-checkout', { repo: repo.dir }));
       expect(ternLog()).toStrictEqual(['ls --json', 'focus 1 --json']);
-      await expect(currentBranch(repo.dir)).resolves.toBe('main');
+      await expect(headName(repo.dir)).resolves.toBe('main');
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(sandbox.wtHome);
     });
 

@@ -49,8 +49,8 @@ interface OpenPullRequests {
 const REMOTE_PREFIX = 'refs/remotes/origin/';
 const LOCAL_PREFIX = 'refs/heads/';
 
-const listBranches = async (root: string, withOrigin: boolean): Promise<string[]> => {
-  const patterns = withOrigin ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
+const listBranches = async (root: string, originPresent: boolean): Promise<string[]> => {
+  const patterns = originPresent ? ['refs/remotes/origin', 'refs/heads'] : ['refs/heads'];
   const output = await gitMust(root, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', ...patterns);
   const names = output
     .split('\n')
