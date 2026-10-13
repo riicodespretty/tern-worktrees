@@ -14,6 +14,12 @@ export type SessionRecord = { id: number, name: string?, tabs: { number }? }
 export type CxOptions = { sessions: { SessionRecord }?, current: number?, fail: Fail? }
 export type Run = { argv: { string }, cb: (result: any, cx: any) -> () }
 export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
+export type Call = {
+	replies: { any },
+	reply: (self: Call, res: any) -> (),
+	fail: (self: Call, err: string) -> (),
+	wait: (self: Call, ms: number) -> any,
+}
 export type Options = {
 	file: string?,
 	env: { [string]: string }?,
@@ -35,6 +41,7 @@ export type Harness = {
 	refreshes: number,
 	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
 	tick: (self: Harness, ms: number) -> (),
+	pending: (self: Harness, verb: string) -> { string },
 	status: (self: Harness, cwd: string?) -> any,
 }
 
@@ -400,6 +407,33 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 	return cx
 end
 
+-- A fake Carly call. `reply` appends its result to `replies`, `fail` raises "call:fail <err>", and `wait` returns nil.
+function Stub.call(): Call
+	local call: Call = {
+		replies = {},
+		reply = function(self: Call, res: any)
+			table.insert(self.replies, res)
+		end,
+		fail = function(_self: Call, err: string)
+			error("call:fail " .. err, 0)
+		end,
+		wait = function(_self: Call, _ms: number): any
+			return nil
+		end,
+	}
+	return call
+end
+
+-- The item of the pick `request` with `id`. It raises when no item has that id.
+function Stub.item(request: any, id: string): any
+	for _, it in request.opts.items do
+		if it.id == id then
+			return it
+		end
+	end
+	error("no item " .. id, 0)
+end
+
 local function answer(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
 	local matching: { Run } = {}
 	for i = #self.runs, 1, -1 do
@@ -432,24 +466,37 @@ function Stub.load(opts: Options): Harness
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
 			answer(self, verb, stdout, status, cx or defaultCx or lastCx)
 		end,
-		-- Moves the fake clock by `ms` and fires each timer that is then due, earliest first.
+		-- Moves the fake clock by `ms`. Each timer due in that time fires at its own time, earliest first, also one
+		-- that a callback set.
 		tick = function(self: Harness, ms: number)
-			self.clock += ms
+			local target = self.clock + ms
 			while true do
 				local dueIndex: number? = nil
 				for i, timer in self.timers do
-					if timer.at <= self.clock and (dueIndex == nil or timer.at < self.timers[dueIndex].at) then
+					if timer.at <= target and (dueIndex == nil or timer.at < self.timers[dueIndex].at) then
 						dueIndex = i
 					end
 				end
 				if dueIndex == nil then
+					self.clock = target
 					return
 				end
 				local timer = table.remove(self.timers, dueIndex) :: Timer
+				self.clock = math.max(self.clock, timer.at)
 				if not timer.cancelled then
 					timer.fn(defaultCx or lastCx)
 				end
 			end
+		end,
+		-- The arguments after the binary of each run of `verb` that no answer has taken yet, in order.
+		pending = function(self: Harness, verb: string): { string }
+			local lines: { string } = {}
+			for _, run in self.runs do
+				if run.argv[2] == verb then
+					table.insert(lines, table.concat(run.argv, " ", 2))
+				end
+			end
+			return lines
 		end,
 		-- Runs the status formatter for a focused pane in `cwd`. `tern.chrome.refresh` raises an error while the
 		-- formatter runs, as it does in Tern.

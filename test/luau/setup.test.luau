@@ -48,11 +48,7 @@ local function create_x(plugin: Stub.Harness, cx: any, answer: string)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	local picker = cx.asked[#cx.asked]
-	for _, it in picker.opts.items do
-		if it.id == "b:x" then
-			picker.next(it, nil, cx)
-		end
-	end
+	picker.next(Stub.item(picker, "b:x"), nil, cx)
 	plugin:answer("create", answer, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 end
@@ -76,13 +72,6 @@ local function setup_toasts(cx: any): { any }
 	return found
 end
 
--- Moves the clock by `ms` in 200 ms steps, so each poll runs.
-local function wait_ms(plugin: Stub.Harness, ms: number)
-	for _ = 1, ms // 200 do
-		plugin:tick(200)
-	end
-end
-
 test("type_setup polls, then types the line once the shell is at its prompt", function()
 	local plugin, cx, panes = window()
 	create_x(plugin, cx, UNTYPED)
@@ -94,7 +83,7 @@ test("type_setup polls, then types the line once the shell is at its prompt", fu
 	eq(#cx.typed, 1, "typed at the prompt")
 	eq(cx.typed[1].pane, SHELL, "typed pane")
 	eq(cx.typed[1].text, LINE .. "\r", "typed text")
-	wait_ms(plugin, 30000)
+	plugin:tick(30000)
 	eq(#cx.typed, 1, "typed once")
 	eq(#setup_toasts(cx), 0, "setup toasts")
 end)
@@ -102,7 +91,7 @@ end)
 test("type_setup toasts the line when no prompt shows in 30 s", function()
 	local plugin, cx = window()
 	create_x(plugin, cx, UNTYPED)
-	wait_ms(plugin, 29800)
+	plugin:tick(29800)
 	eq(#setup_toasts(cx), 0, "setup toasts before 30 s")
 	plugin:tick(200)
 	local toasts = setup_toasts(cx)
@@ -110,9 +99,25 @@ test("type_setup toasts the line when no prompt shows in 30 s", function()
 	eq(toasts[1].level, "error", "toast level")
 	eq(toasts[1].title, "Setup not run: no shell prompt in 30 s", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
-	wait_ms(plugin, 1000)
+	plugin:tick(1000)
 	eq(#setup_toasts(cx), 1, "setup toasts after 31 s")
 	eq(#cx.typed, 0, "typed")
+end)
+
+test("a tick of 31 s runs each setup poll on time", function()
+	local plugin, cx = window()
+	create_x(plugin, cx, UNTYPED)
+	local toast = cx.toast
+	local clocks: { number } = {}
+	cx.toast = function(self: any, level: string, title: string, detail: string?)
+		if string.sub(title, 1, #"Setup not run") == "Setup not run" then
+			table.insert(clocks, plugin.clock)
+		end
+		toast(self, level, title, detail)
+	end
+	plugin:tick(31000)
+	eq(#clocks, 1, "setup toasts")
+	eq(clocks[1], 30000, "clock of the setup toast")
 end)
 
 for _, case in
@@ -125,7 +130,7 @@ do
 		local plugin, cx, panes = window()
 		create_x(plugin, cx, created(case.setup))
 		find_pane(panes, SHELL).at_prompt = true
-		wait_ms(plugin, 31000)
+		plugin:tick(31000)
 		eq(#cx.typed, 0, "typed")
 		eq(#setup_toasts(cx), 0, "setup toasts")
 	end)
@@ -139,7 +144,7 @@ test("type_setup stops when the pane is gone", function()
 	plugin:tick(200)
 	shell.at_prompt = true
 	table.insert(panes, shell)
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 	eq(#setup_toasts(cx), 0, "setup toasts")
 end)
@@ -158,7 +163,7 @@ test("type_setup stops when its timer gets no cx", function()
 	end
 	eq(polls, 1, "pending polls")
 	find_pane(panes, SHELL).at_prompt = true
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 	eq(#setup_toasts(cx), 0, "setup toasts")
 end)
@@ -171,7 +176,7 @@ test("a tab that was open before gets the open-before toast and no typing", func
 	eq(toasts[1].level, "error", "toast level")
 	eq(toasts[1].title, "Setup not run: the tab was open before", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 end)
 
@@ -183,7 +188,7 @@ test("a create that opens no tab gets the no-tab toast and no typing", function(
 	eq(toasts[1].level, "error", "toast level")
 	eq(toasts[1].title, "Setup not run: no tab opened", "toast title")
 	eq(toasts[1].detail, LINE, "toast detail")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 end)
 
@@ -192,43 +197,24 @@ test("a Carly create whose tab fails to open types nothing", function()
 	cx.layout.new_tab = function(_self: any, _opts: any): number?
 		error("no tab", 0)
 	end
-	local replied: any = nil
-	local call = {
-		reply = function(_self: any, res: any)
-			replied = res
-		end,
-		fail = function(_self: any, _err: string) end,
-	}
-	function call.wait(_self: any, _ms: number): any
-		return nil
-	end
+	local call = Stub.call()
 	plugin.exports.create("/r/app", "x", nil, cx, call)
 	plugin:answer("create", UNTYPED, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
+	local replied = call.replies[1]
 	eq(replied ~= nil and replied.warnings[1], "tab not opened: no tab", "warning")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 	eq(#setup_toasts(cx), 0, "setup toasts")
 end)
 
 -- Runs the Carly `create` export for branch x in a `window()`, and returns the list of its replies.
 local function carly_create(plugin: Stub.Harness, cx: any): { any }
-	local replies: { any } = {}
-	local call = {
-		reply = function(_self: any, res: any)
-			table.insert(replies, res)
-		end,
-		fail = function(_self: any, err: string)
-			error("call:fail " .. err, 0)
-		end,
-	}
-	function call.wait(_self: any, _ms: number): any
-		return nil
-	end
+	local call = Stub.call()
 	plugin.exports.create("/r/app", "x", nil, cx, call)
 	plugin:answer("create", UNTYPED, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	return replies
+	return call.replies
 end
 
 test("a Carly create replies typed = true after the tick that types the line", function()
@@ -243,14 +229,14 @@ test("a Carly create replies typed = true after the tick that types the line", f
 	eq(replies[1].setup.line, LINE, "setup line")
 	eq(replies[1].setup.typed, true, "setup typed")
 	eq(#replies[1].warnings, 0, "warnings")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#replies, 1, "replies at the end")
 end)
 
 test("a Carly create replies typed = false with the warning when no prompt shows in 30 s", function()
 	local plugin, cx = window()
 	local replies = carly_create(plugin, cx)
-	wait_ms(plugin, 29800)
+	plugin:tick(29800)
 	eq(#replies, 0, "replies before 30 s")
 	plugin:tick(200)
 	eq(#replies, 1, "replies at 30 s")
@@ -267,7 +253,7 @@ test("a Carly create replies typed = false with no warning when the pane is gone
 	eq(#replies, 1, "replies")
 	eq(replies[1].setup.typed, false, "setup typed")
 	eq(#replies[1].warnings, 0, "warnings")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#replies, 1, "replies at the end")
 end)
 
@@ -286,7 +272,7 @@ test("a Carly create that opens no tab replies at once with the no-tab warning",
 	eq(#replies, 1, "replies")
 	eq(replies[1].setup.typed, false, "setup typed")
 	eq(replies[1].warnings[1], NO_TAB, "warning")
-	wait_ms(plugin, 31000)
+	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
 end)
 

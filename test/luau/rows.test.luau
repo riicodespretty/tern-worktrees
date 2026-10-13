@@ -31,16 +31,6 @@ local LOADING = "info Loading branches…"
 local LOADED = "info Branches loaded"
 local MINUTE = 60000
 
-local function argv_lines(plugin: Stub.Harness, verb: string): string
-	local found: { string } = {}
-	for _, run in plugin.runs do
-		if run.argv[2] == verb then
-			table.insert(found, table.concat(run.argv, " ", 2))
-		end
-	end
-	return table.concat(found, "; ")
-end
-
 -- The toasts of the branch picker so far, the ones with "branch" in the title, each as its level and title, joined
 -- by "; ".
 local function toast_lines(cx: any): string
@@ -106,38 +96,38 @@ local function press(plugin: Stub.Harness, cx: any)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
-local function item_by_id(request: any, id: string): any?
-	for _, it in request.opts.items do
-		if it.id == id then
-			return it
-		end
-	end
-	return nil
-end
-
 test("a create runs one branches for its repository", function()
 	local plugin, cx = window(0)
 	press(plugin, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
-	cx.asked[1].next(item_by_id(cx.asked[1], "b:x"), nil, cx)
+	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "branches calls after the create")
+	eq(
+		table.concat(plugin:pending("branches"), "; "),
+		"branches --repo /r/app --offline",
+		"branches calls after the create"
+	)
 end)
 
 test("a teardown runs branches only for the repository in the repo of remove", function()
 	local plugin, cx = window(0, { { pane = 1, tab = 1, cwd = REPO }, { pane = 2, tab = 2, cwd = LIB } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", BOTH_RESOLVED, 0, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline; branches --repo /r/lib --offline", "rows")
+	eq(
+		table.concat(plugin:pending("branches"), "; "),
+		"branches --repo /r/app --offline; branches --repo /r/lib --offline",
+		"rows"
+	)
 	plugin:answer("branches", STALE, 0, cx)
-	local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
-	function call.wait(_self: any, _ms: number): any
-		return nil
-	end
+	local call = Stub.call()
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
 	plugin:answer("remove", REMOVED, 0, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "branches calls after the teardown")
+	eq(
+		table.concat(plugin:pending("branches"), "; "),
+		"branches --repo /r/app --offline",
+		"branches calls after the teardown"
+	)
 end)
 
 test("the first open of the branch picker registers the worktree rows of its answer", function()
@@ -156,11 +146,11 @@ test("the worktree rows keep their pull requests after an offline answer and aft
 	press(plugin, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "background branches")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "background branches")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	eq(shows(plugin, cx, PR_ROW), true, "pull request row after the offline answer")
 	press(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "branches of the press")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "branches of the press")
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	eq(shows(plugin, cx, PR_ROW), true, "pull request row after prsFailed true")
 end)
@@ -179,43 +169,51 @@ end)
 test("a background trigger runs online when git.auto_fetch_minutes is due, and a press counts as online", function()
 	local plugin, cx = window(5)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "first trigger")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "first trigger")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(MINUTE)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "trigger after 1 min")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "trigger after 1 min")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(4 * MINUTE)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "trigger after 5 min")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "trigger after 5 min")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(5 * MINUTE)
 	press(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "press after 10 min")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "press after 10 min")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(MINUTE)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "trigger 1 min after the press")
+	eq(
+		table.concat(plugin:pending("branches"), "; "),
+		"branches --repo /r/app --offline",
+		"trigger 1 min after the press"
+	)
 end)
 
 test("with git.auto_fetch_minutes 0 a background trigger never runs online", function()
 	local plugin, cx = window(0)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "first trigger")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "first trigger")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(60 * MINUTE)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "trigger after 60 min")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "trigger after 60 min")
 end)
 
 test("a press during a background branches starts no second one and runs one online with toasts after it", function()
 	local plugin, cx = window(0)
 	trigger(plugin, cx)
 	press(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "branches calls after the press")
+	eq(
+		table.concat(plugin:pending("branches"), "; "),
+		"branches --repo /r/app --offline",
+		"branches calls after the press"
+	)
 	eq(toast_lines(cx), "", "toasts after the press")
 	plugin:answer("branches", OFFLINE, 0, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "run after the background branches")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "run after the background branches")
 	eq(toast_lines(cx), LOADING, "toasts after the online run starts")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the online answer")
@@ -226,12 +224,12 @@ test("a first press joins a background online branches", function()
 	local plugin, cx = window(5)
 	trigger(plugin, cx)
 	press(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "branches calls after the press")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "branches calls after the press")
 	eq(toast_lines(cx), LOADING, "toasts after the press")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the answer")
 	eq(toast_lines(cx), LOADING .. "; " .. LOADED, "toasts after the answer")
-	eq(argv_lines(plugin, "branches"), "", "branches calls after the answer")
+	eq(table.concat(plugin:pending("branches"), "; "), "", "branches calls after the answer")
 end)
 
 test("a first press with only an offline answer waits for the online answer", function()
@@ -242,11 +240,11 @@ test("a first press with only an offline answer waits for the online answer", fu
 	press(plugin, cx)
 	plugin:answer("branches", OFFLINE, 0, cx)
 	eq(#cx.asked, 0, "pickers after the offline answer")
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "run after the offline answer")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "run after the offline answer")
 	eq(toast_lines(cx), LOADING, "toasts after the online run starts")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the online answer")
-	eq(item_by_id(cx.asked[1], "pr:7") ~= nil, true, "pr:7 in the picker")
+	eq(Stub.item(cx.asked[1], "pr:7") ~= nil, true, "pr:7 in the picker")
 end)
 
 test("a trigger after a branches whose callback Tern dropped for 120 s starts a new one", function()
@@ -258,14 +256,14 @@ test("a trigger after a branches whose callback Tern dropped for 120 s starts a 
 	dropped.cb({ stdout = BRANCHES, stderr = "", status = 0 }, nil)
 	plugin:tick(120000)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "", "branches calls at 120 s")
+	eq(table.concat(plugin:pending("branches"), "; "), "", "branches calls at 120 s")
 	plugin:tick(1)
 	trigger(plugin, cx)
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app --offline", "branches calls after 120 s")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "branches calls after 120 s")
 	plugin:answer("branches", STALE, 0, cx)
 	dropped.cb({ stdout = BRANCHES, stderr = "", status = 0 }, cx)
 	eq(shows(plugin, cx, X_ROW), false, "row of x after the late answer")
-	eq(argv_lines(plugin, "branches"), "", "branches calls after the late answer")
+	eq(table.concat(plugin:pending("branches"), "; "), "", "branches calls after the late answer")
 end)
 
 test("a failed first online branches after an offline answer toasts the cause and keeps the rows", function()
@@ -280,7 +278,7 @@ test("a failed first online branches after an offline answer toasts the cause an
 	eq(shown(plugin, cx), before, "rows after the failure")
 	press(plugin, cx)
 	eq(#cx.asked, 0, "pickers on the next press, which waits again")
-	eq(argv_lines(plugin, "branches"), "branches --repo /r/app", "branches calls of the next press")
+	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "branches calls of the next press")
 end)
 
 runner.finish()

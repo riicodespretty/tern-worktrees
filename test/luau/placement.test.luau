@@ -43,22 +43,11 @@ end
 -- Runs the Carly `create` of `branch` (default x) over `cx`, answers `create` and `resolve`, and returns the replies.
 local function carly_create(plugin: Stub.Harness, cx: any, branch: string?): { any }
 	local name = branch or "x"
-	local replies: { any } = {}
-	local call = {
-		reply = function(_self: any, res: any)
-			table.insert(replies, res)
-		end,
-		fail = function(_self: any, err: string)
-			error("call:fail " .. err, 0)
-		end,
-	}
-	function call.wait(_self: any, _ms: number): any
-		return nil
-	end
+	local call = Stub.call()
 	plugin.exports.create("/r/app", name, nil, cx, call)
 	plugin:answer("create", created(name), 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	return replies
+	return call.replies
 end
 
 -- Runs the hotkey over `cx` and answers its `resolve`, so that the plugin reads the session of each repository.

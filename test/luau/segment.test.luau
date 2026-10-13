@@ -124,11 +124,7 @@ test("refresh runs once after a create adds an entry", function()
 		cx
 	)
 	local picker = cx.asked[#cx.asked]
-	for _, it in picker.opts.items do
-		if it.id == "b:x" then
-			picker.next(it, nil, cx)
-		end
-	end
+	picker.next(Stub.item(picker, "b:x"), nil, cx)
 	eq(#plugin.runs > 0 and plugin.runs[#plugin.runs].argv[2], "create", "pending CLI call")
 	local before = plugin.refreshes
 	plugin:answer(
@@ -150,10 +146,7 @@ for _, case in
 do
 	test(`refresh runs {case.refresh.word} after a remove of {case.what}`, function()
 		local plugin, cx = started(LISTED)
-		local call = { reply = function(_self: any, _res: any) end, fail = function(_self: any, _err: string) end }
-		function call.wait(_self: any, _ms: number): any
-			return nil
-		end
+		local call = Stub.call()
 		local before = plugin.refreshes
 		plugin.exports.remove(case.path, nil, cx, call)
 		plugin:answer(
