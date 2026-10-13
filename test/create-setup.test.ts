@@ -34,7 +34,7 @@ describe('create command', () => {
       const result = await run(['--repo', repo.dir, '--branch', 'feature/x']);
       expect(result).toMatchObject({ setup: { line: LINE, typed: true }, status: 'created', tab: { block: 42, opened: true, session: 'work' }, warnings: [] });
       expect(Object.keys(result)).toStrictEqual(['branch', 'carried', 'owner', 'path', 'repo', 'setup', 'status', 'tab', 'warnings']);
-      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json', WAIT, `run 42 ${LINE}`]);
+      expect(ternLog()).toStrictEqual(['ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json', WAIT, `run 42 ${LINE}`]);
     });
 
     it('leaves the setup commands to the caller with --no-tab', async () => {

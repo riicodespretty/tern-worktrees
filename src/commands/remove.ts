@@ -8,7 +8,7 @@ import { defaultBranch, listPullRequests, readOrigin } from '../github.ts';
 import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import type { GithubRepoRef } from '../repo-ref.ts';
-import { blocksUnder, close } from '../tern.ts';
+import { blocksUnder, close, ls } from '../tern.ts';
 import { guardWorkToLose } from '../work-to-lose.ts';
 
 /** Why `remove` kept the branch: the teardown policy `worktree`, a branch that is not merged (also when the merge check failed), or a failed `git branch -D`. */
@@ -160,12 +160,7 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
   }
   const branch = await currentBranch(target);
   const ctx: Context = { root, target, warnings: [] };
-  const blocks = options['keep-tab']
-    ? []
-    : await warnOnCliError(ctx, 'tabs not closed', [], async () => {
-        const placed = await blocksUnder(target);
-        return placed.map(entry => entry.block.id);
-      });
+  const blocks = options['keep-tab'] ? [] : await warnOnCliError(ctx, 'tabs not closed', [], async () => blocksUnder(await ls(), target).map(entry => entry.block.id));
   await removeWorktree(ctx, options.force);
   const closedBlocks = await closeBlocks(ctx, blocks);
   const branchKept = branch === null ? null : await applyPolicy(ctx, teardown, branch);

@@ -447,13 +447,13 @@ describe('create command', () => {
     it('opens a tab in the session of the repo', async () => {
       writeTernLs({ other: [tempDir('plain')], work: [repo.dir] });
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'work' }, warnings: [] });
-      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', `new tab work --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('opens a session named after the repo', async () => {
       writeTernLs({});
       await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ tab: { block: 42, opened: true, session: 'aoyama' } });
-      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', `new session aoyama --cwd ${managedPath('feature-x')} --json`, 'rename 42 feature/x --json']);
     });
 
     it('focuses the tab that already shows the worktree', async () => {

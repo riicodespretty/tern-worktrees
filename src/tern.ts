@@ -102,16 +102,16 @@ const placedBlocks = (listing: TernListing): PlacedBlock[] => listing.sessions.f
 
 const cwdOf = (block: TernBlock): string | null => (block.cwd === '' ? null : block.cwd);
 
-/** All blocks whose `cwd` is `dir` or a directory in it. */
-export const blocksUnder = async (dir: string): Promise<PlacedBlock[]> =>
-  placedBlocks(await ls()).filter(({ block }) => {
+/** All blocks of `listing` whose `cwd` is `dir` or a directory in it. */
+export const blocksUnder = (listing: TernListing, dir: string): PlacedBlock[] =>
+  placedBlocks(listing).filter(({ block }) => {
     const cwd = cwdOf(block);
     return cwd !== null && isUnder(cwd, dir);
   });
 
-/** The first session with a block whose `cwd` is in the repository at `root`, or null. Each distinct `cwd` resolves once. */
-export const sessionForRepo = async (root: string): Promise<TernSession | null> => {
-  const placed = placedBlocks(await ls());
+/** The first session of `listing` with a block whose `cwd` is in the repository at `root`, or null. Each distinct `cwd` resolves once. */
+export const sessionForRepo = async (listing: TernListing, root: string): Promise<TernSession | null> => {
+  const placed = placedBlocks(listing);
   const cwds = [...new Set(placed.map(({ block }) => cwdOf(block)))];
   const roots = new Map(await Promise.all(cwds.map(async cwd => [cwd, cwd === null ? null : await repoRoot(cwd)] as const)));
   return placed.find(({ block }) => roots.get(cwdOf(block)) === root)?.session ?? null;

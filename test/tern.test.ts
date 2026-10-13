@@ -101,14 +101,13 @@ describe('tern', () => {
   });
 
   describe(blocksUnder, () => {
-    it('finds every block in or below a dir', async () => {
+    it('finds every block in or below a dir', () => {
       const dir = tempDir('tern');
       const worktree = path.join(dir, 'wt');
       mkdirSync(path.join(worktree, 'sub'), { recursive: true });
       const main = { id: 1, name: 'main', tabs: [{ blocks: [block(10, worktree), block(11, dir), block(12, null), block(13, '')], id: 2, name: 'one' }] };
       const other = { id: 3, name: 'other', tabs: [{ blocks: [block(20, path.join(worktree, 'sub')), block(21, `${worktree}x`)], id: 4, name: 'two' }] };
-      writeTernListing({ sessions: [main, other] });
-      const found = await blocksUnder(worktree);
+      const found = blocksUnder({ sessions: [main, other] }, worktree);
       expect(found.map(placed => [placed.session.name, placed.tab.id, placed.block.id])).toStrictEqual([
         ['main', 2, 10],
         ['other', 4, 20],
@@ -119,10 +118,11 @@ describe('tern', () => {
   describe('blocks without a cwd', () => {
     it('are in no dir and no repository, not even the process cwd', async () => {
       const own = { id: 7, name: 'own', tabs: [{ blocks: [block(70, ''), block(71, null)], id: 8, name: 'x' }] };
-      writeTernListing({ sessions: [own] });
+      const listing = { sessions: [own] };
       const cwdRoot = await repoRoot(process.cwd());
       expect(cwdRoot).not.toBeNull();
-      await expect(Promise.all([blocksUnder(process.cwd()), sessionForRepo(String(cwdRoot))])).resolves.toStrictEqual([[], null]);
+      expect(blocksUnder(listing, process.cwd())).toStrictEqual([]);
+      await expect(sessionForRepo(listing, String(cwdRoot))).resolves.toBeNull();
     });
   });
 
@@ -134,8 +134,12 @@ describe('tern', () => {
       const first = { id: 1, name: 'first', tabs: [{ blocks: [block(10, plain), block(11, null), block(12, ''), block(13, otherRepo.dir)], id: 2, name: 'a' }] };
       const second = { id: 3, name: 'second', tabs: [{ blocks: [block(20, plain), block(21, repo.dir)], id: 4, name: 'b' }] };
       const third = { id: 5, name: 'third', tabs: [{ blocks: [block(30, repo.dir)], id: 6, name: 'c' }] };
-      writeTernListing({ sessions: [first, second, third] });
-      await expect(Promise.all([sessionForRepo(repo.dir), sessionForRepo(otherRepo.dir), sessionForRepo(tempDir('none'))])).resolves.toStrictEqual([second, first, null]);
+      const listing = { sessions: [first, second, third] };
+      await expect(Promise.all([sessionForRepo(listing, repo.dir), sessionForRepo(listing, otherRepo.dir), sessionForRepo(listing, tempDir('none'))])).resolves.toStrictEqual([
+        second,
+        first,
+        null,
+      ]);
     });
   });
 });

@@ -28,7 +28,7 @@ describe('create command', () => {
       await expect(run(['--repo', repo.dir, '--branch', 'main', '--no-tab'])).resolves.toMatchObject({ owner: 'main', path: repo.dir, tab: null });
       expect(ternLog()).toStrictEqual([]);
       await expect(run(['--repo', repo.dir, '--branch', 'main'])).resolves.toMatchObject({ owner: 'main', path: repo.dir, tab: { block: 42, opened: true, session: 'aoyama' } });
-      expect(ternLog()).toStrictEqual(['ls --json', 'ls --json', `new session aoyama --cwd ${repo.dir} --json`, 'rename 42 main --json']);
+      expect(ternLog()).toStrictEqual(['ls --json', `new session aoyama --cwd ${repo.dir} --json`, 'rename 42 main --json']);
     });
 
     it('opens the main checkout where it is for a same-repo pull request of its branch', async () => {

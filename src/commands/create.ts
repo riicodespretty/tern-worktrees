@@ -12,7 +12,7 @@ import { isUnder, worktreeOwner, worktreePath, worktreeRoot } from '../paths.ts'
 import type { WorktreeOwner, WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { nameWithOwner } from '../repo-ref.ts';
-import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
+import { blocksUnder, focus, ls, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
 import { guardWorkToLose } from '../work-to-lose.ts';
 
 /** How `create` got the worktree. */
@@ -409,13 +409,13 @@ const placeWorktree = async (ctx: Context, target: Target, mayRelocate: boolean)
 };
 
 const openTab = async (ctx: Context, placed: Placed): Promise<CreatedTab> => {
-  const blocks = await blocksUnder(placed.path);
-  const existingBlock = blocks.at(0);
+  const listing = await ls();
+  const existingBlock = blocksUnder(listing, placed.path).at(0);
   if (existingBlock) {
     await focus(existingBlock.block.id);
     return { block: existingBlock.block.id, opened: false, session: existingBlock.session.name };
   }
-  const session = await sessionForRepo(ctx.root);
+  const session = await sessionForRepo(listing, ctx.root);
   const block = session === null ? await newSession(ctx.repoName, placed.path) : await newTab(session.name, placed.path);
   await rename(block, placed.branch);
   return { block, opened: true, session: session?.name ?? ctx.repoName };

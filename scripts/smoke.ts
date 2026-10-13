@@ -8,7 +8,7 @@ import type { CreateResult } from '../src/commands/create.ts';
 import type { ListResult } from '../src/commands/list.ts';
 import { gitMust } from '../src/git.ts';
 import { run } from '../src/proc.ts';
-import { blocksUnder, ternBin } from '../src/tern.ts';
+import { blocksUnder, ls, ternBin } from '../src/tern.ts';
 import { buildRepo } from './repo-fixture.ts';
 import type { RepoFixture } from './repo-fixture.ts';
 
@@ -62,10 +62,7 @@ const waitFor = async (ready: () => boolean | Promise<boolean>, what: string, at
 };
 
 const waitForBlock = async (dir: string): Promise<void> => {
-  await waitFor(async () => {
-    const blocks = await blocksUnder(dir);
-    return blocks.length > 0;
-  }, `no block under ${dir}`);
+  await waitFor(async () => blocksUnder(await ls(), dir).length > 0, `no block under ${dir}`);
 };
 
 /**
@@ -95,7 +92,7 @@ const smoke = async (): Promise<void> => {
   await gitMust(clone, 'remote', 'set-url', 'origin', repo.origin);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);
-  const blocksLeft = await blocksUnder(created.path);
+  const blocksLeft = blocksUnder(await ls(), created.path);
   check(blocksLeft.length === 0, `remove: ${blocksLeft.length} blocks left under ${created.path}`);
 };
 
