@@ -178,6 +178,16 @@ describe('work to lose', () => {
       expect(error.extra).toStrictEqual({ changes: [], existing: dir, files: hardToRebuild.map(file => `!! ${file}`), hardToRebuild });
     });
 
+    it('does not stop teardown on a copy with the same bytes in the main checkout, in submodules at each depth too', async () => {
+      const dir = await nestedSubmodules();
+      await ignoreGlobally('.env.local');
+      const main = tempDir('main');
+      writeFiles(main, { 'outer/.env.local': 'SECRET=1\n', 'outer/inner/.env.local': 'SECRET=1\n' });
+      writeFiles(dir, { 'outer/.env.local': 'SECRET=1\n', 'outer/inner/.env.local': 'SECRET=2\n' });
+      const error = await rejection(guardWorkToLose(dir, { removing: main }));
+      expect(error.extra).toStrictEqual({ changes: [], existing: dir, files: ['!! outer/inner/.env.local'], hardToRebuild: ['outer/inner/.env.local'] });
+    });
+
     it('gives relocate each copy to carry', async () => {
       const { dir } = await copiesOfMain();
       const carried = await guardWorkToLose(dir, 'recreating');

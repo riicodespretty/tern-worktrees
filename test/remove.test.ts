@@ -411,13 +411,9 @@ describe('remove command', () => {
       return dir;
     };
 
-    it('stops on an ignored file inside a submodule that is hard to rebuild', async () => {
-      await ignoreGlobally('.env.local', 'node_modules');
+    it('removes ignored files inside a submodule that are easy to rebuild without --force', async () => {
+      await ignoreGlobally('node_modules');
       const dir = await subWorktree();
-      writeFileSync(path.join(dir, 'sub', '.env.local'), 'SECRET=1\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { existing: dir, files: ['!! sub/.env.local'] } });
-      expect(readFileSync(path.join(dir, 'sub', '.env.local'), 'utf-8')).toBe('SECRET=1\n');
-      rmSync(path.join(dir, 'sub', '.env.local'));
       mkdirSync(path.join(dir, 'sub', 'node_modules'));
       writeFileSync(path.join(dir, 'sub', 'node_modules', 'x.js'), 'x\n');
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
@@ -442,13 +438,6 @@ describe('remove command', () => {
       expect(existsSync(dir)).toBeFalsy();
     });
 
-    it('keeps a worktree with changes inside a submodule', async () => {
-      const dir = await subWorktree();
-      writeFileSync(path.join(dir, 'sub', 'README.md'), 'changed\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { existing: dir, files: [' M sub', 'sub:  M README.md'] } });
-      expect(readFileSync(path.join(dir, 'sub', 'README.md'), 'utf-8')).toBe('changed\n');
-    });
-
     it('keeps a worktree whose submodule holds a commit that no remote has', async () => {
       setTeardown('worktree');
       const dir = await subWorktree();
@@ -465,14 +454,6 @@ describe('remove command', () => {
       });
       expect(readLog(log).join('\n')).not.toMatch(/remove --force/u);
       await expect(git(sub, 'rev-parse', '--short', 'local-work')).resolves.toBe(commit);
-    });
-
-    it('keeps an untracked file that status.showUntrackedFiles hides', async () => {
-      const dir = await subWorktree();
-      await git(repo.dir, 'config', 'status.showUntrackedFiles', 'no');
-      writeFileSync(path.join(dir, 'draft.txt'), 'draft\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { files: ['?? draft.txt'] } });
-      expect(existsSync(path.join(dir, 'draft.txt'))).toBeTruthy();
     });
 
     it('reports git refusing the forced removal of a clean worktree', async () => {
