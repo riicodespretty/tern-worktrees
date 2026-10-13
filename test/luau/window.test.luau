@@ -88,6 +88,31 @@ do
 	end)
 end
 
+type ClosePaneCase = { what: string, panes: { Stub.Pane }, asks: boolean }
+
+for _, case in
+	{
+		{ what = "one pane in the tab", panes = { { pane = 1, tab = 1, cwd = WORKTREE } }, asks = true },
+		{
+			what = "two panes of the worktree in the tab",
+			panes = { { pane = 1, tab = 1, cwd = WORKTREE }, { pane = 2, tab = 1, cwd = WORKTREE } },
+			asks = false,
+		},
+	} :: { ClosePaneCase }
+do
+	test(`close_pane {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
+		local cx = Stub.cx(case.panes, 1)
+		local plugin = Stub.load({
+			env = ENV,
+			files = { [WORKTREE .. "/.git"] = "" },
+			kv = { worktreeRoot = ROOT, worktreeIndex = { [WORKTREE] = entry_with("tern") } },
+		})
+		eq(plugin.overrides.close_pane(cx), case.asks, "close_pane result")
+		plugin:answer("config", CONFIG, 0, cx)
+		eq(#cx.asked, if case.asks then 1 else 0, "pickers and prompts opened")
+	end)
+end
+
 test("window_start reads the worktree root from the list output", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app/feat" } }, 1)
 	local plugin = Stub.load({ env = ENV, files = { ["/r/app/feat/.git"] = "" } })
@@ -557,7 +582,7 @@ end)
 
 test("a teardown from the close-tab picker deletes the index entry", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = FEAT .. "/src" } }, 1)
-	local plugin = Stub.load({ env = ENV, files = { [FEAT .. "/.git"] = "" } })
+	local plugin = Stub.load({ env = ENV, files = { [FEAT .. "/.git"] = "" }, cx = cx })
 	plugin.handlers.window_start(cx)
 	plugin:answer("list", LISTED, 0, cx)
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")

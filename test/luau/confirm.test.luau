@@ -44,10 +44,13 @@ local function open_relocate(kv: { [string]: any }?): (Stub.Harness, any)
 end
 
 -- Presses the close key on the last tab of WORKTREE, and answers the `config` run of the picker with `config` and
--- `status` (default CONFIG and 0).
-local function close_worktree_tab(config: string?, status: number?): (Stub.Harness, any)
+-- `status` (default CONFIG and 0). With `started`, the window starts first, so that tab 1 holds WORKTREE.
+local function close_worktree_tab(config: string?, status: number?, started: boolean?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv(), cx = cx })
+	if started then
+		plugin.handlers.window_start(cx)
+	end
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
 	eq(#cx.asked, 0, "pickers and prompts opened before config answers")
 	eq(table.concat(plugin:pending("config"), "; "), "config", "config calls")
@@ -174,22 +177,41 @@ test("dismissing the close-tab picker sends no remove and keeps the tab", functi
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(nil, nil, cx)
 	eq(#plugin:pending("remove"), 0, "remove calls")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 1, "tabs")
 end)
 
 test("Keep worktree closes the tab and sends no remove", function()
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(Stub.item(cx.asked[1], "keep"), nil, cx)
 	eq(#plugin:pending("remove"), 0, "remove calls")
-	eq(#cx.commands, 1, "commands run")
-	eq(cx.commands[1], "close_tab", "command")
+	eq(#cx.session:tabs(), 0, "tabs")
+	eq(cx.effects[#cx.effects], "close_tab 1", "last effect")
+end)
+
+test("Keep worktree closes the tab, and its tab_closed asks no second time", function()
+	local plugin, cx = close_worktree_tab(nil, nil, true)
+	cx.asked[1].next(Stub.item(cx.asked[1], "keep"), nil, cx)
+	eq(#cx.session:tabs(), 0, "tabs")
+	eq(#plugin:pending("config"), 0, "config calls after the first answer")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(#plugin:pending("remove"), 0, "remove calls")
+end)
+
+test("Tear down closes the tab after remove, and its tab_closed asks no second time", function()
+	local plugin, cx = close_worktree_tab(nil, nil, true)
+	cx.asked[1].next(Stub.item(cx.asked[1], "teardown"), nil, cx)
+	plugin:answer("remove", Stub.fixture("remove-deleted", REMOVE_VARS), 0, cx)
+	eq(#cx.session:tabs(), 0, "tabs")
+	eq(#plugin:pending("config"), 0, "config calls after the first answer")
+	eq(#cx.asked, 1, "pickers and prompts opened")
+	eq(#plugin:pending("remove"), 0, "remove calls")
 end)
 
 test("Keep worktree when the worktree tab does not get focus toasts and runs no close_tab", function()
 	local panes: { Stub.Pane } =
 		{ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" }, { pane = 2, tab = 2, cwd = "/tmp" } }
 	local cx = Stub.cx(panes, 1, { fail = { focus = true } })
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv(), cx = cx })
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
 	plugin:answer("config", CONFIG, 0, cx)
 	cx.focused = 2
@@ -197,7 +219,7 @@ test("Keep worktree when the worktree tab does not get focus toasts and runs no 
 	eq(table.concat(cx.effects, "; "), "focus 1 failed", "effects")
 	local toast = cx.toasts[#cx.toasts]
 	eq(`{toast.title} · {toast.detail}`, "Could not focus the worktree tab · Close it by hand", "toast")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 2, "tabs")
 end)
 
 test("Tear down sends remove <path> --keep-tab", function()
@@ -206,7 +228,7 @@ test("Tear down sends remove <path> --keep-tab", function()
 	local removes = plugin:pending("remove")
 	eq(#removes, 1, "remove calls")
 	eq(removes[1], "remove " .. WORKTREE .. " --keep-tab", "remove argv")
-	eq(#cx.commands, 0, "commands run before remove ends")
+	eq(#cx.session:tabs(), 1, "tabs before remove ends")
 end)
 
 test("Tear down shows a deleting toast while remove runs", function()
@@ -222,14 +244,16 @@ test("a pick err while closing a tab still closes the tab", function()
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(nil, "boom", cx)
 	eq(#plugin:pending("remove"), 0, "remove calls")
-	eq(cx.commands[1], "close_tab", "command")
+	eq(#cx.session:tabs(), 0, "tabs")
+	eq(cx.effects[#cx.effects], "close_tab 1", "last effect")
 end)
 
 test("a pick err with Tear down picked keeps the worktree and closes the tab", function()
 	local plugin, cx = close_worktree_tab()
 	cx.asked[1].next(Stub.item(cx.asked[1], "teardown"), "boom", cx)
 	eq(#plugin:pending("remove"), 0, "remove calls")
-	eq(cx.commands[1], "close_tab", "command")
+	eq(#cx.session:tabs(), 0, "tabs")
+	eq(cx.effects[#cx.effects], "close_tab 1", "last effect")
 end)
 
 test("a closed tab with two worktrees asks twice, and Escape keeps both", function()
@@ -251,7 +275,7 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 	eq(cx.asked[2].opts.placeholder, "Worktree tab closed · …/worktrees/app/fix", "placeholder")
 	cx.asked[2].next(nil, nil, cx)
 	eq(#plugin:pending("remove"), 0, "remove calls")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 1, "tabs")
 end)
 
 test("Keep worktree in the Worktree tab closed picker says only that it keeps the worktree", function()
@@ -263,6 +287,19 @@ test("Keep worktree in the Worktree tab closed picker says only that it keeps th
 	plugin:answer("config", CONFIG, 0, cx)
 	eq(cx.asked[1].opts.items[1].id, "keep", "items[1].id")
 	eq(cx.asked[1].opts.items[1].detail, "keeps the worktree", "items[1].detail")
+end)
+
+test("a closed tab asks nothing for a worktree with a pane in another tab", function()
+	local live = Stub.cx({
+		{ pane = 1, tab = 1, cwd = WORKTREE },
+		{ pane = 2, tab = 2, cwd = WORKTREE .. "/src" },
+	}, 1)
+	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	plugin.handlers.window_start(live)
+	local cx = Stub.cx({ { pane = 2, tab = 2, cwd = WORKTREE .. "/src" } }, 2)
+	plugin.handlers.tab_closed({ tab = 1 }, cx)
+	eq(#plugin:pending("config"), 0, "config calls")
+	eq(#cx.asked, 0, "pickers and prompts opened")
 end)
 
 test("a failed teardown toasts the files, ignored ones first in the 10", function()
@@ -406,21 +443,21 @@ test("dismissing the failed teardown sends nothing and keeps the tab", function(
 	local plugin, cx = fail_teardown(DIRTY)
 	cx.asked[2].next(nil, nil, cx)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 1, "tabs")
 end)
 
 test("a failed-teardown pick err with Force delete picked sends nothing", function()
 	local plugin, cx = fail_teardown(DIRTY)
 	cx.asked[2].next(Stub.item(cx.asked[2], "force"), "boom", cx)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 1, "tabs")
 end)
 
 test("a failed-teardown pick err with Retry picked sends nothing", function()
 	local plugin, cx = fail_teardown(DIRTY)
 	cx.asked[2].next(Stub.item(cx.asked[2], "retry"), "boom", cx)
 	eq(#plugin.runs, 0, "CLI calls")
-	eq(#cx.commands, 0, "commands run")
+	eq(#cx.session:tabs(), 1, "tabs")
 end)
 
 runner.finish()

@@ -61,9 +61,11 @@ type Record = { id: number, name: string, tabs: { number } }
 --   first record. A parked pane has no tab.
 -- - `cx.current` (default `opts.current`, else the first record) and `cx.focused` (default `focused`).
 -- - `cx.names[tab]`: the name that `layout:name_tab` gave the tab.
--- - `cx.effects`: one line for each effect, in order. `cx.on_effect`, when set, runs with each line once it is in
---   the log.
+-- - `cx.effects`: one line for each effect, in order. `cx:command("close_tab")` removes the panes of the tab of the
+--   focused pane, writes `close_tab <tab>`, and fires the `tab_closed` handler of `cx.plugin`. `cx.on_effect`, when
+--   set, runs with each line once it is in the log.
 -- - `cx.fail`: the effects that fail, from `opts.fail`.
+-- - `cx.plugin`: the harness of `Stub.load({ cx = cx })`, whose handlers `cx:command` fires.
 -- A new pane, tab or session gets the highest id in use plus 1.
 function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 	local asked: { any } = {}
@@ -209,7 +211,6 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		asked = asked,
 		toasts = {},
 		typed = {},
-		commands = {},
 		records = records,
 		current = options.current or records[1].id,
 		focused = focused,
@@ -387,8 +388,33 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		table.insert(self.toasts, { level = level, title = title, detail = detail })
 	end
 
-	function cx.command(self: any, id: string)
-		table.insert(self.commands, id)
+	-- Runs the Tern command `id`. Only `close_tab` exists. It closes the tab of the focused pane, then fires
+	-- `tab_closed` of `cx.plugin` at once [unverified]. Tern does not re-run overrides here, so neither does the fake.
+	function cx.command(_self: any, id: string)
+		assert(id == "close_tab", `fake cx: no command {id}`)
+		local tab = cx.session:tab_of(cx.focused)
+		assert(tab ~= nil, "fake cx: close_tab with no focused tab")
+		for i = #panes, 1, -1 do
+			if panes[i].tab == tab then
+				table.remove(panes, i)
+			end
+		end
+		-- The focus goes to the first pane of the first tab of the current session [unverified], as `sessions.switch`
+		-- does.
+		cx.focused = nil
+		local first = tabs_of(cx.current)[1]
+		for _, q in panes do
+			if first ~= nil and q.tab == first and not q.parked then
+				cx.focused = q.pane
+				break
+			end
+		end
+		effect("close_tab " .. tab)
+		assert(cx.plugin ~= nil, "fake cx: close_tab needs Stub.load({ cx = cx })")
+		local closed = cx.plugin.handlers.tab_closed
+		if closed ~= nil then
+			closed({ tab = tab }, cx)
+		end
 	end
 
 	function cx.run(self: any, pane: number, text: string)
@@ -512,6 +538,9 @@ function Stub.load(opts: Options): Harness
 			return result
 		end,
 	}
+	if opts.cx ~= nil then
+		opts.cx.plugin = loaded
+	end
 
 	local fakeTern = {
 		plugin = { dir = PLUGIN_DIR, data = DATA_DIR },
