@@ -247,8 +247,9 @@ test(
 			cx
 		)
 		open(plugin, cx)
-		local found, item = pcall(Stub.item, cx.asked[#cx.asked], "pr:7")
-		eq(if found then item else nil, nil, "pr:7 after an answer with no pull requests")
+		local found, err = pcall(Stub.item, cx.asked[#cx.asked], "pr:7")
+		eq(found, false, "pr:7 after an answer with no pull requests")
+		eq(err, "no item pr:7", "lookup error")
 	end
 )
 
