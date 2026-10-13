@@ -1025,26 +1025,31 @@ local function worktree_torn_down(cx: WindowCx, removed: string, repo: string)
 end
 
 -- Where the branch of a create is checked out before the create: nowhere (`new`), in a worktree (`worktree`) or in
--- the main checkout (`main`). It selects the progress toast only.
+-- the main checkout (`main`).
 type Checkout = "new" | "worktree" | "main"
+
+-- The kind of a create: a `Checkout`, or `relocate` for Relocate. It selects the progress toast, and `relocate` adds
+-- `--relocate` to the argv.
+type CreateKind = Checkout | "relocate"
 
 local function create(
 	cx: WindowCx,
 	root: string,
 	extra: { string },
 	name: string,
-	checkout: Checkout,
+	kind: CreateKind,
 	retry: ((cx: WindowCx) -> ())?
 )
 	local args = { "create", "--repo", root, "--no-tab" }
 	for _, a in ipairs(extra) do
 		table.insert(args, a)
 	end
-	if table.find(extra, "--relocate") then
+	if kind == "relocate" then
+		table.insert(args, "--relocate")
 		cx:toast("info", "Relocating worktree " .. name .. "…")
-	elseif checkout == "main" then
+	elseif kind == "main" then
 		cx:toast("info", "Opening main checkout…")
-	elseif checkout == "worktree" then
+	elseif kind == "worktree" then
 		cx:toast("info", "Reusing worktree " .. name .. "…")
 	else
 		cx:toast("info", "Creating worktree " .. name .. "…")
@@ -1068,9 +1073,7 @@ local function create(
 					},
 				}, function(id, cx3)
 					if id == "relocate" then
-						local again = table.clone(extra)
-						table.insert(again, "--relocate")
-						create(cx3, root, again, name, "worktree")
+						create(cx3, root, extra, name, "relocate")
 					end
 				end)
 			elseif err.code == "dirty_worktree" then

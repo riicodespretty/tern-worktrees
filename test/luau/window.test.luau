@@ -420,6 +420,15 @@ local function run_row(title: string): (plugin: Stub.Harness, cx: any) -> ()
 	end
 end
 
+-- Picks x in the branch picker of /r/app with CHECKOUTS, answers its `create` with `create-elsewhere`, then picks
+-- Relocate.
+local function relocate(plugin: Stub.Harness, cx: any)
+	pick("b:x")(plugin, cx)
+	plugin:answer("create", Stub.fixture("create-elsewhere", Stub.ELSEWHERE_VARS), 1, cx)
+	local picker = cx.asked[#cx.asked]
+	picker.next(Stub.item(picker, "relocate"), nil, cx)
+end
+
 for _, case in
 	{
 		{
@@ -444,6 +453,7 @@ for _, case in
 		},
 		{ what = "a branch with a worktree", start = pick("b:x"), toast = "info Reusing worktree x…" },
 		{ what = "a branch with no checkout", start = pick("b:main"), toast = "info Creating worktree main…" },
+		{ what = "the Relocate pick", start = relocate, toast = "info Relocating worktree x…" },
 	}
 do
 	test(`a create of {case.what} toasts "{case.toast}" before the answer`, function()
