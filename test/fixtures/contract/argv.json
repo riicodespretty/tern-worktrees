@@ -1,0 +1,20 @@
+{
+  "branches": ["branches", "--repo", "{{repo}}"],
+  "branches-offline": ["branches", "--repo", "{{repo}}", "--offline"],
+  "clone": ["clone", "{{nameWithOwner}}"],
+  "config": ["config"],
+  "create-branch": ["create", "--repo", "{{repo}}", "--no-tab", "--branch={{branch}}"],
+  "create-branch-new": ["create", "--repo", "{{repo}}", "--no-tab", "--branch={{branch}}", "--new"],
+  "create-branch-relocate": ["create", "--repo", "{{repo}}", "--no-tab", "--branch={{branch}}", "--relocate"],
+  "create-pr": ["create", "--repo", "{{repo}}", "--no-tab", "--pr", "{{pr}}"],
+  "list": ["list"],
+  "list-all": ["list", "--all"],
+  "new-repo": ["new-repo", "{{nameWithOwner}}", "--visibility", "{{visibility}}"],
+  "remove": ["remove", "{{worktree}}"],
+  "remove-force": ["remove", "{{worktree}}", "--force"],
+  "remove-keep-tab": ["remove", "{{worktree}}", "--keep-tab"],
+  "remove-keep-tab-force": ["remove", "{{worktree}}", "--keep-tab", "--force"],
+  "repos": ["repos"],
+  "resolve": ["resolve", "{{dir}}"],
+  "setup": ["setup"]
+}

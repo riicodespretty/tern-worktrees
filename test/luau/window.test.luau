@@ -179,7 +179,7 @@ test("window_start writes the worktree index from list --all", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 	local plugin = Stub.load({ env = Stub.ENV })
 	plugin.handlers.window_start(cx)
-	eq(plugin:pending_line("list"), "list --all", "list calls")
+	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "list calls")
 	plugin:answer("list", LISTED, 0, cx)
 	local feat = plugin.kv.worktreeIndex[FEAT]
 	eq(feat.main, "/r/app", "main of feat")
@@ -215,9 +215,9 @@ local function toasts_after_setup(stdout: string, status: number, stderr: string
 	local plugin = Stub.load({ env = Stub.ENV })
 	eq(#plugin:pending("setup"), 0, "setup calls during the load")
 	plugin:tick(0)
-	eq(plugin:pending_line("setup"), "setup", "setup calls after the timer")
+	eq(plugin:pending_line("setup"), Stub.argv("setup", {}), "setup calls after the timer")
 	plugin.handlers.window_start(cx)
-	eq(plugin:pending_line("setup"), "setup", "setup calls after window_start")
+	eq(plugin:pending_line("setup"), Stub.argv("setup", {}), "setup calls after window_start")
 	local before = #cx.toasts
 	plugin:answer("setup", stdout, status, cx, stderr)
 	local lines: { string } = {}
@@ -375,12 +375,58 @@ test("the Carly create export replies with the main checkout answer and writes n
 	eq(table.concat(cx.effects, "; "), "focus 1", "effects")
 end)
 
-test("the Carly create export passes the branch as one --branch=<name> argument", function()
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local plugin = Stub.load({ env = Stub.ENV, kv = { worktreeRoot = ROOT } })
-	plugin.exports.create("/r/app", "-x", nil, cx, Stub.call())
-	eq(plugin:pending_line("create"), "create --repo /r/app --branch=-x --no-tab", "create argv")
-end)
+-- The argv that each Carly export sends, without and with its optional flag.
+for _, case in
+	{
+		{
+			what = "create export passes the branch as one --branch=<name> argument",
+			verb = "create",
+			run = function(plugin: Stub.Harness, cx: any)
+				plugin.exports.create("/r/app", "-x", nil, cx, Stub.call())
+			end,
+			argv = Stub.argv("create-branch", { repo = "/r/app", branch = "-x" }),
+		},
+		{
+			what = "create export with new true adds --new",
+			verb = "create",
+			run = function(plugin: Stub.Harness, cx: any)
+				plugin.exports.create("/r/app", "y", true, cx, Stub.call())
+			end,
+			argv = Stub.argv("create-branch-new", { repo = "/r/app", branch = "y" }),
+		},
+		{
+			what = "list export sends list",
+			verb = "list",
+			run = function(plugin: Stub.Harness, cx: any)
+				plugin.exports.list(cx, Stub.call())
+			end,
+			argv = Stub.argv("list", {}),
+		},
+		{
+			what = "remove export sends remove",
+			verb = "remove",
+			run = function(plugin: Stub.Harness, cx: any)
+				plugin.exports.remove(WORKTREE, nil, cx, Stub.call())
+			end,
+			argv = Stub.argv("remove", { worktree = WORKTREE }),
+		},
+		{
+			what = "remove export with force true adds --force",
+			verb = "remove",
+			run = function(plugin: Stub.Harness, cx: any)
+				plugin.exports.remove(WORKTREE, true, cx, Stub.call())
+			end,
+			argv = Stub.argv("remove-force", { worktree = WORKTREE }),
+		},
+	}
+do
+	test(`the Carly {case.what}`, function()
+		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
+		local plugin = Stub.load({ env = Stub.ENV, kv = { worktreeRoot = ROOT } })
+		case.run(plugin, cx)
+		eq(plugin:pending_line(case.verb), case.argv, `{case.verb} argv`)
+	end)
+end
 
 -- A `branches` answer where the main checkout holds feat, the head branch of pull request 7, and a worktree holds x.
 local CHECKOUTS = Stub.answer("branches", Stub.worktree_vars("x"), function(answer: any)
@@ -537,7 +583,7 @@ test("command_finished events within 2 s start one list --all and one trailing r
 	plugin:tick(1999)
 	eq(#plugin:pending("list"), 0, "list runs before 2 s")
 	plugin:tick(1)
-	eq(plugin:pending_line("list"), "list --all", "trailing run")
+	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "trailing run")
 	plugin:answer("list", LISTED, 0, cx)
 	plugin:tick(2000)
 	eq(#plugin:pending("list"), 0, "list runs after the trailing run")
@@ -551,7 +597,7 @@ test("a refresh while list --all runs past 2 s waits for its answer", function()
 	plugin.handlers.command_finished({ pane = 1 }, cx)
 	eq(#plugin:pending("list"), 1, "list runs in flight")
 	plugin:answer("list", LISTED, 0, cx)
-	eq(plugin:pending_line("list"), "list --all", "run after the answer")
+	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "run after the answer")
 end)
 
 test("command_finished outside the index starts no list", function()
@@ -582,11 +628,11 @@ test(
 		local plugin = Stub.load({ env = Stub.ENV, kv = { worktreeRoot = ROOT } })
 		plugin.handlers.window_start(cx)
 		local dropped = plugin:take("list")[1]
-		eq(table.concat(dropped.argv, " ", 2), "list --all", "dropped run")
+		eq(table.concat(dropped.argv, " ", 2), Stub.argv("list-all", {}), "dropped run")
 		dropped:respond(LISTED, 0, nil)
 		plugin:tick(120001)
 		plugin.handlers.cwd({ pane = 1, path = "/wt/worktrees/app/new" }, cx)
-		eq(plugin:pending_line("list"), "list --all", "list runs after the cwd")
+		eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "list runs after the cwd")
 		plugin:answer("list", LISTED, 0, cx)
 		dropped:respond('{"root":"/wt/worktrees","worktrees":[]}', 0, cx)
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry after the late answer of the dropped run")

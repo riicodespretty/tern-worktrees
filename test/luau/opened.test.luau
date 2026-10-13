@@ -65,7 +65,11 @@ test("a create from the branch picker whose tab step raises still refreshes and 
 	end
 	plugin:pick_branch(cx, "b:x", BRANCHES)
 	plugin:answer_create(cx, CREATED)
-	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the create")
+	eq(
+		plugin:pending_line("branches"),
+		Stub.argv("branches-offline", { repo = "/r/app" }),
+		"branches calls after the create"
+	)
 	eq(success_toast(cx).detail, PATH .. " · tab not opened: no tab", "success toast detail")
 	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
@@ -121,7 +125,11 @@ for _, entry in ENTRIES do
 		eq(plugin:pending_line("create") ~= "", true, "create pending")
 		eq(plugin:pending_line("resolve"), "", "resolve calls before the create answer")
 		plugin:answer("create", CREATED, 0, cx)
-		eq(plugin:pending_line("resolve"), "resolve /r/app", "resolve calls after the create answer")
+		eq(
+			plugin:pending_line("resolve"),
+			Stub.argv("resolve", { dir = "/r/app" }),
+			"resolve calls after the create answer"
+		)
 		local indexed = (plugin.kv.worktreeIndex or {})[PATH]
 		eq(indexed ~= nil and indexed.owner, "tern", "index entry owner before resolve answers")
 		eq(#cx.effects, 0, "effects before resolve answers")

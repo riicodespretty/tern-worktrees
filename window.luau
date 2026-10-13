@@ -1984,7 +1984,7 @@ tern.carly.export("create", {
 	if type(repo) ~= "string" or type(branch) ~= "string" then
 		error("create: repo and branch must be strings", 0)
 	end
-	local argv = { "create", "--repo", repo, "--branch=" .. branch, "--no-tab" }
+	local argv = { "create", "--repo", repo, "--no-tab", "--branch=" .. branch }
 	if isNew == true then
 		table.insert(argv, "--new")
 	end

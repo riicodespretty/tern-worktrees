@@ -241,7 +241,7 @@ export const spawnCli = (args: string[]) => {
   return { status: result.status, stderr: result.stderr, stdout: result.stdout };
 };
 
-/** The folder of the contract fixtures: each one is the parsed standard output of one real CLI call, which the Luau tests also read. */
+/** The folder of the contract fixtures, which the Luau tests also read. `argv.json` holds the arguments of each plugin call, and each other file is the parsed standard output of one real CLI call. */
 const CONTRACT_DIR = path.join(REPO_DIR, 'test', 'fixtures', 'contract');
 
 /** A parsed JSON value. */

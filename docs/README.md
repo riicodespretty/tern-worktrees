@@ -201,6 +201,8 @@ The smoke test gives its clone a GitHub URL for `origin`, so the options file gi
 
 `vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). The tests load `window.luau` and `host.luau` without changes, with the fake `tern` in `test/luau/stub.luau`. Thus, Tern is not necessary for these tests. `vp run check:luau` also checks the types of these tests. Lune is necessary for the types of the `@lune/*` modules.
 
+The plugin and the CLI meet at the fixtures in `test/fixtures/contract/`. `argv.json` holds the arguments of each call that the plugin makes. Each other `<name>.json` file is the answer of one real CLI call: a TS test makes it through `main`, and the Luau tests give it to the plugin. The Luau tests compare the arguments that the plugin sends with `argv.json`, and `test/cli.test.ts` runs each list of arguments through `main` and fails on `bad_args`. Thus, when only one side changes the name of a flag, a test fails.
+
 The fake `tern` copies these behaviors of Tern, which no test on a live Tern examined: `layout:focus` does not switch the session. `layout:unpark` puts a parked pane only into a tab of the current session. `layout:move_to_new_tab` refuses a parked pane. `sessions:switch` gives the focus to the first pane of the first tab of the new session when the pane with the focus is not in that session. The `close_tab` command gives the focus to the first pane of the first tab of the current session. `close_tab` runs `tab_closed` before it returns. When a plugin runs the `close_tab` command, Tern does not run the `close_tab` override again.
 
 The fake `tern.kv.set` stores a JSON copy of the value, as Tern does, so two windows that share `kv` do not share a table.

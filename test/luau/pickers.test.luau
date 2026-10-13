@@ -88,14 +88,14 @@ test("choosing a branch creates its worktree with --branch=<name>", function()
 	picker.next(Stub.item(picker, "b:x"), nil, cx)
 	local creates = plugin:pending("create")
 	eq(#creates, 1, "create calls")
-	eq(creates[1], "create --repo /r/app --no-tab --branch=x", "create argv")
+	eq(creates[1], Stub.argv("create-branch", { repo = REPO, branch = "x" }), "create argv")
 end)
 
 test("choosing a pull request creates its worktree with --pr", function()
 	local plugin, cx = open_branch_picker()
 	local picker = cx.asked[1]
 	picker.next(Stub.item(picker, "pr:7"), nil, cx)
-	eq(plugin:pending("create")[1], "create --repo /r/app --no-tab --pr 7", "create argv")
+	eq(plugin:pending("create")[1], Stub.argv("create-pr", { repo = REPO, pr = "7" }), "create argv")
 end)
 
 test("dismissing the branch picker runs nothing", function()
@@ -157,7 +157,7 @@ test("New branch creates the typed branch as one --branch=<name> argument", func
 	cx.asked[2].next("-bad", nil, cx)
 	local creates = plugin:pending("create")
 	eq(#creates, 1, "create calls")
-	eq(creates[1], "create --repo /r/app --no-tab --branch=-bad --new", "create argv")
+	eq(creates[1], Stub.argv("create-branch-new", { repo = REPO, branch = "-bad" }), "create argv")
 end)
 
 local function last_title(cx: any): string
@@ -225,6 +225,7 @@ end)
 test("GitHub repositories open a clone picker grouped by owner", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
+	eq(plugin:pending_line("repos"), Stub.argv("repos", {}), "repos argv")
 	plugin:answer("repos", Stub.fixture("repos", {}), 0, cx)
 	eq(#cx.asked, 2, "pickers and prompts opened")
 	local opts = cx.asked[2].opts
@@ -237,7 +238,7 @@ test("GitHub repositories open a clone picker grouped by owner", function()
 		"items[1]"
 	)
 	cx.asked[2].next(opts.items[1], nil, cx)
-	eq(plugin:pending("clone")[1], "clone me/aoyama", "clone argv")
+	eq(plugin:pending("clone")[1], Stub.argv("clone", { nameWithOwner = "me/aoyama" }), "clone argv")
 end)
 
 test("an empty GitHub repository list opens no picker", function()
@@ -287,7 +288,11 @@ test("owner, name and visibility create the repository", function()
 	same(visibility.opts.items[2], { id = "public", label = "Public", icon = "globe" }, "items[2]")
 	visibility.next(Stub.item(visibility, "private"), nil, cx)
 
-	eq(plugin:pending("new-repo")[1], "new-repo me/n --visibility private", "new-repo argv")
+	eq(
+		plugin:pending("new-repo")[1],
+		Stub.argv("new-repo", { nameWithOwner = "me/n", visibility = "private" }),
+		"new-repo argv"
+	)
 end)
 
 test("an empty repository name ends the flow", function()

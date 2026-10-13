@@ -489,19 +489,35 @@ function Stub.item(request: any, id: string): any
 	error("no item " .. id, 0)
 end
 
--- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
--- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
-function Stub.fixture(name: string, vars: { [string]: string }): string
-	local text = fs.readFile("test/fixtures/contract/" .. name .. ".json")
+-- Returns `text` with each `{{key}}` replaced by `vars[key]`. It raises, with the name `file`, when a placeholder has
+-- no value.
+local function fill(file: string, text: string, vars: { [string]: string }): string
 	return (
 		string.gsub(text, "{{([%w_]+)}}", function(key: string): string
 			local value = vars[key]
 			if value == nil then
-				error(name .. ".json: no value for {{" .. key .. "}}", 0)
+				error(file .. ": no value for {{" .. key .. "}}", 0)
 			end
 			return value
 		end)
 	)
+end
+
+-- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
+-- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
+function Stub.fixture(name: string, vars: { [string]: string }): string
+	return fill(name .. ".json", fs.readFile("test/fixtures/contract/" .. name .. ".json"), vars)
+end
+
+-- The argv of the plugin call `name` in test/fixtures/contract/argv.json, in the form of a line of `pending`: the
+-- arguments after the binary, joined with spaces. Each `{{key}}` is replaced by `vars[key]`. It raises when argv.json
+-- has no call `name`, or when a placeholder of the call has no value.
+function Stub.argv(name: string, vars: { [string]: string }): string
+	local argv: { string }? = serde.decode("json", fs.readFile("test/fixtures/contract/argv.json"))[name]
+	if argv == nil then
+		error("argv.json: no call " .. name, 0)
+	end
+	return fill("argv.json", table.concat(argv, " "), vars)
 end
 
 -- The `resolve` answer of the CLI for /r/app.

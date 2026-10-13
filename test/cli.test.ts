@@ -5,7 +5,7 @@ import type { CommandModule } from '../src/cli.ts';
 import { commandLoader, main } from '../src/cli.ts';
 import { CliError, must } from '../src/proc.ts';
 import type { Sandbox } from './helpers.ts';
-import { gitShim, REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
+import { contract, gitShim, managedPath, REPO_DIR, spawnCli, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 interface Envelope {
   error: { code: string; message: string };
@@ -67,6 +67,22 @@ describe('cli', () => {
       const { error } = parseEnvelope(result.stdout);
       expect([result.code, error.code]).toStrictEqual([1, 'bad_args']);
       expect(error.message).toContain("'--nope'");
+    });
+
+    it('accepts the argv of each plugin call in the argv contract', async () => {
+      vi.stubEnv('HOME', tempDir('home'));
+      const vars = { branch: 'x', dir: sandbox.tmp, nameWithOwner: 'me/app', pr: '7', repo: sandbox.tmp, visibility: 'private', worktree: managedPath('x', 'app') };
+      // SAFETY: `argv.json` maps the name of each plugin call to its arguments, a list of strings.
+      const calls = Object.entries(contract('argv', vars) as Record<string, string[]>);
+      const rejected = await Promise.all(
+        calls.map(async ([name, argv]) => {
+          const { stdout } = await main(argv);
+          // SAFETY: main prints one JSON line, and on a failure that line is the error envelope.
+          const { error } = JSON.parse(stdout) as Partial<Envelope>;
+          return error?.code === 'bad_args' ? `${name}: ${error.message}` : null;
+        }),
+      );
+      expect(rejected.filter(line => line !== null)).toStrictEqual([]);
     });
 
     it('fails every command with config_invalid on an invalid options file', async () => {

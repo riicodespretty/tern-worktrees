@@ -31,6 +31,8 @@ local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
 local CREATED = Stub.fixture("create-created", Stub.worktree_vars("y"))
 local REMOVED = Stub.answer("remove-kept-policy", Stub.worktree_vars("x"), { branch = "x" })
+local BRANCHES_ARGV = Stub.argv("branches", { repo = REPO })
+local OFFLINE_ARGV = Stub.argv("branches-offline", { repo = REPO })
 
 local function item_ids(request: any): string
 	local ids: { string } = {}
@@ -56,19 +58,6 @@ end
 local function window(minutes: number): (Stub.Harness, any)
 	local plugin, cx = Stub.window({ fail = { new_tab = true }, settings = { ["git.auto_fetch_minutes"] = minutes } })
 	return plugin, cx
-end
-
--- The `branches` calls that are pending, online and offline.
-local function branches_calls(plugin: Stub.Harness): (number, number)
-	local online, offline = 0, 0
-	for _, line in plugin:pending("branches") do
-		if string.find(line, "--offline", 1, true) then
-			offline += 1
-		else
-			online += 1
-		end
-	end
-	return online, offline
 end
 
 -- Presses the new-worktree hotkey and answers its `resolve`. Returns how many pickers and prompts are open.
@@ -161,7 +150,7 @@ test("a second open shows the cached picker before branches answers", function()
 	eq(open(plugin, cx), 2, "pickers after the second open, with branches unanswered")
 	eq(item_ids(cx.asked[2]), item_ids(cx.asked[1]), "items of the second picker")
 	eq(cx.asked[2].opts.placeholder, "Search branches in app", "placeholder")
-	eq(plugin:pending_line("branches"), "branches --repo /r/app", "background branches calls")
+	eq(plugin:pending_line("branches"), BRANCHES_ARGV, "background branches calls")
 end)
 
 test("the third open shows the answer of the background branches", function()
@@ -239,11 +228,11 @@ local function rows_after(stdout: string): (Stub.Harness, any)
 	local plugin, cx = Stub.window({ settings = { ["git.auto_fetch_minutes"] = 5 } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", Stub.RESOLVED, 0, cx)
-	eq(plugin:pending_line("branches"), "branches --repo /r/app", "first rows branches")
+	eq(plugin:pending_line("branches"), BRANCHES_ARGV, "first rows branches")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(5 * 60000)
 	plugin.handlers.focus({ pane = 1 }, cx)
-	eq(plugin:pending_line("branches"), "branches --repo /r/app", "next rows branches")
+	eq(plugin:pending_line("branches"), BRANCHES_ARGV, "next rows branches")
 	plugin:answer("branches", stdout, 0, cx)
 	return plugin, cx
 end
@@ -290,7 +279,7 @@ test("a teardown during the first branches runs one more branches after it", fun
 	plugin:answer("remove", REMOVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the first branches answers")
-	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "rerun")
+	eq(plugin:pending_line("branches"), OFFLINE_ARGV, "rerun")
 	plugin:answer("branches", STALE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main", "items after the teardown")
@@ -325,7 +314,7 @@ test("a press after a background branches that never answered for 120 s starts a
 	eq(toast_lines(cx), REFRESHING, "toasts after a press at 120 s")
 	plugin:tick(1)
 	eq(open(plugin, cx), 4, "pickers after a press after 120 s")
-	eq(plugin:pending_line("branches"), "branches --repo /r/app", "new background branches")
+	eq(plugin:pending_line("branches"), BRANCHES_ARGV, "new background branches")
 	eq(toast_lines(cx), REFRESHING .. "; " .. REFRESHING, "toasts after a press after 120 s")
 	plugin:answer("branches", UPDATED, 0, cx)
 	open(plugin, cx)
@@ -337,7 +326,7 @@ test("choosing a branch in a cached picker creates its worktree", function()
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	cx.asked[2].next(Stub.item(cx.asked[2], "b:x"), nil, cx)
-	eq(plugin:pending_line("create"), "create --repo /r/app --no-tab --branch=x", "create argv")
+	eq(plugin:pending_line("create"), Stub.argv("create-branch", { repo = REPO, branch = "x" }), "create argv")
 end)
 
 test("a create refreshes the cache offline and keeps its pull requests and default branch", function()
@@ -345,9 +334,7 @@ test("a create refreshes the cache offline and keeps its pull requests and defau
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
 	plugin:answer_create(cx, CREATED)
-	local online, offline = branches_calls(plugin)
-	eq(online, 0, "online branches calls after the create")
-	eq(offline, 1, "offline branches calls after the create")
+	eq(plugin:pending_line("branches"), OFFLINE_ARGV, "branches calls after the create")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	open(plugin, cx)
 	local picker = cx.asked[#cx.asked]
@@ -362,7 +349,7 @@ test("a create during an online background branches runs one offline after it", 
 	cx.asked[2].next(Stub.item(cx.asked[2], "b:x"), nil, cx)
 	plugin:answer_create(cx, CREATED)
 	plugin:answer("branches", STALE, 0, cx)
-	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "rerun")
+	eq(plugin:pending_line("branches"), OFFLINE_ARGV, "rerun")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other b:main b:x b:y*", "items after the create")
@@ -376,7 +363,7 @@ test("an open during an offline refresh runs one online after it", function()
 	eq(open(plugin, cx), 2, "pickers after the open")
 	eq(toast_lines(cx), "", "toasts after the open during the offline refresh")
 	plugin:answer("branches", OFFLINE, 0, cx)
-	eq(plugin:pending_line("branches"), "branches --repo /r/app", "rerun")
+	eq(plugin:pending_line("branches"), BRANCHES_ARGV, "rerun")
 	eq(toast_lines(cx), REFRESHING, "toasts after the online rerun starts")
 	plugin:answer("branches", UPDATED, 0, cx)
 	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the online rerun")
@@ -390,9 +377,7 @@ test("a teardown refreshes the cache offline", function()
 	local call = Stub.call()
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
 	plugin:answer("remove", REMOVED, 0, cx)
-	local online, offline = branches_calls(plugin)
-	eq(online, 0, "online branches calls after the teardown")
-	eq(offline, 1, "offline branches calls after the teardown")
+	eq(plugin:pending_line("branches"), OFFLINE_ARGV, "branches calls after the teardown")
 	plugin:answer("branches", STALE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main", "items after the teardown")
