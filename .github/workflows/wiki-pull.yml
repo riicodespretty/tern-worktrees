@@ -11,6 +11,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   pull:
@@ -24,7 +25,8 @@ jobs:
           path: docs/
       - uses: ./.github/actions/setup
       - run: vp fmt docs
-      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      - id: pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           base: main
           branch: wiki-sync
@@ -32,4 +34,8 @@ jobs:
           add-paths: docs
           title: 'docs(wiki): :memo: sync wiki edits into docs/'
           commit-message: 'docs(wiki): :memo: sync wiki edits into docs/'
-          body: A page was edited in the GitHub wiki. This pull request brings the edit into `docs/`, the wiki source. The workflow token opened it, so no check has run. Push a commit to this branch to start them. `wiki.yml` refuses to publish until this merges.
+          body: A page was edited in the GitHub wiki. This pull request brings the edit into `docs/`, the wiki source. `wiki.yml` refuses to publish until this merges.
+      - if: ${{ steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref wiki-sync

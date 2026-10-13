@@ -8,7 +8,7 @@ import { array, looseObject, number, object, optional, parse, record, string } f
 const USAGE = [
   'Usage:',
   '  node --experimental-strip-types scripts/ci-summary.ts coverage [--summary <coverage-summary.json>] [--out <file>]',
-  '  node --experimental-strip-types scripts/ci-summary.ts mutation [--report <mutation.json>[,<mutation.json>...]] [--base <mutation.json>[,<mutation.json>...]] [--marker] [--out <file>]',
+  '  node --experimental-strip-types scripts/ci-summary.ts mutation [--report <mutation.json>[,<mutation.json>...]] [--out <file>]',
 ].join('\n');
 
 const DETECTED = new Set(['Killed', 'Timeout']);
@@ -145,26 +145,18 @@ const summariseMutation = (reportPaths: string[]): MutationSummary | null => {
   return tallyMutants(files, root);
 };
 
-const renderMutation = (reportPaths: string[], basePaths: string[], marker: boolean): string => {
+const renderMutation = (reportPaths: string[]): string => {
   const head = summariseMutation(reportPaths);
-  const base = summariseMutation(basePaths);
-  const lines = marker ? ['<!-- mutation-report -->'] : [];
-  lines.push('## Mutation Test Report', '');
+  const lines = ['## Mutation Test Report', ''];
   if (!head) {
     lines.push('No mutation report was produced. The mutation job did not reach the reporting step.');
     return lines.join('\n');
-  }
-  let delta = 'no base run to compare';
-  if (base) {
-    const diff = head.score - base.score;
-    const sign = diff > 0 ? '+' : '';
-    delta = diff === 0 ? 'unchanged' : `${sign}${diff.toFixed(2)} points vs ${base.score.toFixed(2)}%`;
   }
   const { counts } = head;
   lines.push(
     '| Metric | Value |',
     '| --- | --- |',
-    `| Score | ${head.score.toFixed(2)}% (${delta}) |`,
+    `| Score | ${head.score.toFixed(2)}% |`,
     `| Detected | ${head.detected} / ${head.total} |`,
     `| Survivors | ${head.survivors.length} |`,
     `| Mutants | ${counts.killed} killed, ${counts.timeout} timed out, ${counts.survived} survived, ${counts.noCoverage} no coverage, ${counts.other} other |`,
@@ -206,8 +198,6 @@ const main = (): void => {
     allowPositionals: true,
     args: process.argv.slice(2),
     options: {
-      base: { multiple: true, type: 'string' },
-      marker: { default: false, type: 'boolean' },
       out: { type: 'string' },
       report: { default: ['reports/mutation/mutation.json'], multiple: true, type: 'string' },
       summary: { default: 'coverage/coverage-summary.json', type: 'string' },
@@ -221,7 +211,7 @@ const main = (): void => {
       break;
     }
     case 'mutation': {
-      emit(renderMutation(resolvePaths(values.report, cwd), resolvePaths(values.base, cwd), values.marker), out);
+      emit(renderMutation(resolvePaths(values.report, cwd)), out);
       break;
     }
     default: {

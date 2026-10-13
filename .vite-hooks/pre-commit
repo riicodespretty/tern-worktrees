@@ -1,1 +1,1 @@
-vp staged --relative
+vp staged --relative --concurrent false

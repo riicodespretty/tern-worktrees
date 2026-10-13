@@ -1,6 +1,6 @@
 # tern-worktrees
 
-`tern-worktrees` shows git worktrees as Tern tabs. This page tells how the plugin works and why. Install and usage are in the [README](https://github.com/riicodespretty/tern-worktrees/blob/main/README.md), and the terms are in the [glossary](GLOSSARY.md). Agents read three more docs: the [issue tracker](agents/issue-tracker.md), the [domain docs](agents/domain.md) and the [triage labels](agents/triage-labels.md).
+`tern-worktrees` shows git worktrees as Tern tabs. This page tells how the plugin works and why. Install and usage are in the [README](https://github.com/riicodespretty/tern-worktrees/blob/main/README.md), and the terms are in the [glossary](GLOSSARY.md). Agents read four more docs: the [issue tracker](agents/issue-tracker.md), the [domain docs](agents/domain.md), the [triage labels](agents/triage-labels.md) and the [architecture decision records](https://github.com/riicodespretty/tern-worktrees/tree/main/docs/adr).
 
 ## Why worktrees move from Orca to Tern
 
@@ -219,6 +219,8 @@ To run the plugin from a checkout, link it with `tern plugin link <checkout>`. T
 
 `vp run lint:prose` runs vale from `@vvago/vale`. The install script of that package downloads the vale binary from the GitHub API with no token, and shared CI runners hit the limit for calls with no token, so the install failed with HTTP 403. `patches/@vvago%2Fvale@3.24.0.patch` sends `GITHUB_TOKEN` with that download when it is set, and the setup action gives each CI job its token. A vale update needs a new patch: run `bun patch @vvago/vale`, make the same change, and run `bun patch --commit node_modules/@vvago/vale`.
 
+The pre-commit hook runs the gate: `vp staged` formats and lints the staged files, then runs `vp check`, `vp run check:luau`, `vp run test:luau`, `vp run lint:prose`, `vp test --coverage` and `vp run test.mutation` in sequence. A failed step stops the commit. CI does not run for pull requests or for `develop`. The `ci` and `Mutation testing` jobs run for a push to `release/**` and `hotfix/**`, the branches that go into `main`.
+
 ### Releases
 
 The repository uses git flow, with [git-flow-next](https://git-flow.sh/) (`brew install git-flow-next`):
@@ -232,17 +234,18 @@ The repository uses git flow, with [git-flow-next](https://git-flow.sh/) (`brew 
 
 A release or a hotfix goes into `main` with a merge commit, and `main` then merges back into `develop`. The tag is the bare version, for example `0.1.0`, with no `v` prefix. The committed `.gitflow` file holds the settings: the branch names, the prefixes, merge commits on finish, and a push after finish. The first `git flow` command in a clone asks to copy `.gitflow` into the local configuration, and `git flow config sync` copies it again.
 
-`main` and `develop` accept a change only through a pull request with green `ci` and `Mutation testing` checks. The `Mutation testing` job runs only for a push to `main` and for a pull request into `main`. For each other branch, CI skips it, and GitHub counts a skipped job as green. The ruleset `main and develop` lets the `admin` and `maintain` roles of the repository bypass these rules, so that they can run `git flow release finish`.
+`main` and `develop` accept a change only through a pull request. A pull request into `develop` merges with the `squash` or `rebase` method and needs no check. A pull request into `main` merges with a merge commit, and needs green `ci` and `Mutation testing` checks on a head that contains the head of `main`. A check counts for the commit it ran on, so the push of the release branch gives the checks of its pull request. The ruleset `develop` lets the `admin` and `maintain` roles bypass its rules, so that `git flow release finish` can push the merge of `main` into `develop`. The ruleset `main` has no bypass.
 
 To make a release:
 
 1. Start the release branch from `develop`: `git flow release start 0.2.0`.
 2. Set `version` in `plugin.toml` to the new version.
 3. Add the entry of the new version at the top of `CHANGELOG.md`: `## [0.2.0](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.2.0 "<date>")`.
-4. Commit with the subject `chore(release): 🔖 0.2.0`. Push the branch with `git push -u origin release/0.2.0`, and wait for green CI with `gh run watch`. The finish does not wait for CI.
-5. Finish: `git flow release finish -m 0.2.0`. It merges the release branch into `main` with a merge commit, tags the merge `0.2.0`, merges `main` back into `develop`, deletes the release branch, and pushes `main`, `develop` and the tag.
-6. Publish the GitHub release with the notes of the changelog entry: `gh release create 0.2.0 --verify-tag --title 0.2.0 --notes-file <notes>`.
+4. Commit with the subject `chore(release): 🔖 0.2.0`. Push the branch with `git push -u origin release/0.2.0`.
+5. Open the pull request into `main` with `gh pr create --base main --head release/0.2.0 --fill`. When the checks are green, merge it with `gh pr merge --merge`.
+6. Finish: `git checkout main && git pull`, then `git flow release finish 0.2.0 -m 0.2.0`. The merge of the pull request put the release in `main`, so the finish adds no commit to `main`. It tags the merge commit of the pull request `0.2.0`, merges `main` back into `develop`, deletes the release branch, and pushes `develop` and the tag.
+7. Publish the GitHub release with the notes of the changelog entry: `gh release create 0.2.0 --verify-tag --title 0.2.0 --notes-file <notes>`.
 
 A hotfix uses the same steps with `git flow hotfix start` and `git flow hotfix finish`. Its branch starts from `main`.
 
-The wiki publishes from `main`, so a wiki edit comes back as a pull request into `main`. The next finish merges it into `develop`.
+The wiki publishes from `main`, so a wiki edit comes back as a pull request into `main` from the `wiki-sync` branch. A push with the workflow token starts no workflow, so after each create or update of the pull request, `wiki-pull.yml` starts `ci.yml` on `wiki-sync` with `gh workflow run`. On `wiki-sync`, the `ci` and `Mutation testing` jobs skip, and GitHub counts a skipped job as green, so the pull request can merge without a test run. The next finish merges it into `develop`.
