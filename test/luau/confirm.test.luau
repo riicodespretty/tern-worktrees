@@ -24,8 +24,8 @@ end
 local CONFIG_VARS: { [string]: string } = { home = "/home/u" }
 local CONFIG = Stub.fixture("config", CONFIG_VARS)
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
-local ELSEWHERE =
-	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
+local ELSEWHERE_VARS = { branch = "x", existing = "/old/app/x", target = "/wt/worktrees/app/x" }
+local ELSEWHERE = Stub.fixture("create-elsewhere", ELSEWHERE_VARS)
 
 -- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE. `kv` defaults to a kept
 -- worktree root of /wt/worktrees.
@@ -118,7 +118,7 @@ local REMOVE_VARS = Stub.worktree_vars("feat")
 test("relocate asks with one Relocate item", function()
 	local _, cx = open_relocate()
 	local opts = cx.asked[2].opts
-	eq(opts.placeholder, "Worktree of this branch is at /old/app/x", "placeholder")
+	eq(opts.placeholder, `Worktree of this branch is at {ELSEWHERE_VARS.existing}`, "placeholder")
 	eq(#opts.items, 1, "items")
 	eq(opts.items[1].id, "relocate", "items[1].id")
 	eq(opts.items[1].label, "Relocate to …/worktrees/app/x", "items[1].label")
@@ -163,6 +163,16 @@ test("a relocate of a worktree with work to lose toasts its files", function()
 	eq(toast.level, "error", "toast level")
 	eq(toast.title, "Cannot relocate: uncommitted changes", "toast title")
 	eq(toast.detail, "1 file with work to lose: ?? junk.txt", "toast detail")
+end)
+
+test("a failed relocate toasts the error and the saved files", function()
+	local plugin, cx = open_relocate()
+	cx.asked[2].next(Stub.item(cx.asked[2], "relocate"), nil, cx)
+	plugin:answer("create", Stub.fixture("relocate-staging", { staging = "/tmp/tern-wt-carry-a" }), 1, cx)
+	local toast = cx.toasts[#cx.toasts]
+	eq(toast.level, "error", "toast level")
+	eq(toast.title, "fake gh: no fixture; the carried files stay in /tmp/tern-wt-carry-a", "toast title")
+	eq(toast.detail, "Saved files: /tmp/tern-wt-carry-a", "toast detail")
 end)
 
 test("closing a worktree tab lists Keep worktree first, then Tear down", function()

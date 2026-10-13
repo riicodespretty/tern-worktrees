@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "worktree_exists_elsewhere",
+    "message": "{{branch}} has a worktree at {{existing}}; pass --relocate to move it to {{target}}",
+    "existing": "{{existing}}",
+    "target": "{{target}}"
+  }
+}

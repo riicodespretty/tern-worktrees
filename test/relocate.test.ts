@@ -91,11 +91,9 @@ describe('create command', () => {
 
     it('rejects a worktree elsewhere without --relocate', async () => {
       const old = await outsideWorktree('origin/feature/x', '--track', '-b', 'feature/x');
-      await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).rejects.toMatchObject({
-        code: 'worktree_exists_elsewhere',
-        extra: { existing: old, target: managedPath('feature-x') },
-        message: `feature/x has a worktree at ${old}; pass --relocate to move it to ${managedPath('feature-x')}`,
-      });
+      await expect(cliJson(['create', '--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toStrictEqual(
+        contract('create-elsewhere', { branch: 'feature/x', existing: old, target: managedPath('feature-x') }),
+      );
     });
 
     it('moves a worktree into the root', async () => {
@@ -274,11 +272,9 @@ describe('create command', () => {
         await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', old, 'origin/feature/s');
         await git(old, '-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'update', '--init');
         writeFileSync(path.join(old, '.env'), 'SECRET=1\n');
-        const failure = run(['--repo', repo.dir, '--pr', '7', '--relocate', '--no-tab']);
-        await expect(failure).rejects.toMatchObject({ code: 'gh_failed' });
+        const answer = await cliJson(['create', '--repo', repo.dir, '--pr', '7', '--relocate', '--no-tab']);
         const stagingDir = path.join(sandbox.tmp, stagingDirs()[0]);
-        await expect(failure).rejects.toMatchObject({ extra: { staging: stagingDir } });
-        await expect(failure).rejects.toThrow(`fake gh: no fixture; the carried files stay in ${stagingDir}`);
+        expect(answer).toStrictEqual(contract('relocate-staging', { staging: stagingDir }));
         expect(readFileSync(path.join(stagingDir, '.env'), 'utf-8')).toBe('SECRET=1\n');
       });
 

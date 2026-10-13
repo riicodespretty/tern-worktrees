@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "gh_failed",
+    "message": "fake gh: no fixture; the carried files stay in {{staging}}",
+    "staging": "{{staging}}"
+  }
+}

@@ -15,7 +15,7 @@ local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
 -- The `create` answer for branch x, with an untyped setup line.
 local CREATED = Stub.fixture("create-setup-no-tab", Stub.worktree_vars("x"))
 local ELSEWHERE =
-	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
+	Stub.fixture("create-elsewhere", { branch = "x", existing = "/old/app/x", target = "/wt/worktrees/app/x" })
 
 -- The titles of the toasts of `cx` after the first `skip` toasts, joined by "; ".
 local function toast_titles(cx: any, skip: number): string
