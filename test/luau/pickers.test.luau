@@ -5,7 +5,6 @@ local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
-local ENV = { HOME = "/home/u" }
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
 local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
 -- A `branches` answer with the main checkout and a worktree of y that is not in the worktree root.
@@ -27,7 +26,7 @@ end
 -- returns the harness and the cx.
 local function open_branch_picker(answer: string?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
-	local plugin = Stub.load({ env = ENV })
+	local plugin = Stub.load({ env = Stub.ENV })
 	plugin:open_branch_picker(cx, answer or BRANCHES)
 	return plugin, cx
 end
@@ -35,7 +34,7 @@ end
 -- Opens the repo picker from a window with no pane in a repository.
 local function open_repo_picker(): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1 } }, 1)
-	local plugin = Stub.load({ env = ENV })
+	local plugin = Stub.load({ env = Stub.ENV })
 	plugin.commands.new.run(cx)
 	eq(#cx.asked, 1, "pickers and prompts opened")
 	eq(cx.asked[1].kind, "pick", "request kind")

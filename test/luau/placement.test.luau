@@ -5,7 +5,6 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
-local ENV = { HOME = "/home/u" }
 local NO_SHELL = "setup not run: no new shell in the tab"
 
 -- The `resolve` answer for each folder of the tests: /r/app and its worktrees are in the repository /r/app.
@@ -35,7 +34,7 @@ local function carly_create(plugin: Stub.Harness, cx: any, branch: string?): { a
 	local name = branch or "x"
 	local call = Stub.call()
 	plugin.exports.create("/r/app", name, nil, cx, call)
-	plugin:created(cx, created(name), RESOLVED)
+	plugin:answer_create(cx, created(name), RESOLVED)
 	return call.replies
 end
 
@@ -88,7 +87,7 @@ end
 
 test("a worktree with a tab in the current session gets focus, no switch and no name", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" }, { pane = 2, tab = 2, cwd = worktree("x") } }, 1)
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	local replies = carly_create(plugin, cx)
 	eq(effects(cx), "focus 2", "effects")
 	eq(cx.focused, 2, "focused")
@@ -101,7 +100,7 @@ test("a worktree with a tab in a different session switches to it, then focuses 
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/other" }, { pane = 2, tab = 2, cwd = worktree("x") } }, 1, {
 		sessions = { { id = 1, name = "other", tabs = { 1 } }, { id = 2, name = "app", tabs = { 2 } } },
 	})
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	carly_create(plugin, cx)
 	eq(effects(cx), "switch 2; focus 2", "effects")
 	eq(cx.current, 2, "current session")
@@ -128,7 +127,7 @@ do
 			table.insert(sessions, { id = 2, name = "x", tabs = { 2 } })
 		end
 		local cx = Stub.cx(panes, 1, { sessions = sessions, current = 9 })
-		local plugin = Stub.load({ env = ENV, cx = cx })
+		local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 		carly_create(plugin, cx)
 		eq(effects(cx), case.effects, "effects")
 	end)
@@ -140,7 +139,7 @@ test(
 		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/other" }, { pane = 2, tab = 2, cwd = "/r/app" } }, 1, {
 			sessions = { { id = 1, name = "other", tabs = { 1 } }, { id = 2, name = "app", tabs = { 2 } } },
 		})
-		local plugin = Stub.load({ env = ENV, cx = cx })
+		local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 		local replies = carly_create(plugin, cx)
 		eq(effects(cx), "switch 2; new_tab → tab 3, pane 3; name_tab 3 x", "effects")
 		eq(session_of_tab(cx, 3), 2, "session of the new tab")
@@ -201,7 +200,7 @@ local function tabless_session(): (Stub.Harness, any)
 	local cx = Stub.cx(panes, 1, {
 		sessions = { { id = 1, name = "other", tabs = { 1 } }, { id = 2, name = "app", tabs = { 2 } } },
 	})
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	plugin:press(cx, RESOLVED)
 	cx.layout:park(2)
 	table.clear(cx.effects)
@@ -239,7 +238,7 @@ test("a repository with no session gets a session named after it, with the parke
 		{ pane = 1, tab = 1, cwd = "/r/other" },
 		{ pane = 3, cwd = worktree("x"), parked = true, at_prompt = true },
 	}, 1)
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	local replies = carly_create(plugin, cx)
 	eq(effects(cx), "create_session 2 app → tab 2, pane 4; unpark 3 → tab 2; close 4; name_tab 2 x", "effects")
 	eq(cx.records[2].name, "app", "session name")
@@ -249,7 +248,7 @@ end)
 
 test("a repository with no session gets exactly one new session, and its next worktree reuses it", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/other" } }, 1)
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	carly_create(plugin, cx)
 	eq(effects(cx), "create_session 2 app → tab 2, pane 2; name_tab 2 x", "effects after x")
 	prompt_in(plugin, cx, 2)
@@ -274,7 +273,7 @@ for _, ids in { { oldest = 1, later = 3 }, { oldest = 2, later = 5 } } do
 				},
 				current = later,
 			})
-			local plugin = Stub.load({ env = ENV, cx = cx })
+			local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 			carly_create(plugin, cx)
 			local fresh = later + 1
 			eq(effects(cx), `switch {oldest}; new_tab → tab {fresh}, pane {fresh}; name_tab {fresh} x`, "effects")
@@ -344,7 +343,7 @@ do
 	test(case.what, function()
 		local cx = Stub.cx(case.panes, 1, { sessions = case.sessions, current = 4 })
 		local index = { ["/r/app/.wt/z"] = { main = "/r/app", branch = "z", changed = 0, owner = "omp" } }
-		local plugin = Stub.load({ env = ENV, cx = cx, kv = { worktreeIndex = index } })
+		local plugin = Stub.load({ env = Stub.ENV, cx = cx, kv = { worktreeIndex = index } })
 		carly_create(plugin, cx)
 		local named: number? = nil
 		for tab, name in cx.names do
@@ -359,7 +358,7 @@ end
 
 test("a new session with no tab opens no tab", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/other" } }, 1, { fail = { create = true } })
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	local replies = carly_create(plugin, cx)
 	eq(effects(cx), "create_session 2 app → no tab", "effects")
 	eq(replies[1].warnings[1], "setup not run: no tab opened", "warning")
@@ -368,7 +367,7 @@ end)
 
 test("the index entry of the worktree is there when the first effect runs", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local plugin = Stub.load({ env = ENV, cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, cx = cx })
 	local seen: any = false
 	cx.on_effect = function(_line: string)
 		if seen == false then

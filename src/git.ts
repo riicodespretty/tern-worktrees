@@ -30,7 +30,7 @@ export const isAncestor = async (dir: string, commit: string, of: string): Promi
 
 const mainCheckoutOf = (commonDir: string): string | null => (commonDir.endsWith('/.git') ? path.dirname(commonDir) : null);
 
-const notARepo = (dir: string): CliError => new CliError('not_a_repo', `${dir} is not in a git repository`);
+const notARepoError = (dir: string): CliError => new CliError('not_a_repo', `${dir} is not in a git repository`);
 
 const commonDirArgs = ['rev-parse', '--path-format=absolute', '--git-common-dir'];
 
@@ -44,12 +44,12 @@ export const repoRoot = async (dir: string): Promise<string | null> => {
 export const requireRepoRoot = async (dir: string): Promise<string> => {
   const root = await repoRoot(dir);
   if (root === null) {
-    throw notARepo(dir);
+    throw notARepoError(dir);
   }
   return root;
 };
 
-/** Where a directory is in its repository: the top directory of the main checkout, the top directory of a linked worktree, or a different directory in the repository. */
+/** The position of a directory in its repository. `main` is the top directory of the main checkout, `linked` is the top directory of a linked worktree, and `inside` is a different directory in the repository. */
 export type CheckoutRole = 'main' | 'linked' | 'inside';
 
 /** A directory in a repository with a checkout: `root` is the main checkout, as git reports it. */
@@ -77,7 +77,7 @@ export const checkoutAt = async (dir: string): Promise<Checkout | null> => {
 export const requireCheckoutAt = async (dir: string): Promise<Checkout> => {
   const checkout = await checkoutAt(dir);
   if (checkout === null) {
-    throw notARepo(dir);
+    throw notARepoError(dir);
   }
   return checkout;
 };

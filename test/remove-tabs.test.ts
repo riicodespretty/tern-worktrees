@@ -54,7 +54,7 @@ describe('remove command', () => {
     it.each<{ flags: string[] }>([{ flags: [] }, { flags: ['--force'] }])('closes each tab after the worktree is gone, with $flags', async ({ flags }) => {
       const dir = await addFeature();
       writeTernLs({ work: [dir] });
-      vi.stubEnv('FAKE_TERN_GONE', dir);
+      vi.stubEnv('FAKE_TERN_GONE_BEFORE_CLOSE', dir);
       await expect(run([dir, ...flags])).resolves.toMatchObject({ closedBlocks: [1], warnings: [] });
     });
   });

@@ -109,7 +109,7 @@ export const blocksUnder = (listing: TernListing, dir: string): PlacedBlock[] =>
     return cwd !== null && isUnder(cwd, dir);
   });
 
-/** The first session of `listing` with a block whose `cwd` is in the repository at `root`, or null. Each distinct `cwd` resolves once. */
+/** The first session of `listing` with a block whose `cwd` is in the repository at `root`, or null. It calls `repoRoot` one time for each different `cwd`, not one time for each block. */
 export const sessionForRepo = async (listing: TernListing, root: string): Promise<TernSession | null> => {
   const placed = placedBlocks(listing);
   const cwds = [...new Set(placed.map(({ block }) => cwdOf(block)))];

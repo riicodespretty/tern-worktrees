@@ -178,7 +178,7 @@ describe('work to lose', () => {
       expect(error.extra).toStrictEqual({ changes: [], existing: dir, files: hardToRebuild.map(file => `!! ${file}`), hardToRebuild });
     });
 
-    it('does not stop teardown on a copy with the same bytes in the main checkout, in submodules at each depth too', async () => {
+    it('does not stop teardown on a copy with the same bytes as the file at the same path in the main checkout, in submodules at each depth too', async () => {
       const dir = await nestedSubmodules();
       await ignoreGlobally('.env.local');
       const main = tempDir('main');

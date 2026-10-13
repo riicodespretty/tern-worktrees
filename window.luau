@@ -114,9 +114,10 @@ end
 
 local CLI_OPTIONS = { timeout_ms = 120000 }
 
--- Returns the error envelope of a failed run, else a new table, with a string `code` and a string `message`.
-local function cli_error(envelope: any, stderr: string): CliError
-	local err: CliError = if type(envelope) == "table" then envelope else {} :: any
+-- Returns the `error` of the envelope of a failed run, or a new table when there is no `error`. It writes a string
+-- `code` and a string `message` into the result when they are missing.
+local function cli_error(decodedError: any, stderr: string): CliError
+	local err: CliError = if type(decodedError) == "table" then decodedError else {} :: any
 	if type(err.code) ~= "string" then
 		err.code = "cli_failed"
 	end
@@ -200,7 +201,7 @@ local function write_index(nextIndex: { [string]: IndexEntry? })
 	end
 end
 
--- Sets or deletes one entry. It reads kv again and changes only `path`.
+-- Sets or deletes one entry. It reads kv again and changes only the entry of `path`.
 local function set_entry(path: string, entry: IndexEntry?)
 	local merged = table.clone(stored_index(worktreeIndex))
 	merged[path] = entry
@@ -873,13 +874,13 @@ local function fill_fresh_tab(cx: WindowCx, freshTab: number?, parked: number?):
 	return freshTab, nil
 end
 
--- The outcome of the tab step:
+-- The outcome of `open_tab`:
 -- - `shell`: a new shell opened in the tab, in the pane `pane`.
--- - `no_shell`: no new shell opened, for the cause `reason`.
+-- - `no_shell`: no new shell opened; `reason` tells why.
 type TabOutcome = { kind: "shell", pane: number } | { kind: "no_shell", reason: string }
 
--- Opens or focuses the tab of the worktree of `res`. Returns the pane of a new shell in it, or the reason that no new
--- shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
+-- Opens or focuses the tab of the worktree of `res`. Returns a TabOutcome: the pane of a new shell in the tab, or the
+-- reason that no new shell opened: no tab opened, the tab was open before, or the tab holds no new shell.
 local function open_tab(cx: WindowCx, res: CreateResult): TabOutcome
 	local path = res.path
 	local plan = place(path, res.repo, cx.session:panes(), session_index(cx), reposOfSession)
@@ -927,8 +928,8 @@ local SETUP_PROMPT_MS = 30000
 
 -- Types `setup.line` into the shell of `outcome` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
 -- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
--- the pane is gone. When `outcome` holds no shell, it only shows the line in a toast with the reason of `outcome`.
--- `done`, when set, runs once with the outcome: true once the line is typed (or `create` typed it), false
+-- the shell pane is gone. When `outcome` is `no_shell`, it only shows the line in a toast with `outcome.reason`.
+-- `done`, when set, runs once with the result: true once the line is typed (or `create` typed it), false
 -- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
 local function type_setup(
 	cx: WindowCx,
@@ -982,8 +983,8 @@ end
 -- the worktree index, resolves the sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then
 -- starts to type its setup line. The main checkout gets no entry.
 -- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
--- setup step ends, or at once when the tab step raises; `res.setup.typed` and `res.warnings` then hold the outcome.
--- A tab step that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
+-- setup step ends, or at once when `open_tab` raises; `res.setup.typed` and `res.warnings` then hold the result.
+-- An `open_tab` that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
 local function worktree_opened(
 	cx: WindowCx,
 	res: CreateResult,
@@ -1003,9 +1004,9 @@ local function worktree_opened(
 		set_entry(res.path, { main = res.repo, branch = res.branch, changed = 0, owner = res.owner })
 	end
 	resolve_sessions(cx, function(cx2)
-		local ok, outcome = pcall(open_tab, cx2, res)
+		local ok, outcomeOrErr = pcall(open_tab, cx2, res)
 		if not ok then
-			add_warning("tab not opened: " .. tostring(outcome))
+			add_warning("tab not opened: " .. tostring(outcomeOrErr))
 		end
 		refresh_branches(cx2, res.repo)
 		if opened ~= nil then
@@ -1016,7 +1017,7 @@ local function worktree_opened(
 			return
 		end
 		local setup = res.setup
-		type_setup(cx2, outcome :: TabOutcome, setup, function(typed, warning)
+		type_setup(cx2, outcomeOrErr :: TabOutcome, setup, function(typed, warning)
 			if setup ~= nil then
 				setup.typed = typed
 			end
@@ -1300,8 +1301,8 @@ type BranchesStore = {
 	openFor: number?,
 }
 local storeOfRoot: { [string]: BranchesStore } = {}
--- The ids of the worktree rows of each repository root that show.
-local liveRows: { [string]: { [string]: true } } = {}
+-- The ids of the worktree rows in the last `branches` answer of each repository root; `available` shows only these.
+local liveRowsOfRoot: { [string]: { [string]: true } } = {}
 
 -- The answer to keep after `res`: an offline answer keeps the pull requests and the default branch of `before`, and an
 -- online answer with `prsFailed` keeps the pull requests of `before`.
@@ -1340,7 +1341,7 @@ local function register_rows(root: string, res: BranchesResult)
 			icon = "branch",
 			group = "Worktrees",
 			available = function(cx: WindowCx): boolean
-				local rows = liveRows[root]
+				local rows = liveRowsOfRoot[root]
 				if rows == nil or rows[id] == nil then
 					return false
 				end
@@ -1353,7 +1354,7 @@ local function register_rows(root: string, res: BranchesResult)
 			end,
 		})
 	end
-	liveRows[root] = live
+	liveRowsOfRoot[root] = live
 end
 
 local function fetch_interval_ms(cx: WindowCx): number

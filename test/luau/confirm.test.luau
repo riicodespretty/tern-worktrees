@@ -5,7 +5,6 @@ local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
-local ENV = { HOME = "/home/u" }
 local WORKTREE = "/wt/worktrees/app/feat"
 local OTHER = "/wt/worktrees/app/fix"
 local FILES = { [WORKTREE .. "/.git"] = "", [OTHER .. "/.git"] = "" }
@@ -24,14 +23,13 @@ end
 local CONFIG_VARS: { [string]: string } = { home = "/home/u" }
 local CONFIG = Stub.fixture("config", CONFIG_VARS)
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
-local ELSEWHERE_VARS = { branch = "x", existing = "/old/app/x", target = "/wt/worktrees/app/x" }
-local ELSEWHERE = Stub.fixture("create-elsewhere", ELSEWHERE_VARS)
+local ELSEWHERE = Stub.fixture("create-elsewhere", Stub.ELSEWHERE_VARS)
 
 -- Picks `x` in the branch picker of /r/app and answers its `create` with ELSEWHERE. `kv` defaults to a kept
 -- worktree root of /wt/worktrees.
 local function open_relocate(kv: { [string]: any }?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
-	local plugin = Stub.load({ env = ENV, kv = kv or { worktreeRoot = "/wt/worktrees" } })
+	local plugin = Stub.load({ env = Stub.ENV, kv = kv or { worktreeRoot = "/wt/worktrees" } })
 	plugin:pick_branch(cx, "b:x", BRANCHES)
 	plugin:answer("create", ELSEWHERE, 1, cx)
 	eq(#cx.asked, 2, "pickers and prompts opened")
@@ -44,7 +42,7 @@ end
 -- WORKTREE as the worktree of tab 1.
 local function close_worktree_tab(config: string?, status: number?, run_window_start: boolean?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" } }, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv(), cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, files = FILES, kv = managed_kv(), cx = cx })
 	if run_window_start then
 		plugin.handlers.window_start(cx)
 	end
@@ -118,7 +116,7 @@ local REMOVE_VARS = Stub.worktree_vars("feat")
 test("relocate asks with one Relocate item", function()
 	local _, cx = open_relocate()
 	local opts = cx.asked[2].opts
-	eq(opts.placeholder, `Worktree of this branch is at {ELSEWHERE_VARS.existing}`, "placeholder")
+	eq(opts.placeholder, `Worktree of this branch is at {Stub.ELSEWHERE_VARS.existing}`, "placeholder")
 	eq(#opts.items, 1, "items")
 	eq(opts.items[1].id, "relocate", "items[1].id")
 	eq(opts.items[1].label, "Relocate to …/worktrees/app/x", "items[1].label")
@@ -168,11 +166,12 @@ end)
 test("a failed relocate toasts the error and the saved files", function()
 	local plugin, cx = open_relocate()
 	cx.asked[2].next(Stub.item(cx.asked[2], "relocate"), nil, cx)
-	plugin:answer("create", Stub.fixture("relocate-staging", { staging = "/tmp/tern-wt-carry-a" }), 1, cx)
+	local staging = "/tmp/tern-wt-carry-a"
+	plugin:answer("create", Stub.fixture("relocate-staging", { staging = staging }), 1, cx)
 	local toast = cx.toasts[#cx.toasts]
 	eq(toast.level, "error", "toast level")
-	eq(toast.title, "fake gh: no fixture; the carried files stay in /tmp/tern-wt-carry-a", "toast title")
-	eq(toast.detail, "Saved files: /tmp/tern-wt-carry-a", "toast detail")
+	eq(toast.title, `fake gh: no fixture; the carried files stay in {staging}`, "toast title")
+	eq(toast.detail, `Saved files: {staging}`, "toast detail")
 end)
 
 test("closing a worktree tab lists Keep worktree first, then Tear down", function()
@@ -231,7 +230,7 @@ test("Keep worktree when the worktree tab does not get focus toasts and runs no 
 	local panes: { Stub.Pane } =
 		{ { pane = 1, tab = 1, cwd = WORKTREE .. "/src" }, { pane = 2, tab = 2, cwd = "/tmp" } }
 	local cx = Stub.cx(panes, 1, { fail = { focus = true } })
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv(), cx = cx })
+	local plugin = Stub.load({ env = Stub.ENV, files = FILES, kv = managed_kv(), cx = cx })
 	eq(plugin.overrides.close_tab(cx), true, "close_tab result")
 	plugin:answer("config", CONFIG, 0, cx)
 	cx.focused = 2
@@ -279,7 +278,7 @@ test("a closed tab with two worktrees asks twice, and Escape keeps both", functi
 		{ pane = 1, tab = 1, cwd = WORKTREE },
 		{ pane = 2, tab = 1, cwd = OTHER },
 	}, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	local plugin = Stub.load({ env = Stub.ENV, files = FILES, kv = managed_kv() })
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)
@@ -298,7 +297,7 @@ end)
 
 test("Keep worktree in the Worktree tab closed picker says only that it keeps the worktree", function()
 	local live = Stub.cx({ { pane = 1, tab = 1, cwd = WORKTREE } }, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	local plugin = Stub.load({ env = Stub.ENV, files = FILES, kv = managed_kv() })
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 3, tab = 2, cwd = "/tmp" } }, 3)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)
@@ -312,7 +311,7 @@ test("a closed tab asks nothing for a worktree with a pane in another tab", func
 		{ pane = 1, tab = 1, cwd = WORKTREE },
 		{ pane = 2, tab = 2, cwd = WORKTREE .. "/src" },
 	}, 1)
-	local plugin = Stub.load({ env = ENV, files = FILES, kv = managed_kv() })
+	local plugin = Stub.load({ env = Stub.ENV, files = FILES, kv = managed_kv() })
 	plugin.handlers.window_start(live)
 	local cx = Stub.cx({ { pane = 2, tab = 2, cwd = WORKTREE .. "/src" } }, 2)
 	plugin.handlers.tab_closed({ tab = 1 }, cx)

@@ -377,7 +377,7 @@ describe('remove command', () => {
       expect(ternLog()).toStrictEqual(['ls --json', 'ls --json']);
     });
 
-    it('removes ignored files that are easy to rebuild without --force', async () => {
+    it('removes, without --force, ignored files that are easy to rebuild', async () => {
       await ignoreGlobally('node_modules', '.DS_Store');
       const dir = await addFeature();
       mkdirSync(path.join(dir, 'node_modules'));
@@ -411,7 +411,7 @@ describe('remove command', () => {
       return dir;
     };
 
-    it('removes ignored files inside a submodule that are easy to rebuild without --force', async () => {
+    it('removes, without --force, ignored files inside a submodule that are easy to rebuild', async () => {
       await ignoreGlobally('node_modules');
       const dir = await subWorktree();
       mkdirSync(path.join(dir, 'sub', 'node_modules'));

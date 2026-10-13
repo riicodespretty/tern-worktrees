@@ -33,7 +33,7 @@ local SHELL = 2
 -- Picks branch x in the branch picker, answers its `create` with `answer`, then answers the `resolve` of the create.
 local function create_x(plugin: Stub.Harness, cx: any, answer: string)
 	plugin:pick_branch(cx, "b:x", BRANCHES)
-	plugin:created(cx, answer)
+	plugin:answer_create(cx, answer)
 end
 
 local function find_pane(panes: { Stub.Pane }, id: number): Stub.Pane
@@ -172,7 +172,7 @@ test("a Carly create whose tab fails to open types nothing", function()
 	end
 	local call = Stub.call()
 	plugin.exports.create("/r/app", "x", nil, cx, call)
-	plugin:created(cx, UNTYPED)
+	plugin:answer_create(cx, UNTYPED)
 	local replied = call.replies[1]
 	eq(replied ~= nil and replied.warnings[1], "tab not opened: no tab", "warning")
 	plugin:tick(31000)
@@ -184,7 +184,7 @@ end)
 local function carly_create(plugin: Stub.Harness, cx: any): { any }
 	local call = Stub.call()
 	plugin.exports.create("/r/app", "x", nil, cx, call)
-	plugin:created(cx, UNTYPED)
+	plugin:answer_create(cx, UNTYPED)
 	return call.replies
 end
 

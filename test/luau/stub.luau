@@ -1,5 +1,5 @@
 --!strict
--- A fake `tern` and a fake WindowCx for lune.
+-- A fake `tern` and a fake WindowCx. Lune runs the plugin files with them.
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -20,8 +20,9 @@ export type CxOptions = {
 export type Run = {
 	argv: { string },
 	cb: (result: any, cx: any) -> (),
-	-- Calls `cb` with `stdout`, `stderr` (default empty) and `status` (default 0), and passes `cx` as given.
-	answer: (self: Run, stdout: string, status: number?, cx: any?, stderr: string?) -> (),
+	-- Calls `cb` with `stdout`, `stderr` (default empty) and `status` (default 0), and passes `cx` as given, also when
+	-- it is nil.
+	respond: (self: Run, stdout: string, status: number?, cx: any?, stderr: string?) -> (),
 }
 export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
 export type Call = {
@@ -54,7 +55,7 @@ export type Harness = {
 	press: (self: Harness, cx: any, resolved: string?) -> (),
 	open_branch_picker: (self: Harness, cx: any, branches: string, resolved: string?) -> any,
 	pick_branch: (self: Harness, cx: any, id: string, branches: string, resolved: string?) -> (),
-	created: (self: Harness, cx: any, answer: string, resolved: string?) -> (),
+	answer_create: (self: Harness, cx: any, answer: string, resolved: string?) -> (),
 	tick: (self: Harness, ms: number) -> (),
 	pending: (self: Harness, verb: string) -> { string },
 	pending_line: (self: Harness, verb: string) -> string,
@@ -506,6 +507,13 @@ end
 -- The `resolve` answer of the CLI for /r/app.
 Stub.RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 
+-- The environment of a test window: HOME is /home/u.
+Stub.ENV = { HOME = "/home/u" }
+
+-- The fixture vars of the `create-elsewhere` answer for branch x of /r/app: its worktree is at /old/app/x, and the
+-- target is /wt/worktrees/app/x.
+Stub.ELSEWHERE_VARS = { branch = "x", existing = "/old/app/x", target = "/wt/worktrees/app/x" }
+
 local function respond(self: Run, stdout: string, status: number?, cx: any?, stderr: string?)
 	self.cb({ stdout = stdout, stderr = stderr or "", status = status or 0 }, cx)
 end
@@ -528,9 +536,9 @@ function Stub.load(opts: Options): Harness
 		timers = {},
 		refreshes = 0,
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?, stderr: string?)
-			local given = cx or defaultCx or lastCx
+			local answerCx = cx or defaultCx or lastCx
 			for _, run in self:take(verb) do
-				run:answer(stdout, status, given, stderr)
+				run:respond(stdout, status, answerCx, stderr)
 			end
 		end,
 		-- Removes the runs of `verb` that are pending and returns them, in the order they started.
@@ -543,13 +551,13 @@ function Stub.load(opts: Options): Harness
 			end
 			return taken
 		end,
-		-- Runs the new-worktree hotkey over `cx` and answers its `resolve` with `resolved` (default `Stub.RESOLVED`).
+		-- Presses the new-worktree hotkey over `cx` and answers its `resolve` with `resolved` (default `Stub.RESOLVED`).
 		press = function(self: Harness, cx: any, resolved: string?)
 			self.commands.new.run(cx)
 			self:answer("resolve", resolved or Stub.RESOLVED, 0, cx)
 		end,
-		-- Presses the hotkey and answers `branches` with `branches`. Raises an error unless one new pick opened, and
-		-- returns it.
+		-- Presses the hotkey and answers the `branches` run with the text in `branches`. Raises an error unless one new
+		-- pick opened. Returns that pick.
 		open_branch_picker = function(self: Harness, cx: any, branches: string, resolved: string?): any
 			local before = #cx.asked
 			self:press(cx, resolved)
@@ -567,7 +575,7 @@ function Stub.load(opts: Options): Harness
 		end,
 		-- Answers `create` with `answer` and status 0, then the `resolve` after it with `resolved` (default
 		-- `Stub.RESOLVED`).
-		created = function(self: Harness, cx: any, answer: string, resolved: string?)
+		answer_create = function(self: Harness, cx: any, answer: string, resolved: string?)
 			self:answer("create", answer, 0, cx)
 			self:answer("resolve", resolved or Stub.RESOLVED, 0, cx)
 		end,
@@ -593,8 +601,8 @@ function Stub.load(opts: Options): Harness
 				end
 			end
 		end,
-		-- Returns one line for each run of `verb` that `answer` did not remove yet, in order. A line holds the arguments
-		-- after the binary, joined with spaces.
+		-- Returns one line for each run of `verb` that `answer` or `take` did not remove yet, in order. A line holds the
+		-- arguments after the binary, joined with spaces.
 		pending = function(self: Harness, verb: string): { string }
 			local lines: { string } = {}
 			for _, run in self.runs do
@@ -676,7 +684,7 @@ function Stub.load(opts: Options): Harness
 		},
 		process = {
 			run = function(argv: { string }, _opts: any, cb: (result: any, cx: any) -> ())
-				table.insert(loaded.runs, { argv = argv, cb = cb, answer = respond })
+				table.insert(loaded.runs, { argv = argv, cb = cb, respond = respond })
 			end,
 		},
 		json = {
@@ -722,7 +730,7 @@ function Stub.load(opts: Options): Harness
 end
 
 -- A window with pane 1 in tab 1 at /r/app, then `opts.extra`, with pane 1 focused. The effects of `opts.fail` fail, and
--- `cx.settings` holds `opts.settings`. Loads the window half with HOME /home/u over that cx. Returns the harness, the
+-- `cx.settings` holds `opts.settings`. Loads the window half with `Stub.ENV` over that cx. Returns the harness, the
 -- cx and its panes.
 function Stub.window(opts: WindowOptions?): (Harness, any, { Pane })
 	local options: WindowOptions = opts or {}
@@ -732,7 +740,7 @@ function Stub.window(opts: WindowOptions?): (Harness, any, { Pane })
 		table.insert(panes, p)
 	end
 	local cx = Stub.cx(panes, 1, { fail = options.fail, settings = options.settings })
-	return Stub.load({ env = { HOME = "/home/u" }, cx = cx }), cx, panes
+	return Stub.load({ env = Stub.ENV, cx = cx }), cx, panes
 end
 
 -- The toasts of `cx` whose title starts with "Setup not run".

@@ -6,7 +6,6 @@ local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local LIB = "/r/lib"
-local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `resolve` answer of the CLI for REPO and LIB.
 local BOTH_RESOLVED = Stub.answer("resolve", { repo = REPO }, function(res: any)
 	local lib = table.clone(res.repos[1])
@@ -92,13 +91,13 @@ end
 -- A `cwd` event of pane 1 into REPO, which is a background trigger of the worktree rows. The first one resolves REPO.
 local function trigger(plugin: Stub.Harness, cx: any)
 	plugin.handlers.cwd({ pane = 1, path = REPO }, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:answer("resolve", Stub.RESOLVED, 0, cx)
 end
 
 test("a create runs one branches for its repository", function()
 	local plugin, cx = window(0)
 	plugin:pick_branch(cx, "b:x", BRANCHES)
-	plugin:created(cx, CREATED)
+	plugin:answer_create(cx, CREATED)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the create")
 end)
 
@@ -273,7 +272,7 @@ test("a trigger after a branches whose callback Tern dropped for 120 s starts a 
 	plugin:answer("branches", BRANCHES, 0, cx)
 	trigger(plugin, cx)
 	local dropped = plugin:take("branches")[1]
-	dropped:answer(BRANCHES, 0, nil)
+	dropped:respond(BRANCHES, 0, nil)
 	plugin:tick(120000)
 	trigger(plugin, cx)
 	eq(plugin:pending_line("branches"), "", "branches calls at 120 s")
@@ -281,7 +280,7 @@ test("a trigger after a branches whose callback Tern dropped for 120 s starts a 
 	trigger(plugin, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after 120 s")
 	plugin:answer("branches", STALE, 0, cx)
-	dropped:answer(BRANCHES, 0, cx)
+	dropped:respond(BRANCHES, 0, cx)
 	eq(shows(plugin, cx, X_ROW), false, "row of x after the late answer")
 	eq(plugin:pending_line("branches"), "", "branches calls after the late answer")
 end)

@@ -108,7 +108,7 @@ describe('git helpers', () => {
   });
 
   describe(checkoutAt, () => {
-    it('gives main at the top of the main checkout and inside in its subdirectory and its .git', async () => {
+    it('gives "main" at the top of the main checkout, and "inside" in a subdirectory and in .git', async () => {
       const repo = await tmpRepo();
       mkdirSync(path.join(repo.dir, 'sub'));
       await expect(Promise.all([checkoutAt(repo.dir), checkoutAt(path.join(repo.dir, 'sub')), checkoutAt(path.join(repo.dir, '.git'))])).resolves.toStrictEqual([
@@ -118,7 +118,7 @@ describe('git helpers', () => {
       ]);
     });
 
-    it('gives linked at the top of a linked worktree and through a symlink to it, and inside in its subdirectory', async () => {
+    it('gives "linked" at the top of a linked worktree and through a symlink to it, and "inside" in a subdirectory', async () => {
       const repo = await tmpRepo();
       const linked = path.join(tempDir('wt'), 'linked');
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'side', linked);

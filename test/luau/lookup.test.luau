@@ -49,14 +49,14 @@ local function index_of(paths: { string }): { [string]: any }
 end
 
 local function host_lookup(index: { [string]: any }, cwd: string?): string?
-	local host = Stub.load({ file = "host.luau", env = { HOME = "/home/u" }, kv = { worktreeIndex = index } })
+	local host = Stub.load({ file = "host.luau", env = Stub.ENV, kv = { worktreeIndex = index } })
 	local spawn: any = host.handlers.spawn
 	local spec = spawn({ program = "/bin/zsh", args = {}, cwd = cwd, env = {} })
 	return if spec ~= nil then spec.env.TERN_WT_PATH else nil
 end
 
 local function window_lookup(index: { [string]: any }, cwd: string?): string?
-	local window = Stub.load({ env = { HOME = "/home/u" }, kv = { worktreeIndex = index } })
+	local window = Stub.load({ env = Stub.ENV, kv = { worktreeIndex = index } })
 	local segments = window:status(cwd)
 	return if segments ~= nil then segments[1].text else nil
 end

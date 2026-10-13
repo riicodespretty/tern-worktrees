@@ -143,5 +143,8 @@ export const loadConfig = (): Config => {
   };
 };
 
-/** The setup commands that `config` lists for `repoRef`, with uppercase and lowercase letters the same. Gives an empty list when `config` lists no commands for `repoRef`. */
-export const setupCommands = (config: Config, repoRef: GithubRepoRef): string[] => config.setup[nameWithOwner(repoRef).toLowerCase()] ?? [];
+/**
+ * The setup commands that the options file `options` lists for the name with owner of `repoRef`.
+ * The match ignores the difference between uppercase and lowercase letters. It gives an empty list when `options` lists no commands for `repoRef`.
+ */
+export const setupCommands = (options: Config, repoRef: GithubRepoRef): string[] => options.setup[nameWithOwner(repoRef).toLowerCase()] ?? [];

@@ -24,7 +24,7 @@ Each command prints one JSON object, and each failure has an error code. The win
 
 `branches` lists the local branches and the branches on `origin`, each once, newest commit first. `branches --offline` reads only local refs: no fetch, no pull request list and no GitHub lookup of the default branch. The worktree rows use it, so most of their refreshes cost no network traffic.
 
-git gives real paths. Thus, to find if a folder is the top folder of a checkout, the CLI compares the git answer with the real path of that folder.
+To find if a folder is the top folder of a checkout, `checkoutAt` in `src/git.ts` compares the path that git prints with the real path of that folder. Git prints real paths, with each symbolic link resolved, so a folder path that goes through a symbolic link is not equal to the path that git prints.
 
 ### The links of the CLI and the skill
 
@@ -201,7 +201,9 @@ The smoke test gives its clone a GitHub URL for `origin`, so the options file gi
 
 `vp run test:luau` runs the Luau tests in `test/luau/` with [lune](https://github.com/lune-org/lune). The tests load `window.luau` and `host.luau` without changes, with the fake `tern` in `test/luau/stub.luau`. Thus, Tern is not necessary for these tests. `vp run check:luau` also checks the types of these tests. Lune is necessary for the types of the `@lune/*` modules.
 
-The fake `tern` copies these behaviors of Tern, which no test on a live Tern examined: `layout:focus` does not switch the session. `layout:unpark` puts a parked pane only into a tab of the current session. `layout:move_to_new_tab` refuses a parked pane. `sessions:switch` gives the focus to the first pane of the first tab of the new session when the pane with the focus is not in that session. The `close_tab` command gives the focus to the first pane of the first tab of the current session. `close_tab` runs `tab_closed` before it returns. When a plugin runs the `close_tab` command, Tern does not run the `close_tab` override again. The fake `tern.kv.set` stores a JSON copy of the value, as Tern does, so two windows that share `kv` do not share a table.
+The fake `tern` copies these behaviors of Tern, which no test on a live Tern examined: `layout:focus` does not switch the session. `layout:unpark` puts a parked pane only into a tab of the current session. `layout:move_to_new_tab` refuses a parked pane. `sessions:switch` gives the focus to the first pane of the first tab of the new session when the pane with the focus is not in that session. The `close_tab` command gives the focus to the first pane of the first tab of the current session. `close_tab` runs `tab_closed` before it returns. When a plugin runs the `close_tab` command, Tern does not run the `close_tab` override again.
+
+The fake `tern.kv.set` stores a JSON copy of the value, as Tern does, so two windows that share `kv` do not share a table.
 
 Homebrew has only lune 0.10.5. Install lune 0.11.0 from the `v0.11.0` release of `lune-org/lune`. Unzip the asset for your platform. Put the `lune` binary on your `PATH`.
 

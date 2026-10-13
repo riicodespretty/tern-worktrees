@@ -119,7 +119,7 @@ describe('config', () => {
   });
 
   describe(setupCommands, () => {
-    it('matches the name with owner with uppercase and lowercase letters the same', () => {
+    it('matches the name with owner and ignores the difference between uppercase and lowercase letters', () => {
       write('{"setup":{"Virtusize/Aoyama":["npm ci","npm test"]}}');
       expect(setupCommands(loadConfig(), { name: 'aoyama', owner: 'VIRTUSIZE' })).toStrictEqual(['npm ci', 'npm test']);
     });

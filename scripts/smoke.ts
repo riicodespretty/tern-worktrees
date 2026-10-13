@@ -65,7 +65,7 @@ const waitForBlock = async (dir: string): Promise<void> => {
   await waitFor(async () => blocksUnder(await ls(), dir).length > 0, `no block under ${dir}`);
 };
 
-/** Runs `create` two times, `list` and `remove` on `feature/x` of a clone with setup commands. */
+/** Runs `create` two times on `feature/x` of a clone with setup commands, then runs `list` and `remove`. */
 const smoke = async (): Promise<void> => {
   const repo = await makeClone();
   const clone = repo.dir;
