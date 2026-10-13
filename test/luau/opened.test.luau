@@ -26,16 +26,6 @@ local function toast_titles(cx: any, skip: number): string
 	return table.concat(titles, "; ")
 end
 
-local function setup_toast_count(cx: any): number
-	local count = 0
-	for _, t in cx.toasts do
-		if string.sub(t.title, 1, #"Setup not run") == "Setup not run" then
-			count += 1
-		end
-	end
-	return count
-end
-
 local function success_toast(cx: any): any
 	for _, t in cx.toasts do
 		if t.level == "success" then
@@ -43,25 +33,6 @@ local function success_toast(cx: any): any
 		end
 	end
 	error("no success toast")
-end
-
--- A window with pane 1 in /r/app plus `extra`.
-local function window(extra: { Stub.Pane }?): (Stub.Harness, any)
-	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
-	local more: { Stub.Pane } = extra or {}
-	for _, p in more do
-		table.insert(panes, p)
-	end
-	local cx = Stub.cx(panes, 1)
-	return Stub.load({ env = ENV, cx = cx }), cx
-end
-
--- Opens the branch picker of /r/app with the hotkey.
-local function open_picker(plugin: Stub.Harness, cx: any): any
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
-	return cx.asked[#cx.asked]
 end
 
 -- The worktree row with `title`.
@@ -85,35 +56,31 @@ test("a worktree row of a repository first seen after window start opens its tab
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	row(plugin, "app: x").run(cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	eq(#cx.records, 1, "sessions")
 	eq(table.concat(cx.effects, "; "), "new_tab → tab 2, pane 2; name_tab 2 x", "effects")
 end)
 
 test("a create from the branch picker whose tab step raises still refreshes and toasts", function()
-	local plugin, cx = window()
+	local plugin, cx = Stub.window()
 	cx.layout.new_tab = function(_self: any, _opts: any): number?
 		error("no tab", 0)
 	end
-	local picker = open_picker(plugin, cx)
-	picker.next(Stub.item(picker, "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:pick_branch(cx, "b:x", BRANCHES)
+	plugin:created(cx, CREATED)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the create")
 	eq(success_toast(cx).detail, PATH .. " · tab not opened: no tab", "success toast detail")
 	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
-	eq(setup_toast_count(cx), 0, "setup toasts")
+	eq(#Stub.setup_toasts(cx), 0, "setup toasts")
 end)
 
--- Each create entry, run over a `window()` up to its pending `create`.
+-- Each create entry, run over a `Stub.window()` up to its pending `create`.
 local ENTRIES: { { what: string, run: (plugin: Stub.Harness, cx: any) -> () } } = {
 	{
 		what = "the branch picker",
 		run = function(plugin, cx)
-			local picker = open_picker(plugin, cx)
-			picker.next(Stub.item(picker, "b:x"), nil, cx)
+			plugin:pick_branch(cx, "b:x", BRANCHES)
 		end,
 	},
 	{
@@ -128,8 +95,7 @@ local ENTRIES: { { what: string, run: (plugin: Stub.Harness, cx: any) -> () } } 
 	{
 		what = "Relocate",
 		run = function(plugin, cx)
-			local picker = open_picker(plugin, cx)
-			picker.next(Stub.item(picker, "b:x"), nil, cx)
+			plugin:pick_branch(cx, "b:x", BRANCHES)
 			plugin:answer("create", ELSEWHERE, 1, cx)
 			local relocate = cx.asked[#cx.asked]
 			relocate.next(Stub.item(relocate, "relocate"), nil, cx)
@@ -138,7 +104,7 @@ local ENTRIES: { { what: string, run: (plugin: Stub.Harness, cx: any) -> () } } 
 	{
 		what = "New branch",
 		run = function(plugin, cx)
-			local picker = open_picker(plugin, cx)
+			local picker = plugin:open_branch_picker(cx, BRANCHES)
 			picker.next(Stub.item(picker, "new"), nil, cx)
 			cx.asked[#cx.asked].next("x", nil, cx)
 		end,
@@ -153,7 +119,7 @@ local ENTRIES: { { what: string, run: (plugin: Stub.Harness, cx: any) -> () } } 
 
 for _, entry in ENTRIES do
 	test(`a create from {entry.what} resolves sessions once, after it writes the index entry`, function()
-		local plugin, cx = window()
+		local plugin, cx = Stub.window()
 		entry.run(plugin, cx)
 		eq(plugin:pending_line("create") ~= "", true, "create pending")
 		eq(plugin:pending_line("resolve"), "", "resolve calls before the create answer")
@@ -169,12 +135,11 @@ for _, entry in ENTRIES do
 end
 
 test("a create whose setup cannot run shows the success toast first, then the setup toast, which stays", function()
-	local plugin, cx = window({ { pane = 2, tab = 2, cwd = PATH, at_prompt = true } })
-	local picker = open_picker(plugin, cx)
+	local plugin, cx = Stub.window({ extra = { { pane = 2, tab = 2, cwd = PATH, at_prompt = true } } })
+	local picker = plugin:open_branch_picker(cx, BRANCHES)
 	local skip = #cx.toasts
 	picker.next(Stub.item(picker, "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	plugin:tick(31000)
 	eq(
 		toast_titles(cx, skip),

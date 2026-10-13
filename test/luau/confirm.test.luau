@@ -23,7 +23,6 @@ end
 
 local CONFIG_VARS: { [string]: string } = { home = "/home/u" }
 local CONFIG = Stub.fixture("config", CONFIG_VARS)
-local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
@@ -33,10 +32,7 @@ local ELSEWHERE =
 local function open_relocate(kv: { [string]: any }?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local plugin = Stub.load({ env = ENV, kv = kv or { worktreeRoot = "/wt/worktrees" } })
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
-	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
+	plugin:pick_branch(cx, "b:x", BRANCHES)
 	plugin:answer("create", ELSEWHERE, 1, cx)
 	eq(#cx.asked, 2, "pickers and prompts opened")
 	eq(cx.asked[2].kind, "pick", "request kind")

@@ -6,7 +6,6 @@ local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local LIB = "/r/lib"
-local ENV = { HOME = "/home/u" }
 local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `resolve` answer of the CLI for REPO and LIB.
 local BOTH_RESOLVED = Stub.answer("resolve", { repo = REPO }, function(res: any)
@@ -51,16 +50,14 @@ local function toast_lines(cx: any): string
 	return table.concat(lines, "; ")
 end
 
--- A window with `panes` (default pane 1 in REPO), the focused pane `focused` (default 1), and
--- `git.auto_fetch_minutes` set to `minutes`.
-local function window(minutes: number, panes: { Stub.Pane }?, focused: number?): (Stub.Harness, any)
-	local cx = Stub.cx(panes or { { pane = 1, tab = 1, cwd = REPO } }, focused or 1, { fail = { new_tab = true } })
-	cx.settings = {
-		get = function(_self: any, _key: string): any
-			return minutes
-		end,
-	}
-	return Stub.load({ env = ENV }), cx
+-- A window with pane 1 in REPO plus `extra`, pane 1 focused, and `git.auto_fetch_minutes` set to `minutes`. Returns
+-- the harness, the cx and its panes.
+local function window(minutes: number, extra: { Stub.Pane }?): (Stub.Harness, any, { Stub.Pane })
+	return Stub.window({
+		extra = extra,
+		fail = { new_tab = true },
+		settings = { ["git.auto_fetch_minutes"] = minutes },
+	})
 end
 
 -- The worktree rows that the plugin registered, by title.
@@ -98,24 +95,15 @@ local function trigger(plugin: Stub.Harness, cx: any)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
--- Presses the new-worktree hotkey and answers its `resolve`.
-local function press(plugin: Stub.Harness, cx: any)
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-end
-
 test("a create runs one branches for its repository", function()
 	local plugin, cx = window(0)
-	press(plugin, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
-	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:pick_branch(cx, "b:x", BRANCHES)
+	plugin:created(cx, CREATED)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the create")
 end)
 
 test("a teardown runs branches only for the repository in the repo of remove", function()
-	local plugin, cx = window(0, { { pane = 1, tab = 1, cwd = REPO }, { pane = 2, tab = 2, cwd = LIB } })
+	local plugin, cx = window(0, { { pane = 2, tab = 2, cwd = LIB } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", BOTH_RESOLVED, 0, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline; branches --repo /r/lib --offline", "rows")
@@ -127,9 +115,8 @@ test("a teardown runs branches only for the repository in the repo of remove", f
 end)
 
 test("the first open of the branch picker registers the worktree rows of its answer", function()
-	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = REPO }, { pane = 2, tab = 2, cwd = "/tmp" } }
-	local plugin, cx = window(0, panes)
-	press(plugin, cx)
+	local plugin, cx, panes = window(0, { { pane = 2, tab = 2, cwd = "/tmp" } })
+	plugin:press(cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin.handlers.cwd({ pane = 2, path = "/tmp" }, cx)
 	trigger(plugin, cx)
@@ -139,13 +126,13 @@ end)
 
 test("the worktree rows keep their pull requests after an offline answer and after prsFailed true", function()
 	local plugin, cx = window(0)
-	press(plugin, cx)
+	plugin:press(cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	trigger(plugin, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "background branches")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	eq(shows(plugin, cx, PR_ROW), true, "pull request row after the offline answer")
-	press(plugin, cx)
+	plugin:press(cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "branches of the press")
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	eq(shows(plugin, cx, PR_ROW), true, "pull request row after prsFailed true")
@@ -163,8 +150,7 @@ test("the row of a branch that leaves the answer does not show", function()
 end)
 
 test("an answer for one repository keeps the worktree rows of another repository", function()
-	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = REPO }, { pane = 2, tab = 2, cwd = LIB } }
-	local plugin, cx = window(0, panes)
+	local plugin, cx, panes = window(0, { { pane = 2, tab = 2, cwd = LIB } })
 	local libCx = Stub.cx(panes, 2)
 	trigger(plugin, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
@@ -190,9 +176,7 @@ end)
 test("the branch picker and the row of a branch that starts with - send the same create", function()
 	local dashBranchAnswer = Stub.answer("branches-offline", { repo = REPO }, { branches = { "-x" }, worktrees = {} })
 	local plugin, cx = window(0)
-	press(plugin, cx)
-	plugin:answer("branches", dashBranchAnswer, 0, cx)
-	cx.asked[1].next(Stub.item(cx.asked[1], "b:-x"), nil, cx)
+	plugin:pick_branch(cx, "b:-x", dashBranchAnswer)
 	rows(plugin)["app: -x"].run(cx)
 	eq(
 		plugin:pending_line("create"),
@@ -224,7 +208,7 @@ test("a background trigger runs online when git.auto_fetch_minutes is due, and a
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "trigger after 5 min")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(5 * MINUTE)
-	press(plugin, cx)
+	plugin:press(cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "press after 10 min")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(MINUTE)
@@ -245,7 +229,7 @@ end)
 test("a press during a background branches starts no second one and runs one online with toasts after it", function()
 	local plugin, cx = window(0)
 	trigger(plugin, cx)
-	press(plugin, cx)
+	plugin:press(cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the press")
 	eq(toast_lines(cx), "", "toasts after the press")
 	plugin:answer("branches", OFFLINE, 0, cx)
@@ -259,7 +243,7 @@ end)
 test("a first press joins a background online branches", function()
 	local plugin, cx = window(5)
 	trigger(plugin, cx)
-	press(plugin, cx)
+	plugin:press(cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "branches calls after the press")
 	eq(toast_lines(cx), LOADING, "toasts after the press")
 	plugin:answer("branches", BRANCHES, 0, cx)
@@ -273,7 +257,7 @@ test("a first press with only an offline answer waits for the online answer", fu
 	trigger(plugin, cx)
 	plugin:answer("branches", OFFLINE, 0, cx)
 	trigger(plugin, cx)
-	press(plugin, cx)
+	plugin:press(cx)
 	plugin:answer("branches", OFFLINE, 0, cx)
 	eq(#cx.asked, 0, "pickers after the offline answer")
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "run after the offline answer")
@@ -288,8 +272,8 @@ test("a trigger after a branches whose callback Tern dropped for 120 s starts a 
 	trigger(plugin, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	trigger(plugin, cx)
-	local dropped = table.remove(plugin.runs) :: Stub.Run
-	dropped.cb({ stdout = BRANCHES, stderr = "", status = 0 }, nil)
+	local dropped = plugin:take("branches")[1]
+	dropped:answer(BRANCHES, 0, nil)
 	plugin:tick(120000)
 	trigger(plugin, cx)
 	eq(plugin:pending_line("branches"), "", "branches calls at 120 s")
@@ -297,7 +281,7 @@ test("a trigger after a branches whose callback Tern dropped for 120 s starts a 
 	trigger(plugin, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after 120 s")
 	plugin:answer("branches", STALE, 0, cx)
-	dropped.cb({ stdout = BRANCHES, stderr = "", status = 0 }, cx)
+	dropped:answer(BRANCHES, 0, cx)
 	eq(shows(plugin, cx, X_ROW), false, "row of x after the late answer")
 	eq(plugin:pending_line("branches"), "", "branches calls after the late answer")
 end)
@@ -307,12 +291,12 @@ test("a failed first online branches after an offline answer toasts the cause an
 	trigger(plugin, cx)
 	plugin:answer("branches", OFFLINE, 0, cx)
 	local before = shown(plugin, cx)
-	press(plugin, cx)
+	plugin:press(cx)
 	plugin:answer("branches", FAILED, 1, cx)
 	eq(#cx.asked, 0, "pickers after the failure")
 	eq(cx.toasts[#cx.toasts].title, "fetch failed", "toast title")
 	eq(shown(plugin, cx), before, "rows after the failure")
-	press(plugin, cx)
+	plugin:press(cx)
 	eq(#cx.asked, 0, "pickers on the next press, which waits again")
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "branches calls of the next press")
 end)

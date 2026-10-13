@@ -5,7 +5,6 @@ local runner = require("./runner")
 local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
-local ENV = { HOME = "/home/u" }
 local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
 local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
@@ -34,17 +33,6 @@ local UNCHANGED = "info Branches refreshed: no changes"
 local CREATED = Stub.fixture("create-created", Stub.worktree_vars("y"))
 local REMOVED = Stub.answer("remove-kept-policy", Stub.worktree_vars("x"), { branch = "x" })
 
--- Takes the pending `branches` runs out of the fake CLI, as a callback that Tern drops, and returns them.
-local function drop_branches(plugin: Stub.Harness): { Stub.Run }
-	local dropped: { Stub.Run } = {}
-	for i = #plugin.runs, 1, -1 do
-		if plugin.runs[i].argv[2] == "branches" then
-			table.insert(dropped, table.remove(plugin.runs, i) :: Stub.Run)
-		end
-	end
-	return dropped
-end
-
 local function item_ids(request: any): string
 	local ids: { string } = {}
 	for _, it in request.opts.items do
@@ -67,13 +55,8 @@ end
 
 -- A window with pane 1 in REPO and `git.auto_fetch_minutes` set to `minutes`.
 local function window(minutes: number): (Stub.Harness, any)
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1, { fail = { new_tab = true } })
-	cx.settings = {
-		get = function(_self: any, _key: string): any
-			return minutes
-		end,
-	}
-	return Stub.load({ env = ENV }), cx
+	local plugin, cx = Stub.window({ fail = { new_tab = true }, settings = { ["git.auto_fetch_minutes"] = minutes } })
+	return plugin, cx
 end
 
 -- The `branches` calls that are pending, online and offline.
@@ -91,8 +74,7 @@ end
 
 -- Presses the new-worktree hotkey and answers its `resolve`. Returns how many pickers and prompts are open.
 local function open(plugin: Stub.Harness, cx: any): number
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:press(cx)
 	return #cx.asked
 end
 
@@ -165,8 +147,7 @@ test("refreshes after a create or a teardown show no toasts", function()
 	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	plugin:answer("branches", OFFLINE, 0, cx)
 	local call = Stub.call()
 	plugin.exports.remove("/wt/worktrees/app/x", nil, cx, call)
@@ -256,13 +237,7 @@ test(
 -- A window with pane 1 in REPO and `git.auto_fetch_minutes` 5, whose worktree rows run an online `branches` and get
 -- BRANCHES. Five minutes on, a focus on pane 1 runs the next online `branches`, which gets `stdout`.
 local function rows_after(stdout: string): (Stub.Harness, any)
-	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
-	cx.settings = {
-		get = function(_self: any, _key: string): any
-			return 5
-		end,
-	}
-	local plugin = Stub.load({ env = ENV })
+	local plugin, cx = Stub.window({ settings = { ["git.auto_fetch_minutes"] = 5 } })
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app", "first rows branches")
@@ -325,7 +300,7 @@ end)
 test("a press after a first branches that never answered for 120 s starts it again", function()
 	local plugin, cx = window(0)
 	open(plugin, cx)
-	local dropped = drop_branches(plugin)
+	local dropped = plugin:take("branches")
 	plugin:tick(120000)
 	eq(open(plugin, cx), 0, "pickers after a press at 120 s")
 	eq(#plugin:pending("branches"), 0, "branches calls after a press at 120 s")
@@ -334,7 +309,7 @@ test("a press after a first branches that never answered for 120 s starts it aga
 	eq(#plugin:pending("branches"), 1, "branches calls after a press after 120 s")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the new branches answers")
-	dropped[1].cb({ stdout = STALE, stderr = "", status = 0 }, cx)
+	dropped[1]:answer(STALE, 0, cx)
 	eq(#cx.asked, 1, "pickers after the late answer of the dropped branches")
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), item_ids(cx.asked[1]), "items after the late answer")
@@ -344,7 +319,7 @@ test("a press after a background branches that never answered for 120 s starts a
 	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
-	drop_branches(plugin)
+	plugin:take("branches")
 	plugin:tick(120000)
 	eq(open(plugin, cx), 3, "pickers after a press at 120 s")
 	eq(#plugin:pending("branches"), 0, "branches calls after a press at 120 s")
@@ -370,8 +345,7 @@ test("a create refreshes the cache offline and keeps its pull requests and defau
 	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	local online, offline = branches_calls(plugin)
 	eq(online, 0, "online branches calls after the create")
 	eq(offline, 1, "offline branches calls after the create")
@@ -387,8 +361,7 @@ test("a create during an online background branches runs one offline after it", 
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	cx.asked[2].next(Stub.item(cx.asked[2], "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	plugin:answer("branches", STALE, 0, cx)
 	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "rerun")
 	plugin:answer("branches", OFFLINE, 0, cx)
@@ -400,8 +373,7 @@ test("an open during an offline refresh runs one online after it", function()
 	local plugin, cx = window(0)
 	first_open(plugin, cx, BRANCHES)
 	cx.asked[1].next(Stub.item(cx.asked[1], "b:x"), nil, cx)
-	plugin:answer("create", CREATED, 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, CREATED)
 	eq(open(plugin, cx), 2, "pickers after the open")
 	eq(toast_lines(cx), "", "toasts after the open during the offline refresh")
 	plugin:answer("branches", OFFLINE, 0, cx)

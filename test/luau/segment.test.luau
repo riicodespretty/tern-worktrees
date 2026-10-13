@@ -117,12 +117,7 @@ end
 
 test("refresh runs once after a create adds an entry", function()
 	local plugin, cx = started(LISTED, "/r/app")
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", Stub.fixture("resolve", { repo = "/r/app" }), 0, cx)
-	plugin:answer("branches", Stub.fixture("branches-offline", { repo = "/r/app" }), 0, cx)
-	local picker = cx.asked[#cx.asked]
-	picker.next(Stub.item(picker, "b:x"), nil, cx)
-	eq(#plugin.runs > 0 and plugin.runs[#plugin.runs].argv[2], "create", "pending CLI call")
+	plugin:pick_branch(cx, "b:x", Stub.fixture("branches-offline", { repo = "/r/app" }))
 	local before = plugin.refreshes
 	plugin:answer("create", Stub.fixture("create-created", Stub.worktree_vars("x")), 0, cx)
 	eq(plugin.refreshes - before, 1, "refreshes")

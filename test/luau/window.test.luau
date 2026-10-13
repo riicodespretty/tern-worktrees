@@ -177,16 +177,6 @@ local function started(cwd: string): (Stub.Harness, any)
 	return plugin, cx
 end
 
--- Picks the branch `x` of /r/app in the branch picker. Then `create` is the pending CLI call.
-local function pick_branch_x(plugin: Stub.Harness, cx: any)
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
-	local picker = cx.asked[#cx.asked]
-	picker.next(Stub.item(picker, "b:x"), nil, cx)
-	eq(#plugin:pending("create"), 1, "create calls")
-end
-
 test("window_start writes the worktree index from list --all", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 	local plugin = Stub.load({ env = ENV })
@@ -271,9 +261,8 @@ local function pickers_after_close_of_created_tab(owner: string): number
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
 	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
-	pick_branch_x(plugin, cx)
-	plugin:answer("create", Stub.answer("create-created", CREATE_X_VARS, { owner = owner }), 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:pick_branch(cx, "b:x", BRANCHES)
+	plugin:created(cx, Stub.answer("create-created", CREATE_X_VARS, { owner = owner }))
 	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local before = #after.asked
 	plugin.handlers.tab_closed({ tab = 2 }, after)
@@ -293,14 +282,8 @@ local function create_main_checkout(cwd: string): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = cwd } }, 1)
 	local plugin = Stub.load({ env = ENV, files = { ["/r/app/.git"] = "" }, kv = { worktreeRoot = ROOT } })
 	local resolved = `\{"repos":[\{"dir":"{cwd}","root":"/r/app","name":"app"}]}`
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", resolved, 0, cx)
-	plugin:answer("branches", BRANCHES, 0, cx)
-	local picker = cx.asked[#cx.asked]
-	picker.next(Stub.item(picker, "b:main"), nil, cx)
-	eq(#plugin:pending("create"), 1, "create calls")
-	plugin:answer("create", Stub.fixture("create-main-checkout", { repo = "/r/app" }), 0, cx)
-	plugin:answer("resolve", resolved, 0, cx)
+	plugin:pick_branch(cx, "b:main", BRANCHES, resolved)
+	plugin:created(cx, Stub.fixture("create-main-checkout", { repo = "/r/app" }), resolved)
 	return plugin, cx
 end
 
@@ -342,8 +325,7 @@ test("the Carly create export replies with the main checkout answer and writes n
 	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
 	local call = Stub.call()
 	plugin.exports.create("/r/app", "main", nil, cx, call)
-	plugin:answer("create", Stub.fixture("create-main-checkout", { repo = "/r/app" }), 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, Stub.fixture("create-main-checkout", { repo = "/r/app" }))
 	local replied = call.replies[1]
 	eq(replied ~= nil and `{replied.owner} {replied.path} {replied.status}`, "main /r/app reused", "reply")
 	eq((plugin.kv.worktreeIndex or {})["/r/app"], nil, "index entry of the main checkout")
@@ -377,11 +359,7 @@ end
 -- Picks the item `id` in the branch picker of /r/app with CHECKOUTS.
 local function pick(id: string): (plugin: Stub.Harness, cx: any) -> ()
 	return function(plugin, cx)
-		plugin.commands.new.run(cx)
-		plugin:answer("resolve", RESOLVED, 0, cx)
-		plugin:answer("branches", CHECKOUTS, 0, cx)
-		local picker = cx.asked[#cx.asked]
-		picker.next(Stub.item(picker, id), nil, cx)
+		plugin:pick_branch(cx, id, CHECKOUTS)
 	end
 end
 
@@ -550,14 +528,14 @@ test(
 		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 		local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
 		plugin.handlers.window_start(cx)
-		local dropped = table.remove(plugin.runs) :: Stub.Run
+		local dropped = plugin:take("list")[1]
 		eq(table.concat(dropped.argv, " ", 2), "list --all", "dropped run")
-		dropped.cb({ stdout = LISTED, stderr = "", status = 0 }, nil)
+		dropped:answer(LISTED, 0, nil)
 		plugin:tick(120001)
 		plugin.handlers.cwd({ pane = 1, path = "/wt/worktrees/app/new" }, cx)
 		eq(plugin:pending_line("list"), "list --all", "list runs after the cwd")
 		plugin:answer("list", LISTED, 0, cx)
-		dropped.cb({ stdout = '{"root":"/wt/worktrees","worktrees":[]}', stderr = "", status = 0 }, cx)
+		dropped:answer('{"root":"/wt/worktrees","worktrees":[]}', 0, cx)
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry after the late answer of the dropped run")
 		eq(#plugin:pending("list"), 0, "list runs after the late answer")
 	end
@@ -576,15 +554,7 @@ for _, lost in { "fails", "is dropped" } do
 			plugin:answer("list", '{"error":{"code":"cli_failed","message":"x"}}', 1, cx)
 			plugin:tick(2000)
 		else
-			local at: number? = nil
-			for i, run in plugin.runs do
-				if run.argv[2] == "list" then
-					at = i
-				end
-			end
-			assert(at ~= nil, "no list run")
-			local dropped = table.remove(plugin.runs, at) :: Stub.Run
-			dropped.cb({ stdout = LISTED, stderr = "", status = 0 }, nil)
+			plugin:take("list")[1]:answer(LISTED, 0, nil)
 			plugin:tick(120001)
 			plugin.handlers.focus({ pane = 1 }, cx)
 		end
@@ -618,9 +588,8 @@ for _, gap in { 10, 0 } do
 		local plugin = Stub.load({ env = ENV })
 		plugin.handlers.window_start(cx)
 		plugin:tick(gap)
-		pick_branch_x(plugin, cx)
-		plugin:answer("create", CREATED, 0, cx)
-		plugin:answer("resolve", RESOLVED, 0, cx)
+		plugin:pick_branch(cx, "b:x", BRANCHES)
+		plugin:created(cx, CREATED)
 		plugin:answer("list", LISTED, 0, cx)
 		eq(plugin.kv.worktreeIndex["/wt/worktrees/app/x"].branch, "x", "entry from the create answer")
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry from list")
@@ -678,13 +647,12 @@ end
 
 -- Creates the worktree of `branch` in /wt/worktrees/app from the branch picker of the window that `plugin` loaded.
 local function create_in(plugin: Stub.Harness, cx: any, branch: string)
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", Stub.answer("branches-offline", { repo = "/r/app" }, { branches = { branch } }), 0, cx)
-	local picker = cx.asked[#cx.asked]
-	picker.next(Stub.item(picker, "b:" .. branch), nil, cx)
-	plugin:answer("create", Stub.fixture("create-created", Stub.worktree_vars(branch)), 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:pick_branch(
+		cx,
+		"b:" .. branch,
+		Stub.answer("branches-offline", { repo = "/r/app" }, { branches = { branch } })
+	)
+	plugin:created(cx, Stub.fixture("create-created", Stub.worktree_vars(branch)))
 end
 
 test("a create or remove in one window keeps the entries that another window wrote to kv", function()

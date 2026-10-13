@@ -11,8 +11,18 @@ local DATA_DIR = "/plugin-data"
 export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean?, at_prompt: boolean?, session: number? }
 export type Fail = { new_tab: boolean?, unpark: boolean?, move_to_new_tab: boolean?, focus: boolean?, create: boolean? }
 export type SessionRecord = { id: number, name: string?, tabs: { number }? }
-export type CxOptions = { sessions: { SessionRecord }?, current: number?, fail: Fail? }
-export type Run = { argv: { string }, cb: (result: any, cx: any) -> () }
+export type CxOptions = {
+	sessions: { SessionRecord }?,
+	current: number?,
+	fail: Fail?,
+	settings: { [string]: any }?,
+}
+export type Run = {
+	argv: { string },
+	cb: (result: any, cx: any) -> (),
+	-- Calls `cb` with `stdout`, an empty stderr and `status` (default 0), and passes `cx` as given.
+	answer: (self: Run, stdout: string, status: number?, cx: any?) -> (),
+}
 export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
 export type Call = {
 	replies: { any },
@@ -40,6 +50,11 @@ export type Harness = {
 	formatter: ((pane: any) -> any)?,
 	refreshes: number,
 	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
+	take: (self: Harness, verb: string) -> { Run },
+	press: (self: Harness, cx: any, resolved: string?) -> (),
+	open_branch_picker: (self: Harness, cx: any, branches: string, resolved: string?) -> any,
+	pick_branch: (self: Harness, cx: any, id: string, branches: string, resolved: string?) -> (),
+	created: (self: Harness, cx: any, answer: string, resolved: string?) -> (),
 	tick: (self: Harness, ms: number) -> (),
 	pending: (self: Harness, verb: string) -> { string },
 	pending_line: (self: Harness, verb: string) -> string,
@@ -49,6 +64,9 @@ export type Harness = {
 -- The overrides of `Stub.answer`: top-level keys and their values, or a function that changes the decoded answer.
 export type Fields = { [string]: any } | (res: any) -> ()
 
+-- The options of `Stub.window`: the panes after pane 1, the effects that fail, and the values of `cx.settings`.
+export type WindowOptions = { extra: { Pane }?, fail: Fail?, settings: { [string]: any }? }
+
 local Stub = {}
 
 local lastCx: any = nil
@@ -57,7 +75,8 @@ type Record = { id: number, name: string, tabs: { number } }
 
 -- Returns a fake WindowCx for the panes in `panes`. Each `pick` and `prompt` request goes into `cx.asked`. A
 -- request keeps its options in `opts` and its `:next` callback in `next`. To answer a request, the test calls
--- `next` with `(result, err, cx)`. Each `cx:run(pane, text)` goes into `cx.typed`.
+-- `next` with `(result, err, cx)`. Each `cx:run(pane, text)` goes into `cx.typed`. `cx.settings:get(key)` returns
+-- `opts.settings[key]`, else nil.
 --
 -- The fake window keeps its state over `panes`, which holds the panes and their tabs:
 -- - `cx.records`: the sessions from `opts.sessions` (default one session `{ id = 1, name = "main" }`), each with its
@@ -74,6 +93,7 @@ type Record = { id: number, name: string, tabs: { number } }
 function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 	local asked: { any } = {}
 	local options: CxOptions = opts or {}
+	local settings: { [string]: any } = options.settings or {}
 	local records: { Record } = {}
 	local given: { SessionRecord } = options.sessions or { { id = 1, name = "main" } }
 	for _, s in given do
@@ -222,6 +242,11 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		effects = {},
 		on_effect = nil,
 		fail = options.fail or {},
+		settings = {
+			get = function(_self: any, key: string): any
+				return settings[key]
+			end,
+		},
 		session = {
 			panes = function(_self: any): { Pane }
 				return panes
@@ -465,16 +490,26 @@ function Stub.item(request: any, id: string): any
 	error("no item " .. id, 0)
 end
 
-local function answer(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
-	local matching: { Run } = {}
-	for i = #self.runs, 1, -1 do
-		if self.runs[i].argv[2] == verb then
-			table.insert(matching, 1, table.remove(self.runs, i) :: Run)
-		end
-	end
-	for _, run in matching do
-		run.cb({ stdout = stdout, stderr = "", status = status or 0 }, cx)
-	end
+-- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
+-- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
+function Stub.fixture(name: string, vars: { [string]: string }): string
+	local text = fs.readFile("test/fixtures/contract/" .. name .. ".json")
+	return (
+		string.gsub(text, "{{([%w_]+)}}", function(key: string): string
+			local value = vars[key]
+			if value == nil then
+				error(name .. ".json: no value for {{" .. key .. "}}", 0)
+			end
+			return value
+		end)
+	)
+end
+
+-- The `resolve` answer of the CLI for /r/app.
+Stub.RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
+
+local function respond(self: Run, stdout: string, status: number?, cx: any?)
+	self.cb({ stdout = stdout, stderr = "", status = status or 0 }, cx)
 end
 
 -- Loads and runs `opts.file` (default `window.luau`) in a new environment with a fake `tern`. Returns the
@@ -495,7 +530,48 @@ function Stub.load(opts: Options): Harness
 		timers = {},
 		refreshes = 0,
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
-			answer(self, verb, stdout, status, cx or defaultCx or lastCx)
+			local given = cx or defaultCx or lastCx
+			for _, run in self:take(verb) do
+				run:answer(stdout, status, given)
+			end
+		end,
+		-- Removes the runs of `verb` that are pending and returns them, in the order they started.
+		take = function(self: Harness, verb: string): { Run }
+			local taken: { Run } = {}
+			for i = #self.runs, 1, -1 do
+				if self.runs[i].argv[2] == verb then
+					table.insert(taken, 1, table.remove(self.runs, i) :: Run)
+				end
+			end
+			return taken
+		end,
+		-- Runs the new-worktree hotkey over `cx` and answers its `resolve` with `resolved` (default `Stub.RESOLVED`).
+		press = function(self: Harness, cx: any, resolved: string?)
+			self.commands.new.run(cx)
+			self:answer("resolve", resolved or Stub.RESOLVED, 0, cx)
+		end,
+		-- Presses the hotkey and answers `branches` with `branches`. Raises an error unless one new pick opened, and
+		-- returns it.
+		open_branch_picker = function(self: Harness, cx: any, branches: string, resolved: string?): any
+			local before = #cx.asked
+			self:press(cx, resolved)
+			self:answer("branches", branches, 0, cx)
+			local picker = cx.asked[#cx.asked]
+			assert(#cx.asked == before + 1 and picker.kind == "pick", "no new branch picker")
+			return picker
+		end,
+		-- Opens the branch picker and picks the item `id`. Raises an error unless one more `create` is pending.
+		pick_branch = function(self: Harness, cx: any, id: string, branches: string, resolved: string?)
+			local picker = self:open_branch_picker(cx, branches, resolved)
+			local creates = #self:pending("create")
+			picker.next(Stub.item(picker, id), nil, cx)
+			assert(#self:pending("create") == creates + 1, "no create after the pick of " .. id)
+		end,
+		-- Answers `create` with `answer` and status 0, then the `resolve` after it with `resolved` (default
+		-- `Stub.RESOLVED`).
+		created = function(self: Harness, cx: any, answer: string, resolved: string?)
+			self:answer("create", answer, 0, cx)
+			self:answer("resolve", resolved or Stub.RESOLVED, 0, cx)
 		end,
 		-- Moves the fake clock forward by `ms`. Each timer that becomes due in that interval fires at its own due time,
 		-- earliest first. This includes a timer that a callback sets during the tick.
@@ -602,7 +678,7 @@ function Stub.load(opts: Options): Harness
 		},
 		process = {
 			run = function(argv: { string }, _opts: any, cb: (result: any, cx: any) -> ())
-				table.insert(loaded.runs, { argv = argv, cb = cb })
+				table.insert(loaded.runs, { argv = argv, cb = cb, answer = respond })
 			end,
 		},
 		json = {
@@ -647,19 +723,29 @@ function Stub.load(opts: Options): Harness
 	return loaded
 end
 
--- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
--- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
-function Stub.fixture(name: string, vars: { [string]: string }): string
-	local text = fs.readFile("test/fixtures/contract/" .. name .. ".json")
-	return (
-		string.gsub(text, "{{([%w_]+)}}", function(key: string): string
-			local value = vars[key]
-			if value == nil then
-				error(name .. ".json: no value for {{" .. key .. "}}", 0)
-			end
-			return value
-		end)
-	)
+-- A window with pane 1 in tab 1 at /r/app, then `opts.extra`, with pane 1 focused. The effects of `opts.fail` fail, and
+-- `cx.settings` holds `opts.settings`. Loads the window half with HOME /home/u over that cx. Returns the harness, the
+-- cx and its panes.
+function Stub.window(opts: WindowOptions?): (Harness, any, { Pane })
+	local options: WindowOptions = opts or {}
+	local panes: { Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
+	local extra: { Pane } = options.extra or {}
+	for _, p in extra do
+		table.insert(panes, p)
+	end
+	local cx = Stub.cx(panes, 1, { fail = options.fail, settings = options.settings })
+	return Stub.load({ env = { HOME = "/home/u" }, cx = cx }), cx, panes
+end
+
+-- The toasts of `cx` whose title starts with "Setup not run".
+function Stub.setup_toasts(cx: any): { any }
+	local found: { any } = {}
+	for _, t in cx.toasts do
+		if string.sub(t.title, 1, #"Setup not run") == "Setup not run" then
+			table.insert(found, t)
+		end
+	end
+	return found
 end
 
 -- Returns the fixture `name` as JSON text. It fills in `vars` the same way `Stub.fixture` does. Then it sets each

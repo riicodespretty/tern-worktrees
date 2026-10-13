@@ -6,7 +6,6 @@ local test, eq = runner.test, runner.eq
 
 local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
-local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
 local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
 -- A `branches` answer with the main checkout and a worktree of y that is not in the worktree root.
@@ -29,11 +28,7 @@ end
 local function open_branch_picker(answer: string?): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = REPO } }, 1)
 	local plugin = Stub.load({ env = ENV })
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
-	plugin:answer("branches", answer or BRANCHES, 0, cx)
-	eq(#cx.asked, 1, "pickers and prompts opened")
-	eq(cx.asked[1].kind, "pick", "request kind")
+	plugin:open_branch_picker(cx, answer or BRANCHES)
 	return plugin, cx
 end
 

@@ -35,15 +35,8 @@ local function carly_create(plugin: Stub.Harness, cx: any, branch: string?): { a
 	local name = branch or "x"
 	local call = Stub.call()
 	plugin.exports.create("/r/app", name, nil, cx, call)
-	plugin:answer("create", created(name), 0, cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
+	plugin:created(cx, created(name), RESOLVED)
 	return call.replies
-end
-
--- Runs the hotkey over `cx` and answers its `resolve`, so that the plugin reads the session of each repository.
-local function press_hotkey(plugin: Stub.Harness, cx: any)
-	plugin.commands.new.run(cx)
-	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
 local function effects(cx: any): string
@@ -87,10 +80,8 @@ end
 
 local function setup_toast_titles(cx: any): string
 	local titles: { string } = {}
-	for _, t in cx.toasts do
-		if string.sub(t.title, 1, #"Setup not run") == "Setup not run" then
-			table.insert(titles, t.title)
-		end
+	for _, t in Stub.setup_toasts(cx) do
+		table.insert(titles, t.title)
 	end
 	return table.concat(titles, "; ")
 end
@@ -162,12 +153,11 @@ test(
 
 -- A window with pane 1 of /r/app in tab 1 and the worktree x in parked pane 3 only.
 local function parked_window(fail: Stub.Fail?): (Stub.Harness, any)
-	local cx = Stub.cx(
-		{ { pane = 1, tab = 1, cwd = "/r/app" }, { pane = 3, cwd = worktree("x"), parked = true, at_prompt = true } },
-		1,
-		{ fail = fail }
-	)
-	return Stub.load({ env = ENV, cx = cx }), cx
+	local plugin, cx = Stub.window({
+		extra = { { pane = 3, cwd = worktree("x"), parked = true, at_prompt = true } },
+		fail = fail,
+	})
+	return plugin, cx
 end
 
 test("a parked pane of the worktree moves into a new tab of the repository session", function()
@@ -212,7 +202,7 @@ local function tabless_session(): (Stub.Harness, any)
 		sessions = { { id = 1, name = "other", tabs = { 1 } }, { id = 2, name = "app", tabs = { 2 } } },
 	})
 	local plugin = Stub.load({ env = ENV, cx = cx })
-	press_hotkey(plugin, cx)
+	plugin:press(cx, RESOLVED)
 	cx.layout:park(2)
 	table.clear(cx.effects)
 	return plugin, cx
@@ -229,7 +219,7 @@ end)
 
 test("a session with no tab keeps its repository over a second resolve", function()
 	local plugin, cx = tabless_session()
-	press_hotkey(plugin, cx)
+	plugin:press(cx, RESOLVED)
 	carly_create(plugin, cx)
 	eq(effects(cx), "switch 2; new_tab → tab 3, pane 4; unpark 3 → tab 3; close 4; name_tab 3 x", "effects")
 end)
@@ -239,7 +229,7 @@ test("a closed session drops its repository, and the worktree gets a new session
 	table.remove(cx.records, 2)
 	table.remove(cx.session:panes(), 3)
 	table.remove(cx.session:panes(), 2)
-	press_hotkey(plugin, cx)
+	plugin:press(cx, RESOLVED)
 	carly_create(plugin, cx)
 	eq(effects(cx), "create_session 2 app → tab 2, pane 2; name_tab 2 x", "effects")
 end)
