@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig, setupCommands } from '../src/config.ts';
 import { CliError } from '../src/proc.ts';
 import { useSandbox } from './helpers.ts';
 
@@ -115,6 +115,23 @@ describe('config', () => {
     ])('rejects %s', (text, reason) => {
       write(text);
       expect(thrown()).toMatchObject({ code: 'config_invalid', message: `${file}: ${reason}` });
+    });
+  });
+
+  describe(setupCommands, () => {
+    it('matches the name with owner with uppercase and lowercase letters the same', () => {
+      write('{"setup":{"Virtusize/Aoyama":["npm ci","npm test"]}}');
+      expect(setupCommands(loadConfig(), { name: 'aoyama', owner: 'VIRTUSIZE' })).toStrictEqual(['npm ci', 'npm test']);
+    });
+
+    it('gives an empty list for a repository without setup commands', () => {
+      write('{"setup":{"Virtusize/Aoyama":["npm ci","npm test"]}}');
+      expect(setupCommands(loadConfig(), { name: 'repo', owner: 'other' })).toStrictEqual([]);
+    });
+
+    it('gives an empty list for an empty command list', () => {
+      write('{"setup":{"me/empty":[]}}');
+      expect(setupCommands(loadConfig(), { name: 'empty', owner: 'me' })).toStrictEqual([]);
     });
   });
 });

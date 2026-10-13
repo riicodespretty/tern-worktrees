@@ -3,7 +3,8 @@ import path from 'node:path';
 import { isJsonObject, isString } from './json.ts';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
-import { parseRepoRef } from './repo-ref.ts';
+import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
+import type { GithubRepoRef } from './repo-ref.ts';
 
 /** What closing a worktree tab removes: the worktree only, the worktree and its branch when merged, or the worktree and its branch. */
 export type Teardown = 'worktree' | 'worktree+merged-branch' | 'worktree+branch';
@@ -141,3 +142,6 @@ export const loadConfig = (): Config => {
     teardown: readTeardown(raw, fail),
   };
 };
+
+/** The setup commands that `config` lists for `repoRef`, with uppercase and lowercase letters the same. Gives an empty list when `config` lists no commands for `repoRef`. */
+export const setupCommands = (config: Config, repoRef: GithubRepoRef): string[] => config.setup[nameWithOwner(repoRef).toLowerCase()] ?? [];

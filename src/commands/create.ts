@@ -2,7 +2,7 @@ import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { loadConfig } from '../config.ts';
+import { loadConfig, setupCommands } from '../config.ts';
 import { fetchOrigin, gitMust, gitRun, gitSucceeds, requireRepoRoot, updateSubmodules, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
 import { defaultBranch, ghMust, ghMustWith, readOrigin } from '../github.ts';
@@ -436,7 +436,7 @@ const tryOpenTab = async (ctx: Context, placed: Placed): Promise<CreatedTab | nu
 /** The setup commands of the repository as one line, with ` && ` between them. Null unless the worktree is new and the options file lists commands for the name with owner of its GitHub origin. */
 const setupLine = (ctx: Context, status: CreateStatus): string | null => {
   const repoRef = status === 'created' ? ctx.origin.github : null;
-  const commands = repoRef === null ? [] : (loadConfig().setup[nameWithOwner(repoRef).toLowerCase()] ?? []);
+  const commands = repoRef === null ? [] : setupCommands(loadConfig(), repoRef);
   return commands.length === 0 ? null : commands.join(' && ');
 };
 
