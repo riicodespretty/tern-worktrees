@@ -28,33 +28,58 @@ export const gitSucceeds = async (dir: string, ...args: string[]): Promise<boole
 /** Tells if `commit` is an ancestor of `of` in the repository at `dir`, or the same commit. */
 export const isAncestor = async (dir: string, commit: string, of: string): Promise<boolean> => await gitSucceeds(dir, 'merge-base', '--is-ancestor', commit, of);
 
+const mainCheckoutOf = (commonDir: string): string | null => (commonDir.endsWith('/.git') ? path.dirname(commonDir) : null);
+
+const notARepo = (dir: string): CliError => new CliError('not_a_repo', `${dir} is not in a git repository`);
+
+const commonDirArgs = ['rev-parse', '--path-format=absolute', '--git-common-dir'];
+
 /** The main checkout of the repository that holds `dir`, or null when `dir` is not in a repository with a checkout. */
 export const repoRoot = async (dir: string): Promise<string | null> => {
-  const result = await gitRun(dir, 'rev-parse', '--path-format=absolute', '--git-common-dir');
-  const commonDir = result.stdout.trim();
-  if (!commonDir.endsWith('/.git')) {
-    return null;
-  }
-  return path.dirname(commonDir);
+  const result = await gitRun(dir, ...commonDirArgs);
+  return mainCheckoutOf(result.stdout.trim());
 };
 
 /** Like {@link repoRoot}, but throws `not_a_repo` when `dir` is not in a repository with a checkout. */
 export const requireRepoRoot = async (dir: string): Promise<string> => {
   const root = await repoRoot(dir);
   if (root === null) {
-    throw new CliError('not_a_repo', `${dir} is not in a git repository`);
+    throw notARepo(dir);
   }
   return root;
 };
 
-/** The main checkout of the repository when `dir` is the top directory of one of its linked worktrees, else null. */
-export const linkedWorktreeRoot = async (dir: string): Promise<string | null> => {
-  const [root, topLevel] = await Promise.all([repoRoot(dir), gitRun(dir, 'rev-parse', '--show-toplevel')]);
+/** Where a directory is in its repository: the top directory of the main checkout, the top directory of a linked worktree, or a different directory in the repository. */
+export type CheckoutRole = 'main' | 'linked' | 'inside';
+
+/** A directory in a repository with a checkout: `root` is the main checkout, as git reports it. */
+export interface Checkout {
+  root: string;
+  role: CheckoutRole;
+}
+
+/** The checkout at `dir`, or null when `dir` is not in a repository with a checkout. It compares real paths. */
+export const checkoutAt = async (dir: string): Promise<Checkout | null> => {
+  const result = await gitRun(dir, ...commonDirArgs, '--show-toplevel');
+  const [commonDir, topLevel] = result.stdout.split('\n');
+  const root = mainCheckoutOf(commonDir);
   if (root === null) {
     return null;
   }
   const realDir = realpathSync(dir);
-  return topLevel.stdout.trim() === realDir && root !== realDir ? root : null;
+  if (topLevel !== realDir) {
+    return { role: 'inside', root };
+  }
+  return { role: root === realDir ? 'main' : 'linked', root };
+};
+
+/** Like {@link checkoutAt}, but throws `not_a_repo` when `dir` is not in a repository with a checkout. */
+export const requireCheckoutAt = async (dir: string): Promise<Checkout> => {
+  const checkout = await checkoutAt(dir);
+  if (checkout === null) {
+    throw notARepo(dir);
+  }
+  return checkout;
 };
 
 /** The branch checked out at `dir`, or null when `dir` has a detached `HEAD`. A tag of the same name does not change it. */
@@ -63,9 +88,6 @@ export const currentBranch = async (dir: string): Promise<string | null> => {
   const ref = result.stdout.trim();
   return ref === '' ? null : ref.slice('refs/heads/'.length);
 };
-
-/** Tells if `dir`, which must be on disk, is the top directory of a checkout and not a subdirectory of one. It compares real paths, because git reports real paths. */
-export const isCheckoutTop = async (dir: string): Promise<boolean> => (await repoRoot(dir)) === realpathSync(dir);
 
 /**
  * Fetches `origin` in the repository at `root`. When `prune` is true, it also removes the tracking branches of the branches that `origin` deleted.

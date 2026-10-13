@@ -33,6 +33,7 @@ describe('list command', () => {
     const dirty = await addWorktree(other, 'feature-y', '-b', 'feature/y');
     writeFileSync(path.join(dirty, 'junk.txt'), 'x\n');
     mkdirSync(path.join(worktreeRootDir(), 'aoyama', 'plain'));
+    mkdirSync(path.join(worktreeRootDir(), 'aoyama', 'broken', '.git'), { recursive: true });
     mkdirSync(path.join(clean, 'src'));
     writeFileSync(path.join(worktreeRootDir(), 'aoyama', 'note.txt'), 'x\n');
     symlinkSync(clean, path.join(worktreeRootDir(), 'aoyama', 'link'));

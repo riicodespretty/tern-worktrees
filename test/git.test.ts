@@ -1,7 +1,21 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import { changedFileCount, dirtyFiles, fetchOrigin, gitMust, gitRun, gitSucceeds, isAncestor, repoRoot, requireRepoRoot, updateSubmodules, worktrees } from '../src/git.ts';
+import {
+  changedFileCount,
+  checkoutAt,
+  dirtyFiles,
+  fetchOrigin,
+  gitMust,
+  gitRun,
+  gitSucceeds,
+  isAncestor,
+  repoRoot,
+  requireCheckoutAt,
+  requireRepoRoot,
+  updateSubmodules,
+  worktrees,
+} from '../src/git.ts';
 import { git, gitShim, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
@@ -90,6 +104,49 @@ describe('git helpers', () => {
     it('throws not_a_repo outside a repo', async () => {
       const plain = tempDir('plain');
       await expect(requireRepoRoot(plain)).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
+    });
+  });
+
+  describe(checkoutAt, () => {
+    it('gives main at the top of the main checkout and inside in its subdirectory and its .git', async () => {
+      const repo = await tmpRepo();
+      mkdirSync(path.join(repo.dir, 'sub'));
+      await expect(Promise.all([checkoutAt(repo.dir), checkoutAt(path.join(repo.dir, 'sub')), checkoutAt(path.join(repo.dir, '.git'))])).resolves.toStrictEqual([
+        { role: 'main', root: repo.dir },
+        { role: 'inside', root: repo.dir },
+        { role: 'inside', root: repo.dir },
+      ]);
+    });
+
+    it('gives linked at the top of a linked worktree and through a symlink to it, and inside in its subdirectory', async () => {
+      const repo = await tmpRepo();
+      const linked = path.join(tempDir('wt'), 'linked');
+      await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'side', linked);
+      mkdirSync(path.join(linked, 'sub'));
+      const link = path.join(tempDir('links'), 'link');
+      symlinkSync(linked, link);
+      await expect(Promise.all([checkoutAt(linked), checkoutAt(link), checkoutAt(path.join(linked, 'sub'))])).resolves.toStrictEqual([
+        { role: 'linked', root: repo.dir },
+        { role: 'linked', root: repo.dir },
+        { role: 'inside', root: repo.dir },
+      ]);
+    });
+
+    it('gives null in a bare repository, a plain directory and a missing path', async () => {
+      const repo = await tmpRepo();
+      await expect(Promise.all([checkoutAt(repo.origin), checkoutAt(tempDir('plain')), checkoutAt('/nonexistent/dir')])).resolves.toStrictEqual([null, null, null]);
+    });
+  });
+
+  describe(requireCheckoutAt, () => {
+    it('gives the checkout', async () => {
+      const repo = await tmpRepo();
+      await expect(requireCheckoutAt(repo.dir)).resolves.toStrictEqual({ role: 'main', root: repo.dir });
+    });
+
+    it('throws not_a_repo outside a repo', async () => {
+      const plain = tempDir('plain');
+      await expect(requireCheckoutAt(plain)).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
     });
   });
 

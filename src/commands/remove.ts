@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
-import { currentBranch, fetchOrigin, gitMust, gitRun, isAncestor, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
+import { currentBranch, fetchOrigin, gitMust, gitRun, isAncestor, requireCheckoutAt } from '../git.ts';
 import { defaultBranch, listPullRequests, readOrigin } from '../github.ts';
 import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
@@ -148,11 +148,11 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
   if (!isUnder(target, wtRoot.dir)) {
     throw new CliError('not_managed', `${target} is not under ${wtRoot.dir}`);
   }
-  const root = await linkedWorktreeRoot(target);
-  if (root === null) {
-    const mainCheckout = await requireRepoRoot(target);
-    throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${mainCheckout}`);
+  const checkout = await requireCheckoutAt(target);
+  if (checkout.role !== 'linked') {
+    throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${checkout.root}`);
   }
+  const { root } = checkout;
   const owner = worktreeOwner(wtRoot, root, target);
   if (owner !== 'tern') {
     const layout = path.join(wtRoot.dir, path.basename(root), '<slug>');

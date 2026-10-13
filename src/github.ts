@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.ts';
-import { gitMust, gitRun, isCheckoutTop } from './git.ts';
+import { checkoutAt, gitMust, gitRun } from './git.ts';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
 import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
@@ -111,7 +111,8 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
   if (!existsSync(root)) {
     return { root, state: null };
   }
-  const origin = (await isCheckoutTop(root)) ? await readOrigin(root) : null;
+  const checkout = await checkoutAt(root);
+  const origin = checkout?.role === 'main' ? await readOrigin(root) : null;
   const isClone = origin?.github?.owner === repoRef.owner && origin.github.name === repoRef.name;
   return { root, state: isClone ? 'clone' : 'conflict' };
 };

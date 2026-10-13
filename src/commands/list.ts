@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { changedFileCount, currentBranch, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
+import { changedFileCount, checkoutAt, currentBranch, requireRepoRoot } from '../git.ts';
 import { worktreeOwner, worktreeRoot } from '../paths.ts';
 import type { WorktreeRoot } from '../paths.ts';
 
@@ -47,10 +47,11 @@ const walk = (dir: string): string[] => (existsSync(path.join(dir, '.git')) ? [d
  * the worktree stays in the list with the count that does not include the submodules, and gets a warning.
  */
 const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Promise<Found | null> => {
-  const repo = await linkedWorktreeRoot(dir);
-  if (repo === null) {
+  const checkout = await checkoutAt(dir);
+  if (checkout?.role !== 'linked') {
     return null;
   }
+  const repo = checkout.root;
   const owner = worktreeOwner(root, repo, dir);
   if (owner === null || (owner === 'omp' && !all)) {
     return null;
