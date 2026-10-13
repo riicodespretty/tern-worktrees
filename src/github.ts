@@ -110,8 +110,8 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
   }
   const checkout = await checkoutAt(root);
   const origin = checkout?.role === 'main' ? await readOrigin(root) : null;
-  const originRef = origin?.github ?? null;
-  const isClone = originRef !== null && repoKey(originRef) === repoKey(repoRef);
+  const originRef = origin?.github;
+  const isClone = originRef ? repoKey(originRef) === repoKey(repoRef) : false;
   return { root, state: isClone ? 'clone' : 'conflict' };
 };
 
