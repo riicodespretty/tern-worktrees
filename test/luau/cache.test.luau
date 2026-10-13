@@ -42,7 +42,7 @@ local function item_ids(request: any): string
 end
 
 -- The toasts of the branch picker cache so far, the ones with "branch" in the title, each as its level and title,
--- joined by "; ". A create also shows its own toast.
+-- joined by "; ".
 local function toast_lines(cx: any): string
 	local lines: { string } = {}
 	for _, t in cx.toasts do

@@ -1,8 +1,7 @@
 --!strict
 
 -- Gives the worktree variables to a shell that starts in a worktree of the worktree index. The window half writes
--- the index from `tern-wt list --all`. This filter only reads the index from kv, because a spawn filter has only
--- 50 ms and runs no process.
+-- the index from `tern-wt list --all`. This filter only reads the index from kv.
 
 local INDEX_KEY = "worktreeIndex"
 
@@ -33,7 +32,7 @@ local function with_variables(spec: SpawnSpec): SpawnSpec?
 	if type(entry.main) ~= "string" then
 		return nil
 	end
-	-- Tern gives `spec` as read-only tables, and `table.clone` refuses them. Thus copy them field by field.
+	-- NOTE: Tern gives `spec.args` and `spec.env` as read-only tables, which `table.clone` refuses.
 	local env: { [string]: string } = {}
 	for name, value in spec.env do
 		env[name] = value

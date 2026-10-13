@@ -136,7 +136,7 @@ export const ompRootDir = (base: string | null, from: OmpDirsEnv): string =>
 /**
  * Resolves the worktree root: `$TERN_WT_HOME/worktrees` when `TERN_WT_HOME` is set, else the omp worktree root when omp is installed,
  * else `~/.tern-wt/worktrees`. It reads the omp settings in `/`, so the config of a project does not change the root.
- * Throws `omp_failed` when omp is installed but `omp config list --json` fails or prints no JSON object, since the root is then unknown.
+ * Throws `omp_failed` when omp is installed but `omp config list --json` fails or prints no JSON object.
  */
 export const worktreeRoot = async (): Promise<WorktreeRoot> => {
   const ternHome = envVar('TERN_WT_HOME');

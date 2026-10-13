@@ -65,10 +65,7 @@ const waitForBlock = async (dir: string): Promise<void> => {
   await waitFor(async () => blocksUnder(await ls(), dir).length > 0, `no block under ${dir}`);
 };
 
-/**
- * The clone gets a GitHub origin URL, so the options file gives it setup commands. `GIT_ALLOW_PROTOCOL` makes the fetch of that URL fail immediately.
- * Then `create` uses the `origin/feature/x` that the clone has. `remove` runs with the bare origin again, so it runs no `gh`.
- */
+/** Runs `create` two times, `list` and `remove` on `feature/x` of a clone with setup commands. */
 const smoke = async (): Promise<void> => {
   const repo = await makeClone();
   const clone = repo.dir;

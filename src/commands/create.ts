@@ -215,7 +215,7 @@ const addSpec = async (ctx: Context, target: Target): Promise<AddSpec> => {
 const addArgs = (spec: AddSpec): string[] => [...(spec.detach ? ['--detach'] : []), ...(spec.newBranch === null ? [] : ['-b', spec.newBranch])];
 
 /**
- * Adds the worktree with `omp worktree add` when `ctx.clone` is the omp binary, else with `git worktree add`. omp sets no upstream, so in clone mode
+ * Adds the worktree with `omp worktree add` when `ctx.clone` is the omp binary, else with `git worktree add`. In clone mode,
  * `git branch` makes a new branch first: it sets the same upstream as `git worktree add -b`, and omp then checks out that branch.
  */
 const addWith = async (ctx: Context, target: Target, spec: AddSpec): Promise<void> => {
@@ -326,8 +326,7 @@ const updateWorktreeSubmodules = async (ctx: Context, dir: string): Promise<void
 
 /**
  * Adds the worktree of `target` again after `moveOrClear` removed it, updates its submodules, then copies the carried files into it. Gives the carried files.
- * It adds the worktree again with plain git, because clone mode does not apply to a rebuild. The branch of `target` is not new, so it passes
- * `isNew: false`.
+ * It adds the worktree again with plain git. It passes `isNew: false`.
  */
 const rebuild = async (ctx: Context, target: Target, cleared: Cleared): Promise<string[]> =>
   await afterStaging(cleared.carry, async () => {

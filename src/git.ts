@@ -155,7 +155,7 @@ export const changedFileCount = async (dir: string): Promise<ChangedCount> => {
   return { count: outer.status === 0 ? lines(outer.stdout).length : 0, error: full.stderr.trim() };
 };
 
-/** The submodule paths in the `.gitmodules` file of the folder `base`, relative to `base`. Git runs in `top`, because git fails in a folder with a broken `.git` file. */
+/** The submodule paths in the `.gitmodules` file of the folder `base`, relative to `base`. Git runs in `top`. */
 const gitmodulesPaths = async (top: string, base: string): Promise<string[]> => {
   const result = await gitRun(top, 'config', '-z', '-f', path.join(base, '.gitmodules'), '--get-regexp', String.raw`^submodule\..*\.path$`);
   return result.stdout
@@ -184,12 +184,9 @@ const brokenGitfilesUnder = async (top: string, base: string): Promise<string[]>
 const brokenSubmoduleGitfiles = async (dir: string): Promise<string[]> => await brokenGitfilesUnder(dir, dir);
 
 /**
- * Makes the submodules of the worktree at `dir` usable again after omp cloned the main checkout into it. The clone copies the `.git` file
- * of each submodule. The relative path in that file then points through the `.git` file of the worktree, so git fails in the submodule. This
- * copies the submodule git directories of the main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the
- * file system can. Then it removes each broken `.git` file. `git submodule update` then connects each submodule to its copy and checks out the
- * recorded commit. The cloned files stay, and so does the ignored build output. Git fetches no submodule again. When the copy fails, the
- * `.git` files stay and a `submodule repair failed:` warning tells why.
+ * Repairs the submodule `.git` files that omp clone mode copied into the worktree at `dir`. This copies the submodule git directories of the
+ * main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the file system can. Then it removes each broken
+ * `.git` file. When the copy fails, the `.git` files stay and a `submodule repair failed:` warning tells why.
  */
 const repairClonedSubmodules = async (root: string, dir: string): Promise<string[]> => {
   const broken = await brokenSubmoduleGitfiles(dir);

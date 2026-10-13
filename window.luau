@@ -200,7 +200,7 @@ local function write_index(nextIndex: { [string]: IndexEntry? })
 	end
 end
 
--- Sets or deletes one entry. Other windows write the same kv key, so this reads kv again and changes only `path`.
+-- Sets or deletes one entry. It reads kv again and changes only `path`.
 local function set_entry(path: string, entry: IndexEntry?)
 	local merged = table.clone(stored_index(worktreeIndex))
 	merged[path] = entry
@@ -980,8 +980,7 @@ end
 
 -- The CLI made, reused or relocated the worktree of `res`, or gave the main checkout. Writes the entry of a worktree in
 -- the worktree index, resolves the sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then
--- starts to type its setup line. The index holds only worktrees in the worktree root, so the main checkout gets no
--- entry.
+-- starts to type its setup line. The main checkout gets no entry.
 -- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
 -- setup step ends, or at once when the tab step raises; `res.setup.typed` and `res.warnings` then hold the outcome.
 -- A tab step that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
@@ -1758,7 +1757,6 @@ local function confirm_teardown(cx: WindowCx, tab: number?, paths: { string }, i
 	end
 	local placeholderPrefix = if tab ~= nil then "Closing worktree tab · " else "Worktree tab closed · "
 	local keepDetail = if tab ~= nil then "closes the tab, keeps the worktree" else "keeps the worktree"
-	-- `choose` already toasts a pick error. A pick error counts as Keep, so the tab closes even when the picker fails.
 	choose(cx, {
 		placeholder = placeholderPrefix .. short_path(path),
 		icon = "branch",
@@ -1811,8 +1809,7 @@ tern.command({
 })
 
 -- The worktree segment shows the branch and the number of changed files of the worktree of the focused pane. It
--- reads only the worktree index. Tern disables a formatter that takes more than 4 ms, and `tern.chrome.refresh`
--- raises an error when a formatter calls it.
+-- reads only the worktree index.
 tern.chrome.status(function(pane: StatusPaneInfo): { StatusSegment }?
 	local _, entry = index_lookup(pane.cwd)
 	if entry == nil then
@@ -1851,7 +1848,7 @@ tern.override("close_pane", function(cx: WindowCx): boolean?
 	return false
 end)
 
--- Tern has no install hook, so each load of the window half runs `tern-wt setup`: a window start, a reload, and an
+-- Each load of the window half runs `tern-wt setup`: a window start, a reload, and an
 -- install into an open window. A timer starts it after the load. It links `tern-wt` and the skill to the copy of the
 -- plugin that Tern loaded, and tells the user only when a link changed or setup failed.
 local function link_cli_and_skill()

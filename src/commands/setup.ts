@@ -83,7 +83,7 @@ const makeLink = (link: SetupLink): SetupLink => {
   }
 };
 
-/** Checks the link again, because a second `setup` can change it after the plan, then makes or replaces it. */
+/** Checks the link again, then makes or replaces it. */
 const applyLink = (planned: PlannedLink): SetupLink => {
   const link: SetupLink = { ...planned, action: linkAction(planned.path, planned.target) };
   if (link.action === 'kept') {

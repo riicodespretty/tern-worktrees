@@ -1,5 +1,5 @@
 --!strict
--- A fake `tern` and a fake WindowCx, so that lune can run a plugin file.
+-- A fake `tern` and a fake WindowCx for lune.
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")
@@ -286,7 +286,7 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 			end,
 		},
 		layout = {
-			-- Focuses `pane`. It does not switch the session [unverified]. With `fail.focus`, the focus stays.
+			-- Focuses `pane`. It does not switch the session. With `fail.focus`, the focus stays.
 			focus = function(_self: any, pane: number)
 				if cx.fail.focus then
 					effect(`focus {pane} failed`)
@@ -316,8 +316,8 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 				effect(`new_tab → tab {tab}, pane {pane}`)
 				return pane
 			end,
-			-- Deals the parked `pane` into the tab of the focused pane, which must be a tab of the current session
-			-- [unverified], and focuses it.
+			-- Deals the parked `pane` into the tab of the focused pane, which must be a tab of the current session, and
+			-- focuses it.
 			unpark = function(_self: any, pane: number): (boolean, string?)
 				local p = find(pane)
 				local target = if cx.focused ~= nil then find(cx.focused) else nil
@@ -337,7 +337,7 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 				effect(`unpark {pane} → tab {tab}`)
 				return true, nil
 			end,
-			-- Moves the pane, which must not be parked [unverified], to a new last tab of `session`, else of its own
+			-- Moves the pane, which must not be parked, to a new last tab of `session`, else of its own
 			-- session.
 			move_to_new_tab = function(_self: any, pane: number, session: number?): (number?, string?)
 				local p = find(pane)
@@ -377,7 +377,7 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		},
 		sessions = {
 			-- Makes `id` the current session. When the focused pane is not in it, the focus goes to the first pane of
-			-- its first tab [unverified].
+			-- its first tab.
 			switch = function(_self: any, id: number)
 				assert(record_by_id(id) ~= nil, `no session {id}`)
 				cx.current = id
@@ -417,9 +417,9 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		table.insert(self.toasts, { level = level, title = title, detail = detail })
 	end
 
-	-- Runs the Tern command `id`. The fake supports only `close_tab`. It closes the tab of the focused pane. Then it
-	-- fires the `tab_closed` handler of `cx.plugin` before it returns [unverified]. When a plugin runs `close_tab` as a
-	-- command, Tern does not call the `close_tab` override again. The fake also does not call it.
+	-- Runs the Tern command `id`. The fake supports only `close_tab`. It closes the tab of the focused pane, gives the
+	-- focus to the first pane of the first tab of the current session, then fires the `tab_closed` handler of
+	-- `cx.plugin`. It does not call the `close_tab` override.
 	function cx.command(_self: any, id: string)
 		assert(id == "close_tab", `fake cx: no command {id}`)
 		local tab = cx.session:tab_of(cx.focused)
@@ -429,8 +429,6 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 				table.remove(panes, i)
 			end
 		end
-		-- The focus goes to the first pane of the first tab of the current session [unverified], as `sessions.switch`
-		-- does.
 		cx.focused = nil
 		local first = tabs_of(cx.current)[1]
 		for _, q in panes do
@@ -657,7 +655,7 @@ function Stub.load(opts: Options): Harness
 			get = function(key: string): any
 				return loaded.kv[key]
 			end,
-			-- Stores a JSON copy, as Tern's kv.json does, so windows that share `kv` never share a table.
+			-- Stores a JSON copy, as Tern's kv.json does.
 			set = function(key: string, value: any)
 				loaded.kv[key] = if value == nil then nil else serde.decode("json", serde.encode("json", value))
 			end,

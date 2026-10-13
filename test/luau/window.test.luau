@@ -323,8 +323,7 @@ test("a create answer with owner tern makes a worktree tab, and owner omp does n
 end)
 
 -- Picks `main` in the branch picker of a window with pane 1 in `cwd`, a dir of /r/app, then answers the `create` with
--- the main checkout of /r/app and the `resolve` after it. /r/app exists on disk, so a close of its tab would ask when
--- the window took it for a worktree.
+-- the main checkout of /r/app and the `resolve` after it.
 local function create_main_checkout(cwd: string): (Stub.Harness, any)
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = cwd } }, 1)
 	local plugin = Stub.load({ env = ENV, files = { ["/r/app/.git"] = "" }, kv = { worktreeRoot = ROOT } })
@@ -340,8 +339,7 @@ local function last_toast(cx: any): string
 	return `{t.level} {t.title} · {t.detail}`
 end
 
--- Closes `tab`, with one pane left in /tmp, and checks that the close runs no `config` and opens no picker. A close
--- that asks runs `config` first.
+-- Closes `tab`, with one pane left in /tmp, and checks that the close runs no `config` and opens no picker.
 local function expect_no_close_picker(plugin: Stub.Harness, tab: number)
 	local after = Stub.cx({ { pane = 3, tab = 3, cwd = "/tmp" } }, 3)
 	local configs = #plugin:pending("config")
@@ -597,7 +595,7 @@ for _, lost in { "fails", "is dropped" } do
 		})
 		plugin.handlers.window_start(cx)
 		if lost == "fails" then
-			plugin.handlers.focus({ pane = 1 }, cx) -- sets listAgain
+			plugin.handlers.focus({ pane = 1 }, cx)
 			plugin:answer("list", '{"error":{"code":"cli_failed","message":"x"}}', 1, cx)
 			plugin:tick(2000)
 		else
