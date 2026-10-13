@@ -52,9 +52,9 @@ export const requireRepoRoot = async (dir: string): Promise<string> => {
 /** The position of a directory in its repository. `main` is the top directory of the main checkout, `linked` is the top directory of a linked worktree, and `inside` is a different directory in the repository. */
 export type CheckoutRole = 'main' | 'linked' | 'inside';
 
-/** A directory in a repository with a checkout: `root` is the main checkout, as git reports it. */
+/** A directory in a repository with a checkout: `main` is the main checkout, as git reports it. */
 export interface Checkout {
-  root: string;
+  main: string;
   role: CheckoutRole;
 }
 
@@ -62,15 +62,15 @@ export interface Checkout {
 export const checkoutAt = async (dir: string): Promise<Checkout | null> => {
   const result = await gitRun(dir, ...commonDirArgs, '--show-toplevel');
   const [commonDir, topLevel] = result.stdout.split('\n');
-  const root = mainCheckoutOf(commonDir);
-  if (root === null) {
+  const main = mainCheckoutOf(commonDir);
+  if (main === null) {
     return null;
   }
   const realDir = realpathSync(dir);
   if (topLevel !== realDir) {
-    return { role: 'inside', root };
+    return { main, role: 'inside' };
   }
-  return { role: root === realDir ? 'main' : 'linked', root };
+  return { main, role: main === realDir ? 'main' : 'linked' };
 };
 
 /** Like {@link checkoutAt}, but throws `not_a_repo` when `dir` is not in a repository with a checkout. */

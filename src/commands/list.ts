@@ -51,15 +51,14 @@ const readWorktree = async (root: WorktreeRoot, dir: string, all: boolean): Prom
   if (checkout?.role !== 'linked') {
     return null;
   }
-  const mainCheckout = checkout.root;
-  const owner = worktreeOwner(root, mainCheckout, dir);
+  const owner = worktreeOwner(root, checkout.main, dir);
   if (owner === null || (owner === 'omp' && !all)) {
     return null;
   }
   const [branch, changed] = await Promise.all([currentBranch(dir), changedFileCount(dir)]);
   return {
     warning: changed.error === null ? null : `changed files not counted in ${dir}: ${changed.error}`,
-    worktree: { branch, changed: changed.count, dirty: changed.count > 0, owner, path: dir, repo: mainCheckout },
+    worktree: { branch, changed: changed.count, dirty: changed.count > 0, owner, path: dir, repo: checkout.main },
   };
 };
 

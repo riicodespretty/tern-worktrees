@@ -150,19 +150,19 @@ export const run = async (args: string[]): Promise<RemoveResult> => {
   }
   const checkout = await requireCheckoutAt(target);
   if (checkout.role !== 'linked') {
-    throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${checkout.root}`);
+    throw new CliError('not_managed', `${target} is not the top directory of a linked worktree of ${checkout.main}`);
   }
-  const { root } = checkout;
-  const owner = worktreeOwner(wtRoot, root, target);
+  const { main } = checkout;
+  const owner = worktreeOwner(wtRoot, main, target);
   if (owner !== 'tern') {
-    const layout = path.join(wtRoot.dir, path.basename(root), '<slug>');
+    const layout = path.join(wtRoot.dir, path.basename(main), '<slug>');
     throw new CliError('not_managed', owner === 'omp' ? `${target} is an omp-owned worktree, not ${layout}` : `${target} is not ${layout}`);
   }
   const branch = await currentBranch(target);
-  const ctx: Context = { root, target, warnings: [] };
+  const ctx: Context = { root: main, target, warnings: [] };
   const blocks = options['keep-tab'] ? [] : await warnOnCliError(ctx, 'tabs not closed', [], async () => blocksUnder(await ls(), target).map(entry => entry.block.id));
   await removeWorktree(ctx, options.force);
   const closedBlocks = await closeBlocks(ctx, blocks);
   const branchKept = branch === null ? null : await applyPolicy(ctx, teardown, branch);
-  return { branch, branchDeleted: branch !== null && branchKept === null, branchKept, closedBlocks, removed: target, repo: root, warnings: ctx.warnings };
+  return { branch, branchDeleted: branch !== null && branchKept === null, branchKept, closedBlocks, removed: target, repo: main, warnings: ctx.warnings };
 };

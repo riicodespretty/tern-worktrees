@@ -547,8 +547,8 @@ end
 
 local MAX_LISTED_FILES = 10
 
-local function staging_line(err: any): string?
-	if err ~= nil and type(err.staging) == "string" then
+local function staging_line(err: CliError): string?
+	if type(err.staging) == "string" then
 		return "Saved files: " .. err.staging
 	end
 	return nil
@@ -599,7 +599,7 @@ type DirtyListing = { changes: { string }, ignored: { string }, omitted: number 
 
 -- The files of a `dirty_worktree` error `err` that a toast shows: its `changes`, its `hardToRebuild` files as
 -- `ignored`, and how many of them the cap leaves out.
-local function list_dirty_files(err: any): DirtyListing
+local function list_dirty_files(err: CliError): DirtyListing
 	local shown: DirtyListing = { changes = {}, ignored = {}, omitted = 0 }
 	local changes: { string } = {}
 	local ignored: { string } = {}

@@ -1,5 +1,5 @@
 --!strict
--- A fake `tern` and a fake WindowCx. Lune runs the plugin files with them.
+-- A fake `tern` and a fake WindowCx for lune.
 
 local fs = require("@lune/fs")
 local luau = require("@lune/luau")

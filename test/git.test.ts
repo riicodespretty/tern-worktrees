@@ -112,9 +112,9 @@ describe('git helpers', () => {
       const repo = await tmpRepo();
       mkdirSync(path.join(repo.dir, 'sub'));
       await expect(Promise.all([checkoutAt(repo.dir), checkoutAt(path.join(repo.dir, 'sub')), checkoutAt(path.join(repo.dir, '.git'))])).resolves.toStrictEqual([
-        { role: 'main', root: repo.dir },
-        { role: 'inside', root: repo.dir },
-        { role: 'inside', root: repo.dir },
+        { main: repo.dir, role: 'main' },
+        { main: repo.dir, role: 'inside' },
+        { main: repo.dir, role: 'inside' },
       ]);
     });
 
@@ -126,9 +126,9 @@ describe('git helpers', () => {
       const link = path.join(tempDir('links'), 'link');
       symlinkSync(linked, link);
       await expect(Promise.all([checkoutAt(linked), checkoutAt(link), checkoutAt(path.join(linked, 'sub'))])).resolves.toStrictEqual([
-        { role: 'linked', root: repo.dir },
-        { role: 'linked', root: repo.dir },
-        { role: 'inside', root: repo.dir },
+        { main: repo.dir, role: 'linked' },
+        { main: repo.dir, role: 'linked' },
+        { main: repo.dir, role: 'inside' },
       ]);
     });
 
@@ -141,7 +141,7 @@ describe('git helpers', () => {
   describe(requireCheckoutAt, () => {
     it('gives the checkout', async () => {
       const repo = await tmpRepo();
-      await expect(requireCheckoutAt(repo.dir)).resolves.toStrictEqual({ role: 'main', root: repo.dir });
+      await expect(requireCheckoutAt(repo.dir)).resolves.toStrictEqual({ main: repo.dir, role: 'main' });
     });
 
     it('throws not_a_repo outside a repo', async () => {
