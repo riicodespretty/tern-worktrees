@@ -3,14 +3,8 @@ import path from 'node:path';
 import { dirtyFiles, ignoredFiles, submodules, unpushedCommits } from './git.ts';
 import { CliError } from './proc.ts';
 
-/**
- * What a delete of a worktree destroys. `changes` holds the `git status --porcelain` lines, then for each submodule its `<sub>: <line>` and
- * `<sub>: unpushed <commit>` entries. `hardToRebuild` holds the paths of the hard-to-rebuild files, relative to the worktree.
- */
-export interface WorkToLose {
-  changes: string[];
-  hardToRebuild: string[];
-}
+/** The operation that a worktree with work to lose blocks: relocate is `'recreating'`, and teardown is `removing`, which holds the main checkout of the worktree. */
+export type Guarded = 'recreating' | { removing: string };
 
 /** The path segments of the ignored files that a build or an install makes again. An ignored file with none of them in its path is hard to rebuild. */
 export const REBUILDABLE: readonly string[] = ['node_modules', 'dist', 'build', 'coverage', '.DS_Store', '.cache', '.next', '.nuxt', '.output', '.turbo'];
@@ -84,25 +78,16 @@ const hardToRebuildIn = async (dir: string, subs: string[]): Promise<string[]> =
 };
 
 /**
- * The work to lose in the worktree at `dir`, submodules at each depth included. When `copiesOf` is a main checkout, a hard-to-rebuild file
- * with the same bytes at the same relative path there does not count: that is the teardown rule. When it is null, each hard-to-rebuild file counts.
+ * Relocate stops only on changes, and gives each hard-to-rebuild file to carry. Teardown stops on changes, and on each hard-to-rebuild file
+ * that is not the same, byte for byte, as the file at the same path in the main checkout.
  */
-export const findWorkToLose = async (dir: string, copiesOf: string | null): Promise<WorkToLose> => {
+export const guardWorkToLose = async (dir: string, op: Guarded): Promise<string[]> => {
   const subs = await submodules(dir);
-  const [changes, hardToRebuild] = await Promise.all([changesIn(dir, subs), hardToRebuildIn(dir, subs)]);
-  if (copiesOf === null) {
-    return { changes, hardToRebuild };
-  }
-  return { changes, hardToRebuild: hardToRebuild.filter(file => !sameFile(path.join(dir, file), path.join(copiesOf, file))) };
-};
-
-/**
- * Throws `dirty_worktree` when `work` holds a change or a hard-to-rebuild file. `doing` names the step in the message. The `files` field
- * holds the changes, then a `!! <path>` entry for each hard-to-rebuild file.
- */
-export const stopOnWorkToLose = (dir: string, doing: 'removing' | 'recreating', work: WorkToLose): void => {
-  const files = [...work.changes, ...work.hardToRebuild.map(file => `!! ${file}`)];
+  const [changes, found] = await Promise.all([changesIn(dir, subs), hardToRebuildIn(dir, subs)]);
+  const blocking = op === 'recreating' ? [] : found.filter(file => !sameFile(path.join(dir, file), path.join(op.removing, file)));
+  const files = [...changes, ...blocking.map(file => `!! ${file}`)];
   if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${dir} has work that ${doing} it would lose`, { changes: work.changes, existing: dir, files, hardToRebuild: work.hardToRebuild });
+    throw new CliError('dirty_worktree', `${dir} has work that ${op === 'recreating' ? op : 'removing'} it would lose`, { changes, existing: dir, files, hardToRebuild: blocking });
   }
+  return op === 'recreating' ? found : [];
 };

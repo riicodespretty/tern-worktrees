@@ -13,7 +13,7 @@ import type { WorktreeOwner, WorktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { nameWithOwner } from '../repo-ref.ts';
 import { blocksUnder, focus, newSession, newTab, rename, sessionForRepo, typeInto, waitForPrompt } from '../tern.ts';
-import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
+import { guardWorkToLose } from '../work-to-lose.ts';
 
 /** How `create` got the worktree. */
 export type CreateStatus = 'created' | 'relocated' | 'reused';
@@ -314,9 +314,8 @@ const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Pr
   if (moved.status === 0) {
     return null;
   }
-  const work = await findWorkToLose(existing.path, null);
-  stopOnWorkToLose(existing.path, 'recreating', { changes: work.changes, hardToRebuild: [] });
-  const carry: Carry = { files: work.hardToRebuild, staging: mkdtempSync(path.join(tmpdir(), 'tern-wt-carry-')) };
+  const files = await guardWorkToLose(existing.path, 'recreating');
+  const carry: Carry = { files, staging: mkdtempSync(path.join(tmpdir(), 'tern-wt-carry-')) };
   await afterStaging(carry, async () => {
     copyAll(existing.path, carry.staging, carry.files);
     await gitMust(ctx.root, 'worktree', 'remove', '--force', '--force', existing.path);

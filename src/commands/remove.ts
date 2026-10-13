@@ -8,7 +8,7 @@ import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
 import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
 import { blocksUnder, close } from '../tern.ts';
-import { findWorkToLose, stopOnWorkToLose } from '../work-to-lose.ts';
+import { guardWorkToLose } from '../work-to-lose.ts';
 
 /** Why `remove` kept the branch: the teardown policy `worktree`, a branch that is not merged (also when the merge check failed), or a failed `git branch -D`. */
 export type BranchKept = 'not_deleted' | 'not_merged' | 'policy';
@@ -71,7 +71,7 @@ const removeWorktree = async (ctx: Context, force: boolean): Promise<void> => {
     }
     return;
   }
-  stopOnWorkToLose(ctx.target, 'removing', await findWorkToLose(ctx.target, ctx.root));
+  await guardWorkToLose(ctx.target, { removing: ctx.root });
   const removal = await gitRun(ctx.root, '-c', 'status.showUntrackedFiles=all', 'worktree', 'remove', ctx.target);
   if (removal.status === 0) {
     return;
