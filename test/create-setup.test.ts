@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { cliJson, contract, git, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
+import { cliJson, contract, git, logGitCalls, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const LINE = 'npm ci && npm test';
@@ -130,6 +130,14 @@ describe('create command', () => {
         warnings: ['tab not opened: fake tern: new failed'],
       });
       expect(setupCalls()).toStrictEqual([]);
+    });
+  });
+
+  describe('origin', () => {
+    it('reads the origin once for a created worktree', async () => {
+      const log = await logGitCalls();
+      await expect(run(['--repo', repo.dir, '--branch', 'feature/x'])).resolves.toMatchObject({ setup: { line: LINE }, status: 'created' });
+      expect(readLog(log).filter(line => line.includes('remote get-url origin'))).toHaveLength(1);
     });
   });
 });

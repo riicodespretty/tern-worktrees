@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
-import { fetchOrigin, gitMust, gitRun, gitSucceeds, hasOrigin, requireRepoRoot, updateSubmodules, worktrees } from '../git.ts';
+import { fetchOrigin, gitMust, gitRun, gitSucceeds, requireRepoRoot, updateSubmodules, worktrees } from '../git.ts';
 import type { Worktree } from '../git.ts';
-import { defaultBranch, ghMust, ghMustWith, originRepo } from '../github.ts';
-import type { GhPullRequest } from '../github.ts';
+import { defaultBranch, ghMust, ghMustWith, readOrigin } from '../github.ts';
+import type { GhPullRequest, Origin } from '../github.ts';
 import { ompSettings, ompWorktreeAdd } from '../omp.ts';
 import { isUnder, worktreeOwner, worktreePath, worktreeRoot } from '../paths.ts';
 import type { WorktreeOwner, WorktreeRoot } from '../paths.ts';
@@ -73,10 +73,10 @@ interface Cleared {
 interface Context {
   clone: string | null;
   fetchWarning: string | null;
+  origin: Origin;
   repoName: string;
   root: string;
   warnings: string[];
-  withOrigin: boolean;
   wtRoot: WorktreeRoot;
 }
 
@@ -153,7 +153,7 @@ const checkOptions = (options: Options): CheckedOptions => {
 };
 
 const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
-  const repoRef = await originRepo(ctx.root);
+  const repoRef = ctx.origin.github;
   if (repoRef === null) {
     throw badArgs('--pr needs a GitHub origin');
   }
@@ -175,8 +175,8 @@ const sourceTarget = async (ctx: Context, source: Source): Promise<Target> => {
 };
 
 const startPoint = async (ctx: Context): Promise<string> => {
-  const name = await defaultBranch(ctx.root);
-  return ctx.withOrigin ? `origin/${name}` : name;
+  const name = await defaultBranch(ctx.root, ctx.origin.github);
+  return ctx.origin.present ? `origin/${name}` : name;
 };
 
 const hasRef = async (ctx: Context, ref: string): Promise<boolean> => await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', ref);
@@ -427,8 +427,8 @@ const tryOpenTab = async (ctx: Context, placed: Placed): Promise<CreatedTab | nu
 };
 
 /** The setup commands of the repository as one line, with ` && ` between them. Null unless the worktree is new and the options file lists commands for the name with owner of its GitHub origin. */
-const setupLine = async (ctx: Context, status: CreateStatus): Promise<string | null> => {
-  const repoRef = status === 'created' ? await originRepo(ctx.root) : null;
+const setupLine = (ctx: Context, status: CreateStatus): string | null => {
+  const repoRef = status === 'created' ? ctx.origin.github : null;
   const commands = repoRef === null ? [] : (loadConfig().setup[nameWithOwner(repoRef).toLowerCase()] ?? []);
   return commands.length === 0 ? null : commands.join(' && ');
 };
@@ -469,15 +469,15 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   const options = parse(args);
   const { repo, source } = checkOptions(options);
   const root = await requireRepoRoot(repo);
-  const [wtRoot, probe, withOrigin] = await Promise.all([worktreeRoot(), ompSettings(root), hasOrigin(root)]);
-  const fetchWarning = withOrigin ? await fetchOrigin(root, true) : null;
+  const [wtRoot, probe, origin] = await Promise.all([worktreeRoot(), ompSettings(root), readOrigin(root)]);
+  const fetchWarning = origin.present ? await fetchOrigin(root, true) : null;
   const warnings = [probe.warning, fetchWarning].filter(warning => warning !== null);
   const clone = probe.settings?.clone === true ? probe.omp : null;
-  const ctx: Context = { clone, fetchWarning, repoName: path.basename(root), root, warnings, withOrigin, wtRoot };
+  const ctx: Context = { clone, fetchWarning, origin, repoName: path.basename(root), root, warnings, wtRoot };
   const target = await sourceTarget(ctx, source);
   const placed = await placeWorktree(ctx, target, options.relocate);
   const tab = options['no-tab'] ? null : await tryOpenTab(ctx, placed);
-  const line = await setupLine(ctx, placed.status);
+  const line = setupLine(ctx, placed.status);
   const setup = line === null ? null : { line, typed: await typeSetup(ctx, line, tab) };
   return { branch: placed.branch, carried: placed.carried, owner: placed.owner, path: placed.path, repo: root, setup, status: placed.status, tab, warnings: ctx.warnings };
 };

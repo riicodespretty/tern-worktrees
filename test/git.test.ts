@@ -1,20 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
-import {
-  changedFileCount,
-  dirtyFiles,
-  fetchOrigin,
-  gitMust,
-  gitRun,
-  gitSucceeds,
-  hasOrigin,
-  isAncestor,
-  repoRoot,
-  requireRepoRoot,
-  updateSubmodules,
-  worktrees,
-} from '../src/git.ts';
+import { changedFileCount, dirtyFiles, fetchOrigin, gitMust, gitRun, gitSucceeds, isAncestor, repoRoot, requireRepoRoot, updateSubmodules, worktrees } from '../src/git.ts';
 import { git, gitShim, tempDir, tmpRepo, useSandbox } from './helpers.ts';
 
 const trackingRefs = async (dir: string): Promise<string> => await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin/gone');
@@ -103,15 +90,6 @@ describe('git helpers', () => {
     it('throws not_a_repo outside a repo', async () => {
       const plain = tempDir('plain');
       await expect(requireRepoRoot(plain)).rejects.toMatchObject({ code: 'not_a_repo', message: `${plain} is not in a git repository` });
-    });
-  });
-
-  describe(hasOrigin, () => {
-    it('tells if the repo has an origin', async () => {
-      const repo = await tmpRepo();
-      await expect(hasOrigin(repo.dir)).resolves.toBeTruthy();
-      await git(repo.dir, 'remote', 'remove', 'origin');
-      await expect(hasOrigin(repo.dir)).resolves.toBeFalsy();
     });
   });
 

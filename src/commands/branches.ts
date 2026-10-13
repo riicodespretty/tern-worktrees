@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { fetchOrigin, gitMust, hasOrigin, requireRepoRoot, worktrees } from '../git.ts';
-import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
+import { fetchOrigin, gitMust, requireRepoRoot, worktrees } from '../git.ts';
+import { defaultBranch, listPullRequests, readOrigin } from '../github.ts';
 import { worktreeOwner, worktreeRoot } from '../paths.ts';
 import type { WorktreeOwner } from '../paths.ts';
 import { CliError } from '../proc.ts';
@@ -77,19 +77,19 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
   const root = await requireRepoRoot(values.repo);
   const { offline } = values;
   const warnings: string[] = [];
-  const withOrigin = await hasOrigin(root);
-  if (withOrigin && !offline) {
+  const origin = await readOrigin(root);
+  if (origin.present && !offline) {
     const fetchWarning = await fetchOrigin(root, true);
     if (fetchWarning !== null) {
       warnings.push(fetchWarning);
     }
   }
-  const repoRef = offline ? null : await originRepo(root);
+  const github = offline ? null : origin.github;
   const [branches, pullRequests, repoWorktrees, defaultName, wtRoot] = await Promise.all([
-    listBranches(root, withOrigin),
-    repoRef === null ? { failed: false, prs: [] } : openPullRequests(repoRef, warnings),
+    listBranches(root, origin.present),
+    github === null ? { failed: false, prs: [] } : openPullRequests(github, warnings),
     worktrees(root),
-    defaultBranch(root, { offline }),
+    defaultBranch(root, github),
     worktreeRoot(),
   ]);
   return {

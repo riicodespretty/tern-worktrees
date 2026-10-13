@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.ts';
-import { gitMust, gitRun, isCheckoutTop, originUrl } from './git.ts';
+import { gitMust, gitRun, isCheckoutTop } from './git.ts';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
 import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
@@ -65,24 +65,28 @@ export const listPullRequests = async <Field extends keyof GhPullRequest>(
   return { error: null, prs: JSON.parse(stdout) as Pick<GhPullRequest, Field>[] };
 };
 
-/** The GitHub owner and name from the `origin` URL, or null without a GitHub origin. */
-export const originRepo = async (root: string): Promise<GithubRepoRef | null> => {
-  const groups = GITHUB_URL.exec(await originUrl(root))?.groups;
-  if (!groups) {
-    return null;
-  }
-  return { name: groups.name, owner: groups.owner };
+/** The `origin` remote of a repository: `present` is false without one, and `github` is the GitHub owner and name of its URL, or null. */
+export interface Origin {
+  github: GithubRepoRef | null;
+  present: boolean;
+}
+
+/** Reads the `origin` remote of the repository at `root` with one `git remote get-url origin`. */
+export const readOrigin = async (root: string): Promise<Origin> => {
+  const result = await gitRun(root, 'remote', 'get-url', 'origin');
+  const url = result.stdout.trim();
+  const groups = GITHUB_URL.exec(url)?.groups;
+  return { github: groups ? { name: groups.name, owner: groups.owner } : null, present: url !== '' };
 };
 
-/** The default branch: `origin/HEAD`, else what GitHub reports, else the current branch when the repository has no GitHub origin. `offline` skips GitHub. */
-export const defaultBranch = async (root: string, { offline = false }: { offline?: boolean } = {}): Promise<string> => {
+/** The default branch: `origin/HEAD`, else what GitHub reports for `github`, else the current branch. `github` null skips GitHub. */
+export const defaultBranch = async (root: string, github: GithubRepoRef | null): Promise<string> => {
   const head = await gitRun(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD');
   if (head.status === 0) {
     return head.stdout.trim().slice('origin/'.length);
   }
-  const repoRef = offline ? null : await originRepo(root);
-  if (repoRef !== null) {
-    const name = await ghMust('repo', 'view', nameWithOwner(repoRef), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name');
+  if (github !== null) {
+    const name = await ghMust('repo', 'view', nameWithOwner(github), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name');
     return name.trim();
   }
   const current = await gitMust(root, 'branch', '--show-current');
@@ -107,8 +111,8 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
   if (!existsSync(root)) {
     return { root, state: null };
   }
-  const origin = (await isCheckoutTop(root)) ? await originRepo(root) : null;
-  const isClone = origin?.owner === repoRef.owner && origin.name === repoRef.name;
+  const origin = (await isCheckoutTop(root)) ? await readOrigin(root) : null;
+  const isClone = origin?.github?.owner === repoRef.owner && origin.github.name === repoRef.name;
   return { root, state: isClone ? 'clone' : 'conflict' };
 };
 

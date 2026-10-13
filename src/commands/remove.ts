@@ -4,9 +4,10 @@ import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import type { Teardown } from '../config.ts';
 import { currentBranch, fetchOrigin, gitMust, gitRun, isAncestor, linkedWorktreeRoot, requireRepoRoot } from '../git.ts';
-import { defaultBranch, listPullRequests, originRepo } from '../github.ts';
+import { defaultBranch, listPullRequests, readOrigin } from '../github.ts';
 import { isUnder, worktreeOwner, worktreeRoot } from '../paths.ts';
 import { CliError } from '../proc.ts';
+import type { GithubRepoRef } from '../repo-ref.ts';
 import { blocksUnder, close } from '../tern.ts';
 import { guardWorkToLose } from '../work-to-lose.ts';
 
@@ -95,12 +96,11 @@ const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> =>
   return closed.filter(block => block !== null);
 };
 
-const hasMergedPullRequest = async (ctx: Context, branch: string): Promise<boolean> => {
-  const repoRef = await originRepo(ctx.root);
-  if (repoRef === null) {
+const hasMergedPullRequest = async (ctx: Context, github: GithubRepoRef | null, branch: string): Promise<boolean> => {
+  if (github === null) {
     return false;
   }
-  const { error, prs } = await listPullRequests(repoRef, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
+  const { error, prs } = await listPullRequests(github, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
   if (error !== null) {
     ctx.warnings.push(`merged PR check failed: ${error}`);
     return false;
@@ -114,8 +114,9 @@ const isMerged = async (ctx: Context, branch: string): Promise<boolean> => {
   if (fetchWarning !== null) {
     ctx.warnings.push(fetchWarning);
   }
-  const base = await defaultBranch(ctx.root);
-  return (await isAncestor(ctx.root, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, branch));
+  const origin = await readOrigin(ctx.root);
+  const base = await defaultBranch(ctx.root, origin.github);
+  return (await isAncestor(ctx.root, `refs/heads/${branch}`, `origin/${base}`)) || (await hasMergedPullRequest(ctx, origin.github, branch));
 };
 
 const applyPolicy = async (ctx: Context, teardown: Teardown, branch: string): Promise<BranchKept | null> => {

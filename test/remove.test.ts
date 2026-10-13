@@ -6,6 +6,7 @@ import { gitSucceeds } from '../src/git.ts';
 import {
   cliJson,
   contract,
+  ghDefaultBranchFixture,
   ghFixture,
   git,
   gitShim,
@@ -249,6 +250,20 @@ describe('remove command', () => {
       const dir = await addManaged(['--detach']);
       await expect(cliJson(['remove', dir])).resolves.toStrictEqual(contract('remove-detached', { repo: repo.dir, worktree: dir }));
       expect(existsSync(dir)).toBeFalsy();
+    });
+  });
+
+  describe('origin', () => {
+    it('reads the origin once to check a branch that is not merged', async () => {
+      await git(repo.dir, 'remote', 'set-head', 'origin', '--delete');
+      await git(repo.dir, 'config', 'remote.origin.followRemoteHEAD', 'never');
+      ghDefaultBranchFixture('virtusize/aoyama', 'main');
+      fakeMergedPrs([]);
+      const dir = await addUnmerged();
+      await useGithubOrigin();
+      const log = await logGitCalls();
+      await expect(run([dir])).resolves.toMatchObject({ branchDeleted: false, branchKept: 'not_merged', warnings: ['kept local branch feature/x: not merged'] });
+      expect(readLog(log).filter(line => line.includes('remote get-url origin'))).toHaveLength(1);
     });
   });
 

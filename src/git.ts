@@ -67,15 +67,6 @@ export const currentBranch = async (dir: string): Promise<string | null> => {
 /** Tells if `dir`, which must be on disk, is the top directory of a checkout and not a subdirectory of one. It compares real paths, because git reports real paths. */
 export const isCheckoutTop = async (dir: string): Promise<boolean> => (await repoRoot(dir)) === realpathSync(dir);
 
-/** The URL of the `origin` remote of the repository at `root`, or an empty string without one. */
-export const originUrl = async (root: string): Promise<string> => {
-  const result = await gitRun(root, 'remote', 'get-url', 'origin');
-  return result.stdout.trim();
-};
-
-/** Tells if the repository at `root` has a remote named `origin`. */
-export const hasOrigin = async (root: string): Promise<boolean> => (await originUrl(root)) !== '';
-
 /**
  * Fetches `origin` in the repository at `root`. When `prune` is true, it also removes the tracking branches of the branches that `origin` deleted.
  * Returns a warning that starts with `fetch failed:` when the fetch fails, else null.
