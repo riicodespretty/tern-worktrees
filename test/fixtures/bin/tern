@@ -17,5 +17,11 @@ new)
 wait)
 	exit "${FAKE_TERN_WAIT_STATUS:-0}"
 	;;
+close)
+	if [ -n "${FAKE_TERN_GONE:-}" ] && [ -e "$FAKE_TERN_GONE" ]; then
+		echo "fake tern: close while $FAKE_TERN_GONE exists" >&2
+		exit 1
+	fi
+	;;
 esac
 exit 0
