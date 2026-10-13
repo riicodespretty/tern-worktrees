@@ -19,11 +19,6 @@ local NO_PROMPT = setup_warning("create-setup-no-prompt")
 local OPEN_BEFORE = setup_warning("create-setup-open-before")
 local NO_TAB = "setup not run: no tab opened"
 
--- The `create` answer for branch x, with `setup` as the value of its `setup` key.
-local function created(setup: { [string]: any }): string
-	return Stub.answer("create-setup-no-tab", CREATE_VARS, { setup = setup })
-end
-
 -- The `create` answer for branch x. Its setup line is LINE, from the fixture, and is not typed.
 local UNTYPED = Stub.fixture("create-setup-no-tab", CREATE_VARS)
 
@@ -93,21 +88,14 @@ test("one tick of 31 s runs each setup poll on time, so the setup toast shows at
 	eq(toast_clocks[1], 30000, "clock of the setup toast")
 end)
 
-for _, case in
-	{
-		{ what = "typed is true", answer = created({ line = LINE, typed = true }) },
-		{ what = "setup is null", answer = Stub.fixture("create-created", CREATE_VARS) },
-	}
-do
-	test(`type_setup does nothing when {case.what}`, function()
-		local plugin, cx, panes = Stub.window()
-		create_x(plugin, cx, case.answer)
-		find_pane(panes, SHELL).at_prompt = true
-		plugin:tick(31000)
-		eq(#cx.typed, 0, "typed")
-		eq(#Stub.setup_toasts(cx), 0, "setup toasts")
-	end)
-end
+test("a create whose setup is null types nothing and shows no setup toast", function()
+	local plugin, cx, panes = Stub.window()
+	create_x(plugin, cx, Stub.fixture("create-created", CREATE_VARS))
+	find_pane(panes, SHELL).at_prompt = true
+	plugin:tick(31000)
+	eq(#cx.typed, 0, "typed")
+	eq(#Stub.setup_toasts(cx), 0, "setup toasts")
+end)
 
 test("type_setup stops when the pane is gone", function()
 	local plugin, cx, panes = Stub.window()

@@ -926,30 +926,20 @@ end
 local SETUP_POLL_MS = 200
 local SETUP_PROMPT_MS = 30000
 
--- Types `setup.line` into the shell of `outcome` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
--- maximum of SETUP_PROMPT_MS. It does nothing when `create` typed the line already, and stops when
--- the shell pane is gone. When `outcome` is `no_shell`, it only shows the line in a toast with `outcome.reason`.
--- `done`, when set, runs once with the result: true once the line is typed (or `create` typed it), false
--- with the toast text when it gives up, and false with no text when the pane or the cx is gone.
+-- Types `line` into the shell of `outcome` when the shell shows its prompt. It polls every SETUP_POLL_MS, for a
+-- maximum of SETUP_PROMPT_MS, and stops when the shell pane is gone. When `outcome` is `no_shell`, it only shows
+-- the line in a toast with `outcome.reason`.
+-- `done` runs once with the result: true once the line is typed, false with the toast text when it gives up, and
+-- false with no text when the pane or the cx is gone.
 local function type_setup(
 	cx: WindowCx,
 	outcome: TabOutcome,
-	setup: SetupLine?,
-	done: ((typed: boolean, warning: string?) -> ())?
+	line: string,
+	done: (typed: boolean, warning: string?) -> ()
 )
-	local function finish(typed: boolean, warning: string?)
-		if done ~= nil then
-			done(typed, warning)
-		end
-	end
-	if setup == nil or setup.typed then
-		finish(setup ~= nil, nil)
-		return
-	end
-	local line = setup.line
 	local function give_up(cx2: WindowCx, warning: string)
 		cx2:toast("error", sentence_case(warning), line)
-		finish(false, warning)
+		done(false, warning)
 	end
 	if outcome.kind == "no_shell" then
 		give_up(cx, "setup not run: " .. outcome.reason)
@@ -959,17 +949,17 @@ local function type_setup(
 	local deadline = tern.now() + SETUP_PROMPT_MS
 	local function poll(cx2: WindowCx?)
 		if cx2 == nil then
-			finish(false, nil)
+			done(false, nil)
 			return
 		end
 		local info = cx2.session:pane(pane)
 		if info == nil then
-			finish(false, nil)
+			done(false, nil)
 			return
 		end
 		if info.at_prompt then
 			cx2:run(pane, line .. "\r")
-			finish(true, nil)
+			done(true, nil)
 		elseif tern.now() >= deadline then
 			give_up(cx2, "setup not run: no shell prompt in " .. SETUP_PROMPT_MS // 1000 .. " s")
 		else
@@ -983,7 +973,8 @@ end
 -- the worktree index, resolves the sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then
 -- starts to type its setup line. The main checkout gets no entry.
 -- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
--- setup step ends, or at once when `open_tab` raises; `res.setup.typed` and `res.warnings` then hold the result.
+-- setup step ends, or at once when `open_tab` raises or `res.setup` is null; `res.setup.typed` and `res.warnings`
+-- then hold the result.
 -- An `open_tab` that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
 local function worktree_opened(
 	cx: WindowCx,
@@ -1012,15 +1003,13 @@ local function worktree_opened(
 		if opened ~= nil then
 			opened(cx2)
 		end
-		if not ok then
+		local setup = res.setup
+		if not ok or setup == nil then
 			settle()
 			return
 		end
-		local setup = res.setup
-		type_setup(cx2, outcomeOrErr :: TabOutcome, setup, function(typed, warning)
-			if setup ~= nil then
-				setup.typed = typed
-			end
+		type_setup(cx2, outcomeOrErr :: TabOutcome, setup.line, function(typed, warning)
+			setup.typed = typed
 			if warning ~= nil then
 				add_warning(warning)
 			end
