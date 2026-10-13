@@ -4,7 +4,7 @@ import { loadConfig } from './config.ts';
 import { checkoutAt, gitMust, gitRun } from './git.ts';
 import { CliError, must, run } from './proc.ts';
 import type { RunOptions, RunResult } from './proc.ts';
-import { nameWithOwner, parseGithubUrl, parseRepoRef } from './repo-ref.ts';
+import { nameWithOwner, parseGithubUrl, parseRepoRef, repoKey } from './repo-ref.ts';
 import type { GithubRepoRef } from './repo-ref.ts';
 
 /** The path of the clone of a GitHub repository. `cloned` is true when this call ran `gh repo clone`, and false when it reused a clone that was there before. */
@@ -101,7 +101,7 @@ export const parseNameWithOwner = (command: string, positionals: string[]): Gith
 
 /**
  * Gives the clone path `<cloneRoot>/<owner>/<name>` of `repoRef` and its {@link ClonePath} state.
- * The path is a clone when it holds a checkout with `repoRef` as its `origin`. Anything else at the path is a conflict.
+ * The path is a clone when it holds a checkout with an `origin` that has the {@link repoKey} of `repoRef`. Anything else at the path is a conflict.
  */
 export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Promise<ClonePath> => {
   const root = path.join(cloneRoot, repoRef.owner, repoRef.name);
@@ -110,7 +110,8 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
   }
   const checkout = await checkoutAt(root);
   const origin = checkout?.role === 'main' ? await readOrigin(root) : null;
-  const isClone = origin?.github?.owner === repoRef.owner && origin.github.name === repoRef.name;
+  const github = origin?.github ?? null;
+  const isClone = github !== null && repoKey(github) === repoKey(repoRef);
   return { root, state: isClone ? 'clone' : 'conflict' };
 };
 

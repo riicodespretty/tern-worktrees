@@ -3,7 +3,7 @@ import path from 'node:path';
 import { isJsonObject, isString } from './json.ts';
 import { expandHome, pluginData } from './paths.ts';
 import { CliError } from './proc.ts';
-import { nameWithOwner, parseRepoRef } from './repo-ref.ts';
+import { parseRepoRef, repoKey } from './repo-ref.ts';
 import type { GithubRepoRef } from './repo-ref.ts';
 
 /** What closing a worktree tab removes: the worktree only, the worktree and its branch when merged, or the worktree and its branch. */
@@ -94,16 +94,14 @@ const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
   const firstKeyByLower = new Map<string, string>();
   return Object.fromEntries(
     Object.entries(raw.setup).map(([key, commands]) => {
-      if (parseRepoRef(key) === null) {
-        fail(`setup.${key}`, 'expected <owner>/<name>');
-      }
+      const repoRef = parseRepoRef(key) ?? fail(`setup.${key}`, 'expected <owner>/<name>');
       if (!isCommandList(commands)) {
         return fail(`setup.${key}`, 'expected an array of non-empty strings');
       }
       if (commands.some(command => /[\n\r]/u.test(command))) {
         fail(`setup.${key}`, 'expected commands without line breaks');
       }
-      const lowerKey = key.toLowerCase();
+      const lowerKey = repoKey(repoRef);
       const firstKey = firstKeyByLower.get(lowerKey);
       if (firstKey !== undefined) {
         fail(`setup.${key}`, `duplicates setup.${firstKey}`);
@@ -147,4 +145,4 @@ export const loadConfig = (): Config => {
  * The setup commands that the options file `options` lists for the name with owner of `repoRef`.
  * The match ignores the difference between uppercase and lowercase letters. It gives an empty list when `options` lists no commands for `repoRef`.
  */
-export const setupCommands = (options: Config, repoRef: GithubRepoRef): string[] => options.setup[nameWithOwner(repoRef).toLowerCase()] ?? [];
+export const setupCommands = (options: Config, repoRef: GithubRepoRef): string[] => options.setup[repoKey(repoRef)] ?? [];

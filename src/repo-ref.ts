@@ -11,6 +11,9 @@ const GITHUB_URL = /^(?:git@github\.com:|https:\/\/github\.com\/)(?<owner>[^/]+)
 /** The `<owner>/<name>` form of `repoRef`, the name that `gh` uses for a repository. */
 export const nameWithOwner = (repoRef: GithubRepoRef): string => `${repoRef.owner}/${repoRef.name}`;
 
+/** The key of `repoRef`: its name with owner in lowercase letters. Two repository references with the same key name the same GitHub repository. */
+export const repoKey = (repoRef: GithubRepoRef): string => nameWithOwner(repoRef).toLowerCase();
+
 /** Reads `<owner>/<name>` from `text`, or gives null when `text` is not a valid `<owner>/<name>`. */
 export const parseRepoRef = (text: string): GithubRepoRef | null => {
   const groups = NAME_WITH_OWNER.exec(text)?.groups;

@@ -100,7 +100,7 @@ Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "loc
 
 `tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. A name with owner that breaks these rules gives `bad_args`.
 
-Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. Output: `{"root", "cloned"}`.
+Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. A checkout at that path is the clone when the GitHub URL of its `origin` names the repository. Uppercase and lowercase letters in the name with owner are the same. Output: `{"root", "cloned"}`.
 
 ### `new-repo`
 

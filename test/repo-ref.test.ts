@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { nameWithOwner, parseGithubUrl } from '../src/repo-ref.ts';
+import { nameWithOwner, parseGithubUrl, repoKey } from '../src/repo-ref.ts';
 
 describe(nameWithOwner, () => {
   it('joins the owner and the name', () => {
     expect(nameWithOwner({ name: 'name', owner: 'owner' })).toBe('owner/name');
+  });
+});
+
+describe(repoKey, () => {
+  it('gives the name with owner in lowercase letters', () => {
+    expect(repoKey({ name: 'Hello-World', owner: 'OctoCat' })).toBe('octocat/hello-world');
   });
 });
 
