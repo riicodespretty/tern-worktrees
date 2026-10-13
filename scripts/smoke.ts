@@ -6,9 +6,10 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { CreateResult } from '../src/commands/create.ts';
 import type { ListResult } from '../src/commands/list.ts';
+import { gitMust } from '../src/git.ts';
 import { run } from '../src/proc.ts';
 import { blocksUnder, ternBin } from '../src/tern.ts';
-import { buildRepo, gitWith } from './repo-fixture.ts';
+import { buildRepo } from './repo-fixture.ts';
 import type { RepoFixture } from './repo-fixture.ts';
 
 const CLI = path.resolve(import.meta.dirname, '..', 'bin', 'tern-wt');
@@ -35,7 +36,7 @@ const check = (ok: boolean, message: string): void => {
   }
 };
 
-const git = gitWith({ env });
+const git = gitMust;
 
 const cli = async <T>(...args: string[]): Promise<T> => {
   const result = await run([CLI, ...args], { env });

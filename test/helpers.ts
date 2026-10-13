@@ -3,9 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, vi } from 'vite-plus/test';
-import { buildRepo, gitWith } from '../scripts/repo-fixture.ts';
+import { buildRepo } from '../scripts/repo-fixture.ts';
 import type { RepoFixture } from '../scripts/repo-fixture.ts';
 import { main } from '../src/cli.ts';
+import { gitMust } from '../src/git.ts';
 import { must } from '../src/proc.ts';
 import type { TernListing } from '../src/tern.ts';
 
@@ -35,7 +36,7 @@ export const tempDir = (label: string): string => {
 };
 
 /** Runs git in `cwd` and returns its `stdout`. */
-export const git = gitWith();
+export const git = gitMust;
 
 /** The temporary directories and files of a test. */
 export interface Sandbox {

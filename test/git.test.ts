@@ -7,7 +7,6 @@ import {
   dirtyFiles,
   fetchOrigin,
   gitMust,
-  gitMustWith,
   gitRun,
   gitSucceeds,
   hasOrigin,
@@ -60,14 +59,6 @@ describe('git helpers', () => {
       const repo = await tmpRepo();
       await expect(gitMust(repo.dir, 'branch', '--show-current')).resolves.toBe('main\n');
       await expect(gitMust(tempDir('plain'), 'rev-parse', '--git-dir')).rejects.toMatchObject({ code: 'git_failed' });
-    });
-  });
-
-  describe(gitMustWith, () => {
-    it('runs git with the env vars of the options and raises git_failed when git fails', async () => {
-      const repo = await tmpRepo();
-      await expect(gitMustWith({ env: { GIT_AUTHOR_NAME: 'Fixture Author' } }, repo.dir, 'var', 'GIT_AUTHOR_IDENT')).resolves.toMatch(/^Fixture Author </u);
-      await expect(gitMustWith(undefined, tempDir('plain'), 'rev-parse', '--git-dir')).rejects.toMatchObject({ code: 'git_failed' });
     });
   });
 

@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { CliError, must, run } from './proc.ts';
-import type { RunOptions, RunResult } from './proc.ts';
+import type { RunResult } from './proc.ts';
 
 /** One entry of `git worktree list`. `locked` holds the text of the lock, empty when the lock has no text, or null when the worktree has no lock. */
 export interface Worktree {
@@ -16,11 +16,8 @@ export interface Worktree {
 /** Runs `git -C <dir> <args>`, waits for it to exit, and returns its exit status, standard output and standard error. It does not throw when git fails. */
 export const gitRun = async (dir: string, ...args: string[]): Promise<RunResult> => await run(['git', '-C', dir, ...args]);
 
-/** Like {@link gitMust}, but runs git with `opts`: the working directory and the env vars that git gets. Pass `undefined` for the defaults. */
-export const gitMustWith = async (opts: RunOptions | undefined, dir: string, ...args: string[]): Promise<string> => await must(['git', '-C', dir, ...args], 'git_failed', opts);
-
 /** Runs `git -C <dir> <args>` and returns its standard output. Throws `git_failed` when git exits with a status other than 0. */
-export const gitMust = async (dir: string, ...args: string[]): Promise<string> => await gitMustWith(undefined, dir, ...args);
+export const gitMust = async (dir: string, ...args: string[]): Promise<string> => await must(['git', '-C', dir, ...args], 'git_failed');
 
 /** Tells if `git -C <dir> <args>` exits with status 0. */
 export const gitSucceeds = async (dir: string, ...args: string[]): Promise<boolean> => {
