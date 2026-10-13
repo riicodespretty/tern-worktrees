@@ -2,13 +2,12 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
-import { git, ignoreGlobally, tempDir, tmpRepo, useOmp, useSandbox, writeTernLs } from './helpers.ts';
-import type { RepoFixture, Sandbox } from './helpers.ts';
+import { git, ignoreGlobally, managedPath, tempDir, tmpRepo, useOmp, useSandbox, writeTernLs } from './helpers.ts';
+import type { RepoFixture } from './helpers.ts';
 
-let sandbox: Sandbox;
 let repo: RepoFixture;
 
-const addFeature = async (dir = path.join(sandbox.wtHome, 'worktrees', 'aoyama', 'feature-x')): Promise<string> => {
+const addFeature = async (dir = managedPath('feature-x')): Promise<string> => {
   mkdirSync(path.dirname(dir), { recursive: true });
   await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', dir, 'origin/feature/x');
   return dir;
@@ -16,7 +15,7 @@ const addFeature = async (dir = path.join(sandbox.wtHome, 'worktrees', 'aoyama',
 
 describe('remove command', () => {
   beforeEach(async () => {
-    sandbox = useSandbox();
+    useSandbox();
     repo = await tmpRepo('aoyama');
     await repo.pushBranch('feature/x');
     writeTernLs({ work: [] });
@@ -24,10 +23,10 @@ describe('remove command', () => {
 
   describe('ownership', () => {
     it('rejects a worktree under the root that is not <root>/<repo>/<slug>', async () => {
-      const elsewhere = await addFeature(path.join(sandbox.wtHome, 'worktrees', 'maui', 'feature-x'));
+      const elsewhere = await addFeature(managedPath('feature-x', 'maui'));
       await expect(run([elsewhere, '--force'])).rejects.toMatchObject({
         code: 'not_managed',
-        message: `${elsewhere} is not ${path.join(sandbox.wtHome, 'worktrees', 'aoyama', '<slug>')}`,
+        message: `${elsewhere} is not ${managedPath('<slug>')}`,
       });
       expect(existsSync(elsewhere)).toBeTruthy();
     });

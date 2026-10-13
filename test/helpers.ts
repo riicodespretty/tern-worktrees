@@ -181,6 +181,23 @@ export const ghFixture = (args: string[], body: string): void => {
   writeFileSync(path.join(activeSandbox().ghDir, `${key}.json`), body);
 };
 
+/** The path of the managed worktree `dirName` of the repository `repoName` in the worktree root of the sandbox. */
+export const managedPath = (dirName: string, repoName = 'aoyama'): string => path.join(activeSandbox().wtHome, 'worktrees', repoName, dirName);
+
+/** Gives the current branch of the checkout at `dir`. */
+export const currentBranch = async (dir: string): Promise<string> => {
+  const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
+  return out.trim();
+};
+
+/** Makes the fake `gh pr view 7` answer pull request 7 of `virtusize/aoyama` with the head branch `headRefName`, from a fork when `fork` is set. */
+export const ghPrView = (headRefName = 'feature/x', { fork = false } = {}): void => {
+  ghFixture(
+    ['pr', 'view', '7', '--repo', 'virtusize/aoyama', '--json', 'number,headRefName,isCrossRepository'],
+    JSON.stringify({ headRefName, isCrossRepository: fork, number: 7 }),
+  );
+};
+
 /** Makes the fake `gh` answer the default-branch query for `nameWithOwner` with `branch`. */
 export const ghDefaultBranchFixture = (nameWithOwner: string, branch: string): void => {
   ghFixture(['repo', 'view', nameWithOwner, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], `${branch}\n`);

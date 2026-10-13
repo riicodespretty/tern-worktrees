@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { cliJson, contract, git, logGitCalls, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
+import { cliJson, contract, git, logGitCalls, managedPath, readLog, tempDir, ternLog, tmpRepo, useGithubOrigin, useOmp, useSandbox, writeTernLs } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const LINE = 'npm ci && npm test';
@@ -12,8 +12,6 @@ const WAIT = 'wait 42 --until prompt --timeout 30';
 let sandbox: Sandbox;
 let repo: RepoFixture;
 let originShimDir: string;
-
-const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
 const writeSetup = (setup: Record<string, string[]>): void => {
   writeFileSync(path.join(sandbox.pluginData, 'config.json'), JSON.stringify({ setup }));

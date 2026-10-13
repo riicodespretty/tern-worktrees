@@ -2,20 +2,13 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, readlinkSy
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
-import { cliJson, contract, ghFixture, git, ignoreGlobally, ompLog, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
+import { cliJson, contract, currentBranch, ghPrView, git, ignoreGlobally, managedPath, ompLog, tempDir, tmpRepo, useGithubOrigin, useOmp, useSandbox } from './helpers.ts';
 import type { RepoFixture, Sandbox } from './helpers.ts';
 
 const SUBMODULE_REFUSED = 'recreated: git worktree move refused (fatal: working trees containing submodules cannot be moved or removed)';
 
 let sandbox: Sandbox;
 let repo: RepoFixture;
-
-const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
-
-const currentBranch = async (dir: string): Promise<string> => {
-  const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
-  return out.trim();
-};
 
 const stagingDirs = (): string[] => readdirSync(sandbox.tmp).filter(name => name.startsWith('tern-wt-carry-'));
 
@@ -78,13 +71,6 @@ const expectLockedKept = async (old: string): Promise<void> => {
   await expect(currentBranch(old)).resolves.toBe('feature/s');
   await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.toContain('locked on usb');
   expect(existsSync(managedPath('feature-s'))).toBeFalsy();
-};
-
-const prView = (fork: boolean): void => {
-  ghFixture(
-    ['pr', 'view', '7', '--repo', 'virtusize/aoyama', '--json', 'number,headRefName,isCrossRepository'],
-    JSON.stringify({ headRefName: 'feature/x', isCrossRepository: fork, number: 7 }),
-  );
 };
 
 describe('create command', () => {
@@ -282,7 +268,7 @@ describe('create command', () => {
 
       it('keeps the staging dir and the error code when recreating the worktree fails', async () => {
         await useGithubOrigin();
-        prView(true);
+        ghPrView('feature/x', { fork: true });
         await ignoreGlobally('.env');
         const old = path.join(tempDir('orca'), 'wt');
         await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', old, 'origin/feature/s');

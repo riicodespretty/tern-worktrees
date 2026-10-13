@@ -12,6 +12,7 @@ import {
   gitShim,
   ignoreGlobally,
   logGitCalls,
+  managedPath,
   readLog,
   tempDir,
   ternLog,
@@ -24,8 +25,6 @@ import type { RepoFixture, Sandbox } from './helpers.ts';
 
 let sandbox: Sandbox;
 let repo: RepoFixture;
-
-const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
 
 const hasBranch = async (branch: string): Promise<boolean> => await gitSucceeds(repo.dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
 

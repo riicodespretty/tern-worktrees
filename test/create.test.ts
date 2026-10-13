@@ -6,11 +6,14 @@ import { gitRun } from '../src/git.ts';
 import {
   cliJson,
   contract,
+  currentBranch,
   FIXTURE_BIN,
   ghFixture,
   ghLog,
+  ghPrView,
   git,
   ignoreGlobally,
+  managedPath,
   ompConfigJson,
   ompLog,
   readLog,
@@ -29,21 +32,7 @@ let sandbox: Sandbox;
 let repo: RepoFixture;
 let originShimDir: string;
 
-const managedPath = (dirName: string): string => path.join(sandbox.wtHome, 'worktrees', 'aoyama', dirName);
-
-const currentBranch = async (dir: string): Promise<string> => {
-  const out = await git(dir, 'rev-parse', '--abbrev-ref', 'HEAD');
-  return out.trim();
-};
-
 const ompAdds = (): string[] => ompLog().filter(line => line.startsWith('worktree add'));
-
-const prView = (fork: boolean): void => {
-  ghFixture(
-    ['pr', 'view', '7', '--repo', 'virtusize/aoyama', '--json', 'number,headRefName,isCrossRepository'],
-    JSON.stringify({ headRefName: 'feature/x', isCrossRepository: fork, number: 7 }),
-  );
-};
 
 describe('create command', () => {
   beforeEach(async () => {
@@ -194,13 +183,13 @@ describe('create command', () => {
     });
 
     it('creates the worktree of a same-repo pull request', async () => {
-      prView(false);
+      ghPrView();
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'feature/x', path: managedPath('feature-x'), status: 'created' });
       await expect(currentBranch(managedPath('feature-x'))).resolves.toBe('feature/x');
     });
 
     it('checks out a fork pull request as pr-<n>', async () => {
-      prView(true);
+      ghPrView('feature/x', { fork: true });
       ghFixture(['pr', 'checkout', '7', '--branch', 'pr-7'], '');
       const shimDir = tempDir('gh-shim');
       const cwdLog = path.join(shimDir, 'cwd.log');
@@ -213,7 +202,7 @@ describe('create command', () => {
     });
 
     it('applies the lookup rules to an existing pr-<n> worktree', async () => {
-      prView(true);
+      ghPrView('feature/x', { fork: true });
       await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', managedPath('pr-7'));
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).resolves.toMatchObject({ branch: 'pr-7', status: 'reused' });
       expect(ghLog()).not.toContain('pr checkout 7 --branch pr-7');
@@ -221,7 +210,7 @@ describe('create command', () => {
 
     it('reports a gh failure and removes the worktree of a failed fork checkout', async () => {
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed', message: 'fake gh: no fixture' });
-      prView(true);
+      ghPrView('feature/x', { fork: true });
       await expect(run(['--repo', repo.dir, '--pr', '7', '--no-tab'])).rejects.toMatchObject({ code: 'gh_failed' });
       expect(existsSync(managedPath('pr-7'))).toBeFalsy();
       await expect(git(repo.dir, 'worktree', 'list', '--porcelain')).resolves.not.toContain(managedPath('pr-7'));
@@ -279,7 +268,7 @@ describe('create command', () => {
       useOmp({ base, clone: true });
       await git(repo.dir, 'branch', 'feature/local');
       await useGithubOrigin();
-      prView(true);
+      ghPrView('feature/x', { fork: true });
       ghFixture(['pr', 'checkout', '7', '--branch', 'pr-7'], '');
       await run(['--repo', repo.dir, '--branch', 'feature/y', '--new', '--no-tab']);
       await run(['--repo', repo.dir, '--branch', 'feature/local', '--no-tab']);
@@ -403,7 +392,7 @@ describe('create command', () => {
       beforeEach(async () => {
         useOmp({ base, clone: false });
         await useGithubOrigin();
-        prView(false);
+        ghPrView();
         await git(repo.dir, 'worktree', 'add', '--quiet', '-b', 'pr-7', ompCheckout(), 'origin/feature/x');
       });
 
