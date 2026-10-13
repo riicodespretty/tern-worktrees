@@ -7,6 +7,7 @@ local serde = require("@lune/serde")
 
 local PLUGIN_DIR = "/plugin"
 local DATA_DIR = "/plugin-data"
+local CONTRACT_DIR = "test/fixtures/contract/"
 
 export type Pane = { pane: number, tab: number?, cwd: string?, parked: boolean?, at_prompt: boolean?, session: number? }
 export type Fail = { new_tab: boolean?, unpark: boolean?, move_to_new_tab: boolean?, focus: boolean?, create: boolean? }
@@ -489,8 +490,8 @@ function Stub.item(request: any, id: string): any
 	error("no item " .. id, 0)
 end
 
--- Returns `text` with each `{{key}}` replaced by `vars[key]`. It raises, with the name `file`, when a placeholder has
--- no value.
+-- Returns `text` with each `{{key}}` replaced by `vars[key]`. When a placeholder has no value, it raises an error that
+-- starts with `file`.
 local function fill(file: string, text: string, vars: { [string]: string }): string
 	return (
 		string.gsub(text, "{{([%w_]+)}}", function(key: string): string
@@ -506,14 +507,16 @@ end
 -- The fixture test/fixtures/contract/<name>.json as JSON text, with each `{{key}}` replaced by `vars[key]`.
 -- It raises when a placeholder has no value. Paths are relative to the repository root, where `vp run test:luau` runs.
 function Stub.fixture(name: string, vars: { [string]: string }): string
-	return fill(name .. ".json", fs.readFile("test/fixtures/contract/" .. name .. ".json"), vars)
+	return fill(name .. ".json", fs.readFile(CONTRACT_DIR .. name .. ".json"), vars)
 end
 
--- The argv of the plugin call `name` in test/fixtures/contract/argv.json, in the form of a line of `pending`: the
--- arguments after the binary, joined with spaces. Each `{{key}}` is replaced by `vars[key]`. It raises when argv.json
--- has no call `name`, or when a placeholder of the call has no value.
+local ARGV: { [string]: { string } } = serde.decode("json", fs.readFile(CONTRACT_DIR .. "argv.json"))
+
+-- The argv of the plugin call `name` in test/fixtures/contract/argv.json, as one line of `pending`: the arguments after
+-- the binary, joined with spaces. It replaces each `{{key}}` with `vars[key]`. It raises when argv.json has no call
+-- `name`, or when a placeholder of the call has no value.
 function Stub.argv(name: string, vars: { [string]: string }): string
-	local argv: { string }? = serde.decode("json", fs.readFile("test/fixtures/contract/argv.json"))[name]
+	local argv: { string }? = ARGV[name]
 	if argv == nil then
 		error("argv.json: no call " .. name, 0)
 	end

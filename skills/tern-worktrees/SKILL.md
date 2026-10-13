@@ -94,13 +94,13 @@ Output: `{"repos": [{"dir", "root", "name", "owner"}]}`. `root`, `name` and `own
 
 `tern-wt repos`
 
-Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` is the GitHub user, then each GitHub organization of that user. `local` is the clone of the repository in the clone root. It is null when nothing is at the clone path, and also when the path holds something else, an empty folder included. In that case, `clone` gives `path_conflict`.
+Output: `{"owners", "repos": [{"nameWithOwner", "isPrivate", "description", "local"}], "warnings"}`. `owners` is the GitHub user, then each GitHub organization of that user. `local` is the clone of the repository in the clone root. It is null when nothing is at the clone path, and also when the path holds something else, an empty folder included. In that case, `clone` gives `path_conflict`. `local` follows the same rule as `clone`: the match ignores the difference between uppercase and lowercase letters in the name with owner.
 
 ### `clone`
 
 `tern-wt clone <owner/name>`. The owner starts with a letter or digit. The owner and the name use only letters, digits, `.`, `_` and `-`. The name does not start with `-`, and it is not `.` or `..`. A name with owner that breaks these rules gives `bad_args`.
 
-Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. A checkout at that path is the clone when the GitHub URL of its `origin` names the repository. Uppercase and lowercase letters in the name with owner are the same. Output: `{"root", "cloned"}`.
+Clones the GitHub repository to `<cloneRoot>/<owner>/<name>`, or reuses the clone there. A checkout at that path is the clone when the GitHub URL of its `origin` names the repository. The match ignores the difference between uppercase and lowercase letters in the name with owner. Output: `{"root", "cloned"}`.
 
 ### `new-repo`
 

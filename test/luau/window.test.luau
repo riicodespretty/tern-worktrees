@@ -7,6 +7,8 @@ local test, eq = runner.test, runner.eq
 local ROOT = "/wt/worktrees"
 local WORKTREE = "/wt/worktrees/app/feat"
 local CONFIG = Stub.fixture("config", { home = "/home/u" })
+local LIST_ALL_ARGV = Stub.argv("list-all", {})
+local SETUP_ARGV = Stub.argv("setup", {})
 
 type OwnerCase = {
 	what: string,
@@ -179,7 +181,7 @@ test("window_start writes the worktree index from list --all", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 	local plugin = Stub.load({ env = Stub.ENV })
 	plugin.handlers.window_start(cx)
-	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "list calls")
+	eq(plugin:pending_line("list"), LIST_ALL_ARGV, "list calls")
 	plugin:answer("list", LISTED, 0, cx)
 	local feat = plugin.kv.worktreeIndex[FEAT]
 	eq(feat.main, "/r/app", "main of feat")
@@ -215,9 +217,9 @@ local function toasts_after_setup(stdout: string, status: number, stderr: string
 	local plugin = Stub.load({ env = Stub.ENV })
 	eq(#plugin:pending("setup"), 0, "setup calls during the load")
 	plugin:tick(0)
-	eq(plugin:pending_line("setup"), Stub.argv("setup", {}), "setup calls after the timer")
+	eq(plugin:pending_line("setup"), SETUP_ARGV, "setup calls after the timer")
 	plugin.handlers.window_start(cx)
-	eq(plugin:pending_line("setup"), Stub.argv("setup", {}), "setup calls after window_start")
+	eq(plugin:pending_line("setup"), SETUP_ARGV, "setup calls after window_start")
 	local before = #cx.toasts
 	plugin:answer("setup", stdout, status, cx, stderr)
 	local lines: { string } = {}
@@ -375,7 +377,7 @@ test("the Carly create export replies with the main checkout answer and writes n
 	eq(table.concat(cx.effects, "; "), "focus 1", "effects")
 end)
 
--- The argv that each Carly export sends, without and with its optional flag.
+-- The argv that each Carly export sends, and the argv with each optional flag that the export takes.
 for _, case in
 	{
 		{
@@ -466,8 +468,8 @@ local function run_row(title: string): (plugin: Stub.Harness, cx: any) -> ()
 	end
 end
 
--- Picks x in the branch picker of /r/app with CHECKOUTS, answers its `create` with `create-elsewhere`, then picks
--- Relocate.
+-- Picks x in the branch picker of /r/app with CHECKOUTS. Answers the `create` call with `create-elsewhere`, then
+-- picks Relocate in the picker that follows.
 local function relocate(plugin: Stub.Harness, cx: any)
 	pick("b:x")(plugin, cx)
 	plugin:answer("create", Stub.fixture("create-elsewhere", Stub.ELSEWHERE_VARS), 1, cx)
@@ -499,7 +501,7 @@ for _, case in
 		},
 		{ what = "a branch with a worktree", start = pick("b:x"), toast = "info Reusing worktree x…" },
 		{ what = "a branch with no checkout", start = pick("b:main"), toast = "info Creating worktree main…" },
-		{ what = "the Relocate pick", start = relocate, toast = "info Relocating worktree x…" },
+		{ what = "a branch after the Relocate pick", start = relocate, toast = "info Relocating worktree x…" },
 	}
 do
 	test(`a create of {case.what} toasts "{case.toast}" before the answer`, function()
@@ -583,7 +585,7 @@ test("command_finished events within 2 s start one list --all and one trailing r
 	plugin:tick(1999)
 	eq(#plugin:pending("list"), 0, "list runs before 2 s")
 	plugin:tick(1)
-	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "trailing run")
+	eq(plugin:pending_line("list"), LIST_ALL_ARGV, "trailing run")
 	plugin:answer("list", LISTED, 0, cx)
 	plugin:tick(2000)
 	eq(#plugin:pending("list"), 0, "list runs after the trailing run")
@@ -597,7 +599,7 @@ test("a refresh while list --all runs past 2 s waits for its answer", function()
 	plugin.handlers.command_finished({ pane = 1 }, cx)
 	eq(#plugin:pending("list"), 1, "list runs in flight")
 	plugin:answer("list", LISTED, 0, cx)
-	eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "run after the answer")
+	eq(plugin:pending_line("list"), LIST_ALL_ARGV, "run after the answer")
 end)
 
 test("command_finished outside the index starts no list", function()
@@ -628,11 +630,11 @@ test(
 		local plugin = Stub.load({ env = Stub.ENV, kv = { worktreeRoot = ROOT } })
 		plugin.handlers.window_start(cx)
 		local dropped = plugin:take("list")[1]
-		eq(table.concat(dropped.argv, " ", 2), Stub.argv("list-all", {}), "dropped run")
+		eq(table.concat(dropped.argv, " ", 2), LIST_ALL_ARGV, "dropped run")
 		dropped:respond(LISTED, 0, nil)
 		plugin:tick(120001)
 		plugin.handlers.cwd({ pane = 1, path = "/wt/worktrees/app/new" }, cx)
-		eq(plugin:pending_line("list"), Stub.argv("list-all", {}), "list runs after the cwd")
+		eq(plugin:pending_line("list"), LIST_ALL_ARGV, "list runs after the cwd")
 		plugin:answer("list", LISTED, 0, cx)
 		dropped:respond('{"root":"/wt/worktrees","worktrees":[]}', 0, cx)
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry after the late answer of the dropped run")

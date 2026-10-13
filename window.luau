@@ -973,8 +973,8 @@ end
 -- the worktree index, resolves the sessions, opens or focuses its tab, refreshes its repository, runs `opened`, then
 -- starts to type its setup line. The main checkout gets no entry.
 -- `opened`, when set, runs once with the cx that `resolve_sessions` gave. `settled`, when set, runs once when the
--- setup step ends, or at once when `open_tab` raises or `res.setup` is null; `res.setup.typed` and `res.warnings`
--- then hold the result.
+-- setup step ends, or at once when `open_tab` raises or `res.setup` is nil. Then `res.warnings` and, when `res.setup`
+-- is set, `res.setup.typed` hold the result.
 -- An `open_tab` that raises adds the warning `tab not opened: <error>`, and then no setup step runs.
 local function worktree_opened(
 	cx: WindowCx,
@@ -1028,8 +1028,8 @@ end
 -- the main checkout (`main`).
 type Checkout = "new" | "worktree" | "main"
 
--- The kind of a create: a `Checkout`, or `relocate` for Relocate. It selects the progress toast, and `relocate` adds
--- `--relocate` to the argv.
+-- The kind of a create: a `Checkout`, or `relocate` after the user picks Relocate on a `worktree_exists_elsewhere`
+-- error. The kind selects the progress toast. `relocate` also adds `--relocate` to the argv.
 type CreateKind = Checkout | "relocate"
 
 local function create(

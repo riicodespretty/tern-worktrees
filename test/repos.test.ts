@@ -132,8 +132,8 @@ describe('GitHub repo commands', () => {
   describe(clone, () => {
     it.each([
       ['the same letters', 'git@github.com:me/x.git'],
-      ['another case in the owner', 'git@github.com:ME/x.git'],
-      ['another case in the name', 'https://github.com/me/X.git'],
+      ['uppercase letters in the owner', 'git@github.com:ME/x.git'],
+      ['uppercase letters in the name', 'https://github.com/me/X.git'],
     ])('reuses a clone whose origin names the repository with %s and runs no gh', async (_label, origin) => {
       const dest = path.join(cloneRoot, 'me', 'x');
       await initRepo(dest, origin);

@@ -27,7 +27,7 @@ const writeFiles = (dir: string, files: Record<string, Buffer | string>): void =
 
 /**
  * A worktree and a main checkout with ignored files: a copy with the same bytes (`key.pem`, and `full.bin` of two full chunks), a changed `.env`,
- * a file that only the worktree holds, a symbolic link to the file at its path in the main checkout, a file that is a directory in the main
+ * a file that only the worktree holds, a symbolic link to the file at the same path in the main checkout, a file that is a directory in the main
  * checkout, and a file with a different last chunk.
  */
 const copiesOfMain = async (): Promise<{ dir: string; main: string }> => {

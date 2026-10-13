@@ -91,7 +91,7 @@ const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
   if (!isJsonObject(raw.setup)) {
     return fail('setup', EXPECTED_OBJECT);
   }
-  const firstKeyByLower = new Map<string, string>();
+  const firstKeyByRepoKey = new Map<string, string>();
   return Object.fromEntries(
     Object.entries(raw.setup).map(([key, commands]) => {
       const repoRef = parseRepoRef(key) ?? fail(`setup.${key}`, 'expected <owner>/<name>');
@@ -101,13 +101,13 @@ const readSetup = (raw: RawOptions, fail: Fail): SetupCommands => {
       if (commands.some(command => /[\n\r]/u.test(command))) {
         fail(`setup.${key}`, 'expected commands without line breaks');
       }
-      const lowerKey = repoKey(repoRef);
-      const firstKey = firstKeyByLower.get(lowerKey);
+      const refKey = repoKey(repoRef);
+      const firstKey = firstKeyByRepoKey.get(refKey);
       if (firstKey !== undefined) {
         fail(`setup.${key}`, `duplicates setup.${firstKey}`);
       }
-      firstKeyByLower.set(lowerKey, key);
-      return [lowerKey, commands] as const;
+      firstKeyByRepoKey.set(refKey, key);
+      return [refKey, commands] as const;
     }),
   );
 };

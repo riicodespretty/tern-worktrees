@@ -101,7 +101,7 @@ export const parseNameWithOwner = (command: string, positionals: string[]): Gith
 
 /**
  * Gives the clone path `<cloneRoot>/<owner>/<name>` of `repoRef` and its {@link ClonePath} state.
- * The path is a clone when it holds a checkout with an `origin` that has the {@link repoKey} of `repoRef`. Anything else at the path is a conflict.
+ * The path is a clone when the `origin` of its checkout names the same GitHub repository as `repoRef`, by {@link repoKey}. Anything else at the path is a conflict.
  */
 export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Promise<ClonePath> => {
   const root = path.join(cloneRoot, repoRef.owner, repoRef.name);
@@ -110,8 +110,8 @@ export const clonePath = async (repoRef: GithubRepoRef, cloneRoot: string): Prom
   }
   const checkout = await checkoutAt(root);
   const origin = checkout?.role === 'main' ? await readOrigin(root) : null;
-  const github = origin?.github ?? null;
-  const isClone = github !== null && repoKey(github) === repoKey(repoRef);
+  const originRef = origin?.github ?? null;
+  const isClone = originRef !== null && repoKey(originRef) === repoKey(repoRef);
   return { root, state: isClone ? 'clone' : 'conflict' };
 };
 
