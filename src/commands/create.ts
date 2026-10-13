@@ -80,18 +80,14 @@ interface Context {
   wtRoot: WorktreeRoot;
 }
 
-/** `ompPrBranch` is `pr-<n>`, the branch of the omp checkout of a same-repository pull request, else null. */
+/** `ompPrBranch` is `pr-<n>`, the branch of the omp checkout of a same-repository pull request, else null. `isNew` is true for `--new`. */
 interface Target {
   branch: string;
   forkPr: string | null;
+  isNew: boolean;
   ompPrBranch: string | null;
   path: string;
   pr: string | null;
-}
-
-interface Placement {
-  isNew: boolean;
-  relocate: boolean;
 }
 
 /** `owner` is the {@link worktreeOwner} of `path`, or `main` for the main checkout. `carried` lists the hard-to-rebuild files that a rebuilt relocation copied into the worktree, and is empty otherwise. */
@@ -166,17 +162,16 @@ const pullRequestTarget = async (ctx: Context, pr: string): Promise<Target> => {
   const { headRefName, isCrossRepository } = JSON.parse(view) as Pick<GhPullRequest, 'headRefName' | 'isCrossRepository'>;
   if (isCrossRepository) {
     const branch = `pr-${pr}`;
-    return { branch, forkPr: pr, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, branch), pr };
+    return { branch, forkPr: pr, isNew: false, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, branch), pr };
   }
-  return { branch: headRefName, forkPr: null, ompPrBranch: `pr-${pr}`, path: worktreePath(ctx.wtRoot, ctx.repoName, headRefName), pr };
+  return { branch: headRefName, forkPr: null, isNew: false, ompPrBranch: `pr-${pr}`, path: worktreePath(ctx.wtRoot, ctx.repoName, headRefName), pr };
 };
 
-const sourceTarget = async (ctx: Context, source: Source): Promise<{ isNew: boolean; target: Target }> => {
+const sourceTarget = async (ctx: Context, source: Source): Promise<Target> => {
   if ('branch' in source) {
-    const target = { branch: source.branch, forkPr: null, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, source.branch), pr: null };
-    return { isNew: source.isNew, target };
+    return { branch: source.branch, forkPr: null, isNew: source.isNew, ompPrBranch: null, path: worktreePath(ctx.wtRoot, ctx.repoName, source.branch), pr: null };
   }
-  return { isNew: false, target: await pullRequestTarget(ctx, source.pr) };
+  return await pullRequestTarget(ctx, source.pr);
 };
 
 const startPoint = async (ctx: Context): Promise<string> => {
@@ -186,20 +181,20 @@ const startPoint = async (ctx: Context): Promise<string> => {
 
 const hasRef = async (ctx: Context, ref: string): Promise<boolean> => await gitSucceeds(ctx.root, 'rev-parse', '--verify', '--quiet', ref);
 
-const checkBranch = async (ctx: Context, target: Target, isNew: boolean): Promise<void> => {
+const checkBranch = async (ctx: Context, target: Target): Promise<void> => {
   if (!(await gitSucceeds(ctx.root, 'check-ref-format', '--branch', target.branch))) {
     throw badArgs(`bad branch name ${target.branch}`);
   }
-  if (isNew && ((await hasRef(ctx, `refs/heads/${target.branch}`)) || (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)))) {
+  if (target.isNew && ((await hasRef(ctx, `refs/heads/${target.branch}`)) || (await hasRef(ctx, `refs/remotes/origin/${target.branch}`)))) {
     throw badArgs(`branch ${target.branch} already exists`);
   }
 };
 
-const addSpec = async (ctx: Context, target: Target, isNew: boolean): Promise<AddSpec> => {
+const addSpec = async (ctx: Context, target: Target): Promise<AddSpec> => {
   if (target.forkPr !== null) {
     return { detach: true, newBranch: null, start: await startPoint(ctx), track: false };
   }
-  if (isNew) {
+  if (target.isNew) {
     return { detach: false, newBranch: target.branch, start: await startPoint(ctx), track: false };
   }
   if (await hasRef(ctx, `refs/heads/${target.branch}`)) {
@@ -220,21 +215,21 @@ const addSpec = async (ctx: Context, target: Target, isNew: boolean): Promise<Ad
 const addArgs = (spec: AddSpec): string[] => [...(spec.detach ? ['--detach'] : []), ...(spec.newBranch === null ? [] : ['-b', spec.newBranch])];
 
 /**
- * Adds the worktree with `omp worktree add` when `clone` is the omp binary, else with `git worktree add`. omp sets no upstream, so in clone mode
+ * Adds the worktree with `omp worktree add` when `ctx.clone` is the omp binary, else with `git worktree add`. omp sets no upstream, so in clone mode
  * `git branch` makes a new branch first: it sets the same upstream as `git worktree add -b`, and omp then checks out that branch.
  */
-const addWith = async (ctx: Context, clone: string | null, target: Target, spec: AddSpec): Promise<void> => {
-  if (clone === null) {
+const addWith = async (ctx: Context, target: Target, spec: AddSpec): Promise<void> => {
+  if (ctx.clone === null) {
     await gitMust(ctx.root, 'worktree', 'add', ...(spec.track ? ['--track'] : []), ...addArgs(spec), '--', target.path, spec.start);
     return;
   }
   if (spec.newBranch === null) {
-    ctx.warnings.push(...(await ompWorktreeAdd(clone, ctx.root, [...addArgs(spec), target.path, spec.start])));
+    ctx.warnings.push(...(await ompWorktreeAdd(ctx.clone, ctx.root, [...addArgs(spec), target.path, spec.start])));
     return;
   }
   await gitMust(ctx.root, 'branch', ...(spec.track ? ['--track'] : []), spec.newBranch, spec.start);
   try {
-    ctx.warnings.push(...(await ompWorktreeAdd(clone, ctx.root, [target.path, spec.newBranch])));
+    ctx.warnings.push(...(await ompWorktreeAdd(ctx.clone, ctx.root, [target.path, spec.newBranch])));
   } catch (error) {
     await gitMust(ctx.root, 'branch', '-D', spec.newBranch);
     throw error;
@@ -247,10 +242,10 @@ const assertPathFree = (target: Target): void => {
   }
 };
 
-/** Adds the worktree of `target`, through omp when `clone` is the omp binary. A fork pull request gets a detached worktree, then `gh pr checkout`. */
-const addWorktree = async (ctx: Context, target: Target, isNew: boolean, clone: string | null): Promise<void> => {
+/** Adds the worktree of `target`, through omp when `ctx.clone` is the omp binary. A fork pull request gets a detached worktree, then `gh pr checkout`. */
+const addWorktree = async (ctx: Context, target: Target): Promise<void> => {
   assertPathFree(target);
-  await addWith(ctx, clone, target, await addSpec(ctx, target, isNew));
+  await addWith(ctx, target, await addSpec(ctx, target));
   if (target.forkPr === null) {
     return;
   }
@@ -324,16 +319,19 @@ const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Pr
   return { carry, refusal };
 };
 
-/** Adds the worktree of `target` again after `moveOrClear` removed it, updates its submodules, then copies the carried files into it. Gives the carried files. */
+/**
+ * Adds the worktree of `target` again after `moveOrClear` removed it, updates its submodules, then copies the carried files into it. Gives the carried files.
+ * It adds the branch again with plain git, because clone mode does not apply to a rebuild.
+ */
 const rebuild = async (ctx: Context, target: Target, cleared: Cleared): Promise<string[]> =>
   await afterStaging(cleared.carry, async () => {
-    await addWorktree(ctx, target, false, null);
+    await addWorktree({ ...ctx, clone: null }, { ...target, isNew: false });
     ctx.warnings.push(`recreated: git worktree move refused (${cleared.refusal})`, ...(await updateSubmodules(ctx.root, target.path)));
     return unstage(ctx, cleared.carry, target.path);
   });
 
 /** Moves the worktree `existing` to the path of `target`, or rebuilds it there when git refuses the move. Gives the carried files. */
-const relocate = async (ctx: Context, target: Target, existing: Worktree): Promise<string[]> => {
+const relocateExisting = async (ctx: Context, target: Target, existing: Worktree): Promise<string[]> => {
   assertPathFree(target);
   mkdirSync(path.dirname(target.path), { recursive: true });
   const lockReason = existing.locked;
@@ -370,8 +368,8 @@ const reuseOmpPrCheckout = async (ctx: Context, target: Target, listed: Worktree
   return headRef.status !== 0 || headRef.stdout.trim() === target.branch ? { branch, carried: [], owner: 'omp', path: found.path, status: 'reused' } : null;
 };
 
-const placeWorktree = async (ctx: Context, target: Target, placement: Placement): Promise<Placed> => {
-  await checkBranch(ctx, target, placement.isNew);
+const placeWorktree = async (ctx: Context, target: Target, relocate: boolean): Promise<Placed> => {
+  await checkBranch(ctx, target);
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
   if (existing?.prunable === true) {
@@ -382,7 +380,7 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
     if (reused) {
       return reused;
     }
-    await addWorktree(ctx, target, placement.isNew, ctx.clone);
+    await addWorktree(ctx, target);
     ctx.warnings.push(...(await updateSubmodules(ctx.root, target.path)));
     return { branch: target.branch, carried: [], owner: 'tern', path: target.path, status: 'created' };
   }
@@ -393,32 +391,32 @@ const placeWorktree = async (ctx: Context, target: Target, placement: Placement)
   if (existing.main) {
     return { branch: target.branch, carried: [], owner: 'main', path: existing.path, status: 'reused' };
   }
-  if (!placement.relocate) {
+  if (!relocate) {
     throw new CliError('worktree_exists_elsewhere', `${target.branch} has a worktree at ${existing.path}; pass --relocate to move it to ${target.path}`, {
       existing: existing.path,
       target: target.path,
     });
   }
-  const carried = await relocate(ctx, target, existing);
+  const carried = await relocateExisting(ctx, target, existing);
   return { branch: target.branch, carried, owner: 'tern', path: target.path, status: 'relocated' };
 };
 
-const openTab = async (ctx: Context, target: Target): Promise<CreatedTab> => {
-  const blocks = await blocksUnder(target.path);
+const openTab = async (ctx: Context, placed: Placed): Promise<CreatedTab> => {
+  const blocks = await blocksUnder(placed.path);
   const existingBlock = blocks.at(0);
   if (existingBlock) {
     await focus(existingBlock.block.id);
     return { block: existingBlock.block.id, opened: false, session: existingBlock.session.name };
   }
   const session = await sessionForRepo(ctx.root);
-  const block = session === null ? await newSession(ctx.repoName, target.path) : await newTab(session.name, target.path);
-  await rename(block, target.branch);
+  const block = session === null ? await newSession(ctx.repoName, placed.path) : await newTab(session.name, placed.path);
+  await rename(block, placed.branch);
   return { block, opened: true, session: session?.name ?? ctx.repoName };
 };
 
-const tryOpenTab = async (ctx: Context, target: Target): Promise<CreatedTab | null> => {
+const tryOpenTab = async (ctx: Context, placed: Placed): Promise<CreatedTab | null> => {
   try {
-    return await openTab(ctx, target);
+    return await openTab(ctx, placed);
   } catch (error) {
     if (error instanceof CliError) {
       ctx.warnings.push(`tab not opened: ${error.message}`);
@@ -476,9 +474,9 @@ export const run = async (args: string[]): Promise<CreateResult> => {
   const warnings = [probe.warning, fetchWarning].filter(warning => warning !== null);
   const clone = probe.settings?.clone === true ? probe.omp : null;
   const ctx: Context = { clone, fetchWarning, repoName: path.basename(root), root, warnings, withOrigin, wtRoot };
-  const { isNew, target } = await sourceTarget(ctx, source);
-  const placed = await placeWorktree(ctx, target, { isNew, relocate: options.relocate });
-  const tab = options['no-tab'] ? null : await tryOpenTab(ctx, { ...target, branch: placed.branch, path: placed.path });
+  const target = await sourceTarget(ctx, source);
+  const placed = await placeWorktree(ctx, target, options.relocate);
+  const tab = options['no-tab'] ? null : await tryOpenTab(ctx, placed);
   const line = await setupLine(ctx, placed.status);
   const setup = line === null ? null : { line, typed: await typeSetup(ctx, line, tab) };
   return { branch: placed.branch, carried: placed.carried, owner: placed.owner, path: placed.path, repo: root, setup, status: placed.status, tab, warnings: ctx.warnings };
