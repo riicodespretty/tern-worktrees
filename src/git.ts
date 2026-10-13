@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync } from 'node:fs';
+import { constants, cpSync, lstatSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { CliError, must, run } from './proc.ts';
 import type { RunResult } from './proc.ts';
@@ -166,9 +166,45 @@ const brokenGitfilesUnder = async (top: string, base: string): Promise<string[]>
 
 /**
  * The `.git` files of the submodules of the worktree at `dir`, at each depth, that point to no git directory. It reads the submodule paths
- * from the `.gitmodules` files, so it also finds a submodule in a submodule with a broken `.git` file. A submodule comes before the submodules in it.
+ * from the `.gitmodules` files, so it also finds a submodule in a submodule with a broken `.git` file.
  */
-export const brokenSubmoduleGitfiles = async (dir: string): Promise<string[]> => await brokenGitfilesUnder(dir, dir);
+const brokenSubmoduleGitfiles = async (dir: string): Promise<string[]> => await brokenGitfilesUnder(dir, dir);
+
+/**
+ * Makes the submodules of the worktree at `dir` usable again after omp cloned the main checkout into it. The clone copies the `.git` file
+ * of each submodule, and its relative path then points through the `.git` file of the worktree, so git fails in the submodule. This copies
+ * the submodule git directories of the main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the file
+ * system can, then removes each broken `.git` file. `git submodule update` then connects each submodule to its copy and checks out the
+ * recorded commit. The cloned files stay, also the ignored build output, and no submodule is fetched again. When the copy fails, the
+ * `.git` files stay and a `submodule repair failed:` warning tells why.
+ */
+const repairClonedSubmodules = async (root: string, dir: string): Promise<string[]> => {
+  const broken = await brokenSubmoduleGitfiles(dir);
+  if (broken.length === 0) {
+    return [];
+  }
+  try {
+    const [from, to] = await Promise.all([root, dir].map(async checkout => await gitMust(checkout, 'rev-parse', '--path-format=absolute', '--git-path', 'modules')));
+    cpSync(from.trim(), to.trim(), { mode: constants.COPYFILE_FICLONE, recursive: true });
+  } catch (error) {
+    // SAFETY: the git step throws a CliError, and the copy throws an Error from node:fs.
+    return [`submodule repair failed: ${(error as Error).message}`];
+  }
+  for (const gitfile of broken) {
+    rmSync(gitfile);
+  }
+  return [];
+};
+
+/**
+ * Settles the submodules of the worktree at `dir`. `root` is the main checkout of the worktree. It repairs the `.git` files that omp clone
+ * mode copied, then runs `git submodule update --init --recursive`. Gives the warnings in order.
+ */
+export const updateSubmodules = async (root: string, dir: string): Promise<string[]> => {
+  const warnings = await repairClonedSubmodules(root, dir);
+  const result = await gitRun(dir, 'submodule', 'update', '--init', '--recursive');
+  return result.status === 0 ? warnings : [...warnings, `submodule update failed: ${result.stderr.trim()}`];
+};
 
 /** The paths of the initialized submodules of the worktree at `dir`, at each depth, relative to `dir`. A submodule comes before the submodules in it. */
 export const submodules = async (dir: string): Promise<string[]> => lines(await gitMust(dir, 'submodule', 'foreach', '--quiet', '--recursive', 'printf "%s\\n" "$displaypath"'));

@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/create.ts';
@@ -62,22 +62,5 @@ describe('create command in omp clone mode with submodules', () => {
       ]),
     ).resolves.toStrictEqual(['', '', '', recorded, `${path.join(gitDir.trim(), 'modules', 'lib', 'sub')}\n`, cloned]);
     expect([readFileSync(path.join(targetSub, '.env'), 'utf-8'), readFileSync(path.join(targetSub, 'inner', '.env'), 'utf-8')]).toStrictEqual(['BUILD=1\n', 'BUILD=2\n']);
-  });
-
-  it('warns and keeps the .git files when the main checkout has no submodule git directories to copy', async () => {
-    const base = tempDir('omp-wt');
-    useOmp({ base, clone: true });
-    await addSubmodules();
-    const modules = path.join(repo.dir, '.git', 'modules');
-    rmSync(modules, { recursive: true });
-    const gitfile = path.join(base, 'aoyama', 'feature-x', 'lib', 'sub', '.git');
-    await expect(run(['--repo', repo.dir, '--branch', 'feature/x', '--no-tab'])).resolves.toMatchObject({
-      status: 'created',
-      warnings: [
-        `submodule repair failed: ENOENT: no such file or directory, lstat '${modules}'`,
-        "submodule update failed: fatal: could not get a repository handle for submodule 'lib/sub'",
-      ],
-    });
-    expect(readFileSync(gitfile, 'utf-8')).toBe('gitdir: ../../.git/modules/lib/sub\n');
   });
 });

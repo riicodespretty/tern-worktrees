@@ -1,8 +1,7 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import {
-  brokenSubmoduleGitfiles,
   changedFileCount,
   dirtyFiles,
   fetchOrigin,
@@ -13,6 +12,7 @@ import {
   isAncestor,
   repoRoot,
   requireRepoRoot,
+  updateSubmodules,
   worktrees,
 } from '../src/git.ts';
 import { git, gitShim, tempDir, tmpRepo, useSandbox } from './helpers.ts';
@@ -24,6 +24,20 @@ const brokenGitfile = (dir: string): string => {
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, '.git'), 'gitdir: ../nowhere\n');
   return path.join(dir, '.git');
+};
+
+/** Gives the repository `dir` broken submodule `.git` files at `lib/a` and `lib/a/n`, a `.git` file at `not-a-path` that no `.gitmodules` names, a `valid` checkout, and a `missing` entry. Gives the two broken files. */
+const brokenSubmodules = async (dir: string): Promise<string[]> => {
+  const outer = brokenGitfile(path.join(dir, 'lib', 'a'));
+  const inner = brokenGitfile(path.join(dir, 'lib', 'a', 'n'));
+  brokenGitfile(path.join(dir, 'not-a-path'));
+  writeFileSync(
+    path.join(dir, '.gitmodules'),
+    '[submodule "a"]\n\tpath = lib/a\n\turl = not-a-path\n[submodule "valid"]\n\tpath = valid\n[submodule "missing"]\n\tpath = missing\n',
+  );
+  writeFileSync(path.join(dir, 'lib', 'a', '.gitmodules'), '[submodule "n"]\n\tpath = n\n');
+  await git(dir, 'init', '--quiet', '--separate-git-dir', path.join(tempDir('gitdirs'), 'valid'), path.join(dir, 'valid'));
+  return [outer, inner];
 };
 
 describe('git helpers', () => {
@@ -202,24 +216,49 @@ describe('git helpers', () => {
     });
   });
 
-  describe(brokenSubmoduleGitfiles, () => {
-    it('gives the .git files of the submodules at each depth that point to no git directory', async () => {
-      const top = tempDir('top');
-      const outer = brokenGitfile(path.join(top, 'lib', 'a'));
-      const inner = brokenGitfile(path.join(top, 'lib', 'a', 'n'));
-      brokenGitfile(path.join(top, 'not-a-path'));
-      writeFileSync(
-        path.join(top, '.gitmodules'),
-        '[submodule "a"]\n\tpath = lib/a\n\turl = not-a-path\n[submodule "valid"]\n\tpath = valid\n[submodule "missing"]\n\tpath = missing\n',
-      );
-      writeFileSync(path.join(top, 'lib', 'a', '.gitmodules'), '[submodule "n"]\n\tpath = n\n');
-      await git(top, 'init', '--quiet', '--separate-git-dir', path.join(tempDir('gitdirs'), 'valid'), path.join(top, 'valid'));
-      await expect(brokenSubmoduleGitfiles(top)).resolves.toStrictEqual([outer, inner]);
+  describe(updateSubmodules, () => {
+    it('gives nothing and copies nothing without a .gitmodules file', async () => {
+      const [root, worktree] = await Promise.all([tmpRepo('root'), tmpRepo('worktree')]);
+      mkdirSync(path.join(root.dir, '.git', 'modules', 'x'), { recursive: true });
+      await expect(updateSubmodules(root.dir, worktree.dir)).resolves.toStrictEqual([]);
+      expect(existsSync(path.join(worktree.dir, '.git', 'modules'))).toBeFalsy();
     });
 
-    it('gives nothing without a .gitmodules file', async () => {
+    it('copies the submodule git directories of the main checkout and removes the broken .git files at each depth', async () => {
+      const [root, worktree] = await Promise.all([tmpRepo('root'), tmpRepo('worktree')]);
+      mkdirSync(path.join(root.dir, '.git', 'modules', 'x'), { recursive: true });
+      const [outer, inner] = await brokenSubmodules(worktree.dir);
+      await expect(updateSubmodules(root.dir, worktree.dir)).resolves.toStrictEqual([]);
+      expect(
+        [outer, inner, path.join(worktree.dir, 'not-a-path', '.git'), path.join(worktree.dir, 'valid', '.git'), path.join(worktree.dir, '.git', 'modules', 'x')].map(file =>
+          existsSync(file),
+        ),
+      ).toStrictEqual([false, false, true, true, true]);
+    });
+
+    it('warns and keeps the broken .git files when the main checkout has no submodule git directories to copy', async () => {
+      const [root, worktree] = await Promise.all([tmpRepo('root'), tmpRepo('worktree')]);
+      const broken = await brokenSubmodules(worktree.dir);
+      await expect(updateSubmodules(root.dir, worktree.dir)).resolves.toStrictEqual([
+        `submodule repair failed: ENOENT: no such file or directory, lstat '${path.join(root.dir, '.git', 'modules')}'`,
+      ]);
+      expect(broken.map(file => existsSync(file))).toStrictEqual([true, true]);
+    });
+
+    it('warns with the trimmed git error when submodule update fails', async () => {
       const repo = await tmpRepo();
-      await expect(brokenSubmoduleGitfiles(repo.dir)).resolves.toStrictEqual([]);
+      await gitShim(`case " $* " in *" submodule update "*) echo x >&2; exit 1;; esac`);
+      await expect(updateSubmodules(repo.dir, repo.dir)).resolves.toStrictEqual(['submodule update failed: x']);
+    });
+
+    it('gives the repair warning before the update warning when both fail', async () => {
+      const [root, worktree] = await Promise.all([tmpRepo('root'), tmpRepo('worktree')]);
+      await brokenSubmodules(worktree.dir);
+      await gitShim(`case " $* " in *" submodule update "*) echo x >&2; exit 1;; esac`);
+      await expect(updateSubmodules(root.dir, worktree.dir)).resolves.toStrictEqual([
+        `submodule repair failed: ENOENT: no such file or directory, lstat '${path.join(root.dir, '.git', 'modules')}'`,
+        'submodule update failed: x',
+      ]);
     });
   });
 });
