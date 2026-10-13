@@ -6,6 +6,7 @@
 
 - Learn the worktree root from each `tern-wt list --all` answer in the Tern window. Before, the first answer could fail, or the plugin could drop it. Then a new worktree in the root did not refresh the worktree index until the next window start
 - Pass a branch to `create` as one `--branch=<name>` argument from the worktree rows and the Carly `create` export, as the branch picker does. Before, a branch name that starts with `-` gave a parse error, not `bad branch name`
+- Show `tern-wt failed` when a `tern-wt` run fails with no error envelope and no standard error output. Before, the error toast and the Carly error had an empty message
 
 ## [0.3.1](https://github.com/riicodespretty/tern-worktrees/releases/tag/0.3.1 "2026-10-13")
 

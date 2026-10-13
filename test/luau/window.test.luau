@@ -210,9 +210,9 @@ local function setup_answer(bin: string, skill: string): string
 end
 
 -- Loads the window half, checks that the load itself starts no `setup`, that its timer then runs `setup` one time, and
--- that a window start runs no second one, and answers it with `stdout` and `status`. Gives the toasts that the answer
--- added, as `level title` lines.
-local function toasts_after_setup(stdout: string, status: number): string
+-- that a window start runs no second one, and answers it with `stdout`, `status` and `stderr`. Gives the toasts that the
+-- answer added, as `level title` lines.
+local function toasts_after_setup(stdout: string, status: number, stderr: string?): string
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 	local plugin = Stub.load({ env = ENV })
 	eq(#plugin:pending("setup"), 0, "setup calls during the load")
@@ -221,7 +221,7 @@ local function toasts_after_setup(stdout: string, status: number): string
 	plugin.handlers.window_start(cx)
 	eq(plugin:pending_line("setup"), "setup", "setup calls after window_start")
 	local before = #cx.toasts
-	plugin:answer("setup", stdout, status, cx)
+	plugin:answer("setup", stdout, status, cx, stderr)
 	local lines: { string } = {}
 	for i = before + 1, #cx.toasts do
 		table.insert(lines, cx.toasts[i].level .. " " .. cx.toasts[i].title)
@@ -253,6 +253,53 @@ test("a failed setup at load toasts Setup failed with its message", function()
 		"toasts"
 	)
 end)
+
+for _, case in
+	{
+		{ stdout = "{}", stderr = "", status = 1, toasts = "error Setup failed: tern-wt failed" },
+		{ stdout = "{}", stderr = "boom\n", status = 1, toasts = "error Setup failed: boom\n" },
+		{ stdout = "", stderr = "", status = -1, toasts = "error Setup failed: tern-wt failed" },
+		{ stdout = "Error: x", stderr = "boom\n", status = 1, toasts = "error Setup failed: boom\n" },
+		{ stdout = "Error: x", stderr = "", status = 1, toasts = "error Setup failed: tern-wt failed" },
+		{
+			stdout = '{"error":{"code":"git_failed","message":""}}',
+			stderr = "\n",
+			status = 1,
+			toasts = "error Setup failed: ",
+		},
+	}
+do
+	local stderr = (string.gsub(case.stderr, "\n", "\\n"))
+	local toasts = (string.gsub(case.toasts, "\n", "\\n"))
+	test(
+		`a failed setup with stdout {case.stdout}, stderr "{stderr}" and status {case.status} toasts "{toasts}"`,
+		function()
+			eq(toasts_after_setup(case.stdout, case.status, case.stderr), case.toasts, "toasts")
+		end
+	)
+end
+
+-- Runs the `list` export and answers it with `stdout` and status 1. Gives the error that the call raised.
+local function list_failure(stdout: string): string
+	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
+	local plugin = Stub.load({ env = ENV })
+	plugin.exports.list(cx, Stub.call())
+	local ok, err = pcall(plugin.answer :: any, plugin, "list", stdout, 1, cx)
+	eq(ok, false, "list answer raised")
+	return tostring(err)
+end
+
+for _, case in
+	{
+		{ stdout = '{"error":{"code":"git_failed"}}', raised = "call:fail git_failed: tern-wt failed" },
+		{ stdout = '{"error":"boom"}', raised = "call:fail cli_failed: tern-wt failed" },
+		{ stdout = '{"error":{"message":"boom"}}', raised = "call:fail cli_failed: boom" },
+	}
+do
+	test(`a failed list with stdout {case.stdout} raises "{case.raised}"`, function()
+		eq(list_failure(case.stdout), case.raised, "raised")
+	end)
+end
 
 -- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
 -- `owner`.

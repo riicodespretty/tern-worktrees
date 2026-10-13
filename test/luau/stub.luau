@@ -20,8 +20,8 @@ export type CxOptions = {
 export type Run = {
 	argv: { string },
 	cb: (result: any, cx: any) -> (),
-	-- Calls `cb` with `stdout`, an empty stderr and `status` (default 0), and passes `cx` as given.
-	answer: (self: Run, stdout: string, status: number?, cx: any?) -> (),
+	-- Calls `cb` with `stdout`, `stderr` (default empty) and `status` (default 0), and passes `cx` as given.
+	answer: (self: Run, stdout: string, status: number?, cx: any?, stderr: string?) -> (),
 }
 export type Timer = { at: number, fn: (cx: any) -> (), cancelled: boolean }
 export type Call = {
@@ -49,7 +49,7 @@ export type Harness = {
 	-- The `tern.chrome.status` formatter, and how many times `tern.chrome.refresh` ran.
 	formatter: ((pane: any) -> any)?,
 	refreshes: number,
-	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
+	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?, stderr: string?) -> (),
 	take: (self: Harness, verb: string) -> { Run },
 	press: (self: Harness, cx: any, resolved: string?) -> (),
 	open_branch_picker: (self: Harness, cx: any, branches: string, resolved: string?) -> any,
@@ -508,8 +508,8 @@ end
 -- The `resolve` answer of the CLI for /r/app.
 Stub.RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 
-local function respond(self: Run, stdout: string, status: number?, cx: any?)
-	self.cb({ stdout = stdout, stderr = "", status = status or 0 }, cx)
+local function respond(self: Run, stdout: string, status: number?, cx: any?, stderr: string?)
+	self.cb({ stdout = stdout, stderr = stderr or "", status = status or 0 }, cx)
 end
 
 -- Loads and runs `opts.file` (default `window.luau`) in a new environment with a fake `tern`. Returns the
@@ -529,10 +529,10 @@ function Stub.load(opts: Options): Harness
 		clock = 0,
 		timers = {},
 		refreshes = 0,
-		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
+		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?, stderr: string?)
 			local given = cx or defaultCx or lastCx
 			for _, run in self:take(verb) do
-				run:answer(stdout, status, given)
+				run:answer(stdout, status, given, stderr)
 			end
 		end,
 		-- Removes the runs of `verb` that are pending and returns them, in the order they started.

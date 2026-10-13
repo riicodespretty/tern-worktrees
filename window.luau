@@ -42,7 +42,8 @@ local POLICY = {
 	["worktree+branch"] = "removes worktree, deletes branch",
 }
 
-type CliCb<T> = (result: T, err: any, cx: WindowCx) -> ()
+type CliError = { code: string, message: string, [string]: any }
+type CliCb<T> = (result: T, err: CliError?, cx: WindowCx) -> ()
 type PullRequest = { number: number, title: string, branch: string }
 type BranchWorktree = { branch: string?, path: string, main: boolean? }
 type BranchesResult = {
@@ -113,6 +114,18 @@ end
 
 local CLI_OPTIONS = { timeout_ms = 120000 }
 
+-- Returns the error envelope of a failed run, else a new table, with a string `code` and a string `message`.
+local function cli_error(envelope: any, stderr: string): CliError
+	local err: CliError = if type(envelope) == "table" then envelope else {} :: any
+	if type(err.code) ~= "string" then
+		err.code = "cli_failed"
+	end
+	if type(err.message) ~= "string" then
+		err.message = if stderr ~= "" then stderr else "tern-wt failed"
+	end
+	return err
+end
+
 local function cli<T>(args: { string }, cb: CliCb<T>)
 	tern.process.run({ CLI, table.unpack(args) }, CLI_OPTIONS, function(r: ProcessResult, cx: WindowCx?)
 		if cx == nil then
@@ -120,9 +133,9 @@ local function cli<T>(args: { string }, cb: CliCb<T>)
 		end
 		local ok, decoded = pcall(tern.json.decode, r.stdout)
 		if not ok or type(decoded) ~= "table" then
-			cb(nil :: any, { code = "cli_failed", message = if r.stderr ~= "" then r.stderr else "tern-wt failed" }, cx)
+			cb(nil :: any, cli_error(nil, r.stderr), cx)
 		elseif r.status ~= 0 then
-			cb(nil :: any, decoded.error or { code = "cli_failed", message = r.stderr }, cx)
+			cb(nil :: any, cli_error(decoded.error, r.stderr), cx)
 		else
 			cb(decoded :: any, nil, cx)
 		end
@@ -540,12 +553,16 @@ local function staging_line(err: any): string?
 	return nil
 end
 
-local function toast_error(cx: WindowCx, err: any)
-	cx:toast("error", tostring(err and err.message or "tern-wt failed"), staging_line(err))
+local function toast_error(cx: WindowCx, err: CliError)
+	cx:toast("error", err.message, staging_line(err))
 end
 
-local function cli_or_else<T>(args: { string }, on_error: (cx: WindowCx, err: any) -> (), cb: (res: T, cx: WindowCx) -> ())
-	cli(args, function(res: T, err: any, cx: WindowCx)
+local function cli_or_else<T>(
+	args: { string },
+	on_error: (cx: WindowCx, err: CliError) -> (),
+	cb: (res: T, cx: WindowCx) -> ()
+)
+	cli(args, function(res: T, err: CliError?, cx: WindowCx)
 		if err ~= nil then
 			on_error(cx, err)
 			return
@@ -624,10 +641,10 @@ end
 
 -- The cause of a failed `remove` of the worktree at `path`: the files with work to lose of a `dirty_worktree`, else
 -- the message with the folder name of the worktree in place of `path`, then the saved files when there are some.
-local function failure_message(err: any, path: string): string
+local function failure_message(err: CliError, path: string): string
 	local summary = if err.code == "dirty_worktree" then dirty_summary(list_dirty_files(err)) else ""
 	local parts: { string } = {
-		if summary ~= "" then summary else replace_plain(tostring(err.message), path, basename(path)),
+		if summary ~= "" then summary else replace_plain(err.message, path, basename(path)),
 	}
 	local saved = staging_line(err)
 	if saved ~= nil then
@@ -1041,7 +1058,7 @@ local function create(
 	cli(args, function(res: CreateResult, err, cx2)
 		if err ~= nil then
 			if err.code == "bad_args" and retry ~= nil then
-				cx2:toast("error", tostring(err.message))
+				cx2:toast("error", err.message)
 				retry(cx2)
 			elseif err.code == "worktree_exists_elsewhere" then
 				local existing = tostring(err.existing)
@@ -1385,12 +1402,12 @@ local function apply_branches(cx: WindowCx, root: string, store: BranchesStore, 
 end
 
 -- Shows the toasts of the failed `run`. With no online answer in `store`, the press that waits for it stops waiting.
-local function fail_branches(cx: WindowCx, store: BranchesStore, run: BranchesRun, err: any)
+local function fail_branches(cx: WindowCx, store: BranchesStore, run: BranchesRun, err: CliError)
 	if not run.notify then
 		return
 	end
 	if store.online then
-		cx:toast("error", "Branch refresh failed: " .. tostring(err.message or "tern-wt failed"))
+		cx:toast("error", "Branch refresh failed: " .. err.message)
 	else
 		store.openFor = nil
 		toast_error(cx, err)
@@ -1835,7 +1852,7 @@ end)
 local function link_cli_and_skill()
 	cli({ "setup" }, function(res: SetupResult, err, cx)
 		if err ~= nil then
-			cx:toast("error", "Setup failed: " .. tostring(err.message or "tern-wt failed"))
+			cx:toast("error", "Setup failed: " .. err.message)
 			return
 		end
 		for _, link in ipairs(res.links or {}) do
@@ -1949,8 +1966,8 @@ local function export_args(...: any): ({ any }, WindowCx, any)
 	return args, cx, call
 end
 
-local function err_text(err: any): string
-	return tostring(err.code) .. ": " .. tostring(err.message)
+local function err_text(err: CliError): string
+	return err.code .. ": " .. err.message
 end
 
 local function reply_to<T>(call: any): CliCb<T>
