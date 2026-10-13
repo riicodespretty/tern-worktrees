@@ -430,6 +430,7 @@ describe('remove command', () => {
       writeFileSync(path.join(dir, 'sub', '.env.local'), 'SECRET=1\n');
       await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/s', removed: dir });
       expect(existsSync(dir)).toBeFalsy();
+      expect(readFileSync(path.join(repo.dir, 'sub', '.env.local'), 'utf-8')).toBe('SECRET=1\n');
     });
 
     it('removes a clean worktree without --force', async () => {

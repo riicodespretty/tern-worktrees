@@ -27,7 +27,8 @@ const writeFiles = (dir: string, files: Record<string, Buffer | string>): void =
 
 /**
  * A worktree and a main checkout with ignored files: a copy with the same bytes (`key.pem`, and `full.bin` of two full chunks), a changed `.env`,
- * a file that only the worktree holds, a symbolic link, a file that is a directory in the main checkout, and a file with a different last chunk.
+ * a file that only the worktree holds, a symbolic link to the file at its path in the main checkout, a file that is a directory in the main
+ * checkout, and a file with a different last chunk.
  */
 const copiesOfMain = async (): Promise<{ dir: string; main: string }> => {
   await ignoreGlobally('.env', '*.pem', '*.bin', 'secrets');
@@ -38,9 +39,9 @@ const copiesOfMain = async (): Promise<{ dir: string; main: string }> => {
   changed[changed.length - 1] = 0;
   const { dir } = await tmpRepo();
   const main = tempDir('main');
-  writeFiles(main, { '.env': 'SECRET=1\n', 'full.bin': full, 'key.pem': 'KEY-A\n', 'ragged.bin': ragged, 'secrets/a': 'x\n' });
+  writeFiles(main, { '.env': 'SECRET=1\n', 'full.bin': full, 'key.pem': 'KEY-A\n', 'link.pem': 'KEY-A\n', 'ragged.bin': ragged, 'secrets/a': 'x\n' });
   writeFiles(dir, { '.env': 'SECRET=2\n', 'full.bin': full, 'key.pem': 'KEY-A\n', 'only.pem': 'KEY-B\n', 'ragged.bin': changed, 'secrets': '' });
-  symlinkSync(path.join(main, 'key.pem'), path.join(dir, 'link.pem'));
+  symlinkSync(path.join(main, 'link.pem'), path.join(dir, 'link.pem'));
   return { dir, main };
 };
 

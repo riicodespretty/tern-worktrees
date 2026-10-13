@@ -1,13 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { run } from '../src/commands/remove.ts';
-import { git, ignoreGlobally, managedPath, tempDir, tmpRepo, useOmp, useSandbox, writeTernLs } from './helpers.ts';
+import { git, managedPath, tempDir, tmpRepo, useOmp, useSandbox, writeTernLs } from './helpers.ts';
 import type { RepoFixture } from './helpers.ts';
 
 let repo: RepoFixture;
 
-const addFeature = async (dir = managedPath('feature-x')): Promise<string> => {
+const addFeature = async (dir: string): Promise<string> => {
   mkdirSync(path.dirname(dir), { recursive: true });
   await git(repo.dir, 'worktree', 'add', '--quiet', '--track', '-b', 'feature/x', dir, 'origin/feature/x');
   return dir;
@@ -45,51 +45,6 @@ describe('remove command', () => {
       const mine = await addFeature(path.join(base, 'aoyama', 'feature-x'));
       await expect(run([mine])).resolves.toMatchObject({ removed: mine, warnings: [] });
       expect(existsSync(mine)).toBeFalsy();
-    });
-  });
-
-  describe('copies of the ignored files of the main checkout', () => {
-    it('removes copies without --force, and stops on changed ones', async () => {
-      await ignoreGlobally('.env', '*.pem');
-      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
-      writeFileSync(path.join(repo.dir, 'key.pem'), 'KEY-A\n');
-      const dir = await addFeature();
-      writeFileSync(path.join(dir, '.env'), 'SECRET=2\n');
-      writeFileSync(path.join(dir, 'key.pem'), 'KEY-A\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], existing: dir, files: ['!! .env'], hardToRebuild: ['.env'] } });
-      writeFileSync(path.join(dir, '.env'), 'SECRET=1 and more\n');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! .env'], hardToRebuild: ['.env'] } });
-      writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
-      await expect(run([dir])).resolves.toMatchObject({ branch: 'feature/x', removed: dir, warnings: [] });
-      expect(existsSync(dir)).toBeFalsy();
-      expect(readFileSync(path.join(repo.dir, '.env'), 'utf-8')).toBe('SECRET=1\n');
-    });
-
-    it('stops on an ignored symbolic link, and on a file that is a directory in the main checkout', async () => {
-      await ignoreGlobally('.env', 'secrets');
-      writeFileSync(path.join(repo.dir, '.env'), 'SECRET=1\n');
-      mkdirSync(path.join(repo.dir, 'secrets'));
-      const dir = await addFeature();
-      symlinkSync(path.join(repo.dir, '.env'), path.join(dir, '.env'));
-      writeFileSync(path.join(dir, 'secrets'), '');
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! .env', '!! secrets'], hardToRebuild: ['.env', 'secrets'] } });
-    });
-
-    it('compares large files chunk by chunk, also when they differ only in the last chunk', async () => {
-      await ignoreGlobally('*.bin');
-      const chunk = 64 * 1024;
-      const full = Buffer.alloc(chunk * 2, 7);
-      const ragged = Buffer.alloc(chunk * 3 + 5, 9);
-      writeFileSync(path.join(repo.dir, 'full.bin'), full);
-      writeFileSync(path.join(repo.dir, 'ragged.bin'), ragged);
-      const dir = await addFeature();
-      writeFileSync(path.join(dir, 'full.bin'), full);
-      const changed = Buffer.from(ragged);
-      changed[changed.length - 1] = 0;
-      writeFileSync(path.join(dir, 'ragged.bin'), changed);
-      await expect(run([dir])).rejects.toMatchObject({ code: 'dirty_worktree', extra: { changes: [], files: ['!! ragged.bin'], hardToRebuild: ['ragged.bin'] } });
-      writeFileSync(path.join(dir, 'ragged.bin'), ragged);
-      await expect(run([dir])).resolves.toMatchObject({ removed: dir, warnings: [] });
     });
   });
 });
