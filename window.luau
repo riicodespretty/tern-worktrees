@@ -102,7 +102,6 @@ local configWarned = false
 local rootOfDir: { [string]: string | false } = {}
 local cwdOfPane: { [number]: string? } = {}
 local resolving: { [string]: boolean } = {}
-local rootOfLiveRow: { [string]: string } = {}
 local refresh_branches: (cx: WindowCx, root: string) -> ()
 
 local function flush(cx: WindowCx)
@@ -1087,36 +1086,6 @@ local function create(
 	end)
 end
 
-local function add_row(
-	root: string,
-	id: string,
-	title: string,
-	createArgs: { string },
-	name: string,
-	checkout: Checkout,
-	ids: { string }
-)
-	rootOfLiveRow[id] = root
-	table.insert(ids, id)
-	tern.command({
-		id = id,
-		title = title,
-		icon = "branch",
-		group = "Worktrees",
-		available = function(cx: WindowCx): boolean
-			if rootOfLiveRow[id] ~= root then
-				return false
-			end
-			local focused = cx.session:focused()
-			local cwd = if focused ~= nil then cwdOfPane[focused] else nil
-			return cwd ~= nil and rootOfDir[cwd] == root
-		end,
-		run = function(cx: WindowCx)
-			create(cx, root, createArgs, name, checkout)
-		end,
-	})
-end
-
 -- One pull request or branch of a `branches` answer, as the branch picker, the worktree rows and `create` see it.
 -- `pickId` is the id of the picker item. The worktree row id is a hash of `rowKey`. `branch` is the branch name that
 -- the progress toast shows.
@@ -1310,8 +1279,8 @@ type BranchesStore = {
 	openFor: number?,
 }
 local storeOfRoot: { [string]: BranchesStore } = {}
--- The ids of the worktree rows of each repository root.
-local rowsOfRoot: { [string]: { string } } = {}
+-- The ids of the worktree rows of each repository root that show.
+local liveRows: { [string]: { [string]: true } } = {}
 
 -- The answer to keep after `res`: an offline answer keeps the pull requests and the default branch of `before`, and an
 -- online answer with `prsFailed` keeps the pull requests of `before`.
@@ -1340,28 +1309,30 @@ end
 local function register_rows(root: string, res: BranchesResult)
 	local name: string = if type(res.name) == "string" then res.name else basename(root)
 	local prefix = "wt-" .. fnv1a(root) .. "-"
-	local ids: { string } = {}
+	local live: { [string]: true } = {}
 	for _, target in ipairs(branch_targets(res)) do
-		add_row(
-			root,
-			prefix .. fnv1a(target.rowKey),
-			name .. ": " .. target.rowLabel,
-			target.createArgs,
-			target.branch,
-			target.checkout,
-			ids
-		)
+		local id = prefix .. fnv1a(target.rowKey)
+		live[id] = true
+		tern.command({
+			id = id,
+			title = name .. ": " .. target.rowLabel,
+			icon = "branch",
+			group = "Worktrees",
+			available = function(cx: WindowCx): boolean
+				local rows = liveRows[root]
+				if rows == nil or rows[id] == nil then
+					return false
+				end
+				local focused = cx.session:focused()
+				local cwd = if focused ~= nil then cwdOfPane[focused] else nil
+				return cwd ~= nil and rootOfDir[cwd] == root
+			end,
+			run = function(cx: WindowCx)
+				create(cx, root, target.createArgs, target.branch, target.checkout)
+			end,
+		})
 	end
-	local currentIds: { [string]: boolean } = {}
-	for _, id in ipairs(ids) do
-		currentIds[id] = true
-	end
-	for _, id in ipairs(rowsOfRoot[root] or {}) do
-		if not currentIds[id] then
-			rootOfLiveRow[id] = nil
-		end
-	end
-	rowsOfRoot[root] = ids
+	liveRows[root] = live
 end
 
 local function fetch_interval_ms(cx: WindowCx): number

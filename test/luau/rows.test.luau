@@ -17,6 +17,12 @@ end)
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
 local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
 local STALE = Stub.answer("branches-offline", { repo = REPO }, { branches = { "main" }, worktrees = {} })
+local LIB_RESOLVED = Stub.fixture("resolve", { repo = LIB })
+local LIB_BRANCHES = Stub.answer(
+	"branches-offline",
+	{ repo = LIB },
+	{ name = "lib", branches = { "main" }, worktrees = {} }
+)
 local OFFLINE = Stub.answer("branches-offline", { repo = REPO }, {
 	default = "dev",
 	branches = { "main", "x", "y" },
@@ -154,6 +160,23 @@ test("the row of a branch that leaves the answer does not show", function()
 	plugin:answer("branches", STALE, 0, cx)
 	eq(shows(plugin, cx, X_ROW), false, "row of x after x left the answer")
 	eq(shows(plugin, cx, "app: main"), true, "row of main after x left the answer")
+end)
+
+test("an answer for one repository keeps the worktree rows of another repository", function()
+	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = REPO }, { pane = 2, tab = 2, cwd = LIB } }
+	local plugin, cx = window(0, panes)
+	local libCx = Stub.cx(panes, 2)
+	trigger(plugin, cx)
+	plugin:answer("branches", BRANCHES, 0, cx)
+	plugin.handlers.cwd({ pane = 2, path = LIB }, libCx)
+	plugin:answer("resolve", LIB_RESOLVED, 0, libCx)
+	plugin:answer("branches", LIB_BRANCHES, 0, libCx)
+	eq(shown(plugin, cx), "app: #7 Fix login; app: main; app: x · worktree", "rows of app after the lib answer")
+	eq(shown(plugin, libCx), "lib: main", "rows of lib")
+	plugin.handlers.cwd({ pane = 1, path = REPO }, cx)
+	plugin:answer("branches", STALE, 0, cx)
+	eq(shown(plugin, cx), "app: #7 Fix login; app: main", "rows of app after its offline answer")
+	eq(shown(plugin, libCx), "lib: main", "rows of lib after the app answer")
 end)
 
 test("the row of a branch with a worktree sends create with --branch=<name>", function()
