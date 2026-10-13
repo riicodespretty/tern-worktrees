@@ -79,14 +79,14 @@ export const readOrigin = async (root: string): Promise<Origin> => {
   return { github: groups ? { name: groups.name, owner: groups.owner } : null, present: url !== '' };
 };
 
-/** The default branch: `origin/HEAD`, else what GitHub reports for `github`, else the current branch. `github` null skips GitHub. */
-export const defaultBranch = async (root: string, github: GithubRepoRef | null): Promise<string> => {
+/** The default branch: `origin/HEAD`, else what GitHub reports for `repoRef`, else the current branch. When `repoRef` is null, it does not ask GitHub. */
+export const defaultBranch = async (root: string, repoRef: GithubRepoRef | null): Promise<string> => {
   const head = await gitRun(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD');
   if (head.status === 0) {
     return head.stdout.trim().slice('origin/'.length);
   }
-  if (github !== null) {
-    const name = await ghMust('repo', 'view', nameWithOwner(github), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name');
+  if (repoRef !== null) {
+    const name = await ghMust('repo', 'view', nameWithOwner(repoRef), '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name');
     return name.trim();
   }
   const current = await gitMust(root, 'branch', '--show-current');

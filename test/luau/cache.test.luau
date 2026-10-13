@@ -8,24 +8,31 @@ local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
 local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
-local BRANCHES = Stub.fixture("branches", { repo = REPO, worktree = "/wt/worktrees/app/x" })
-local UPDATED = [[{"name":"app","default":"main","branches":["main","x","y"],"prs":[],"prsFailed":false,
-"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
-local STALE =
-	[[{"name":"app","default":"main","branches":["main"],"prs":[],"prsFailed":false,"worktrees":[],"warnings":[]}]]
-local OFFLINE = [[{"name":"app","default":"dev","branches":["main","x","y"],"prs":[],"prsFailed":false,
-"worktrees":[{"branch":"y","path":"/wt/worktrees/app/y","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
+-- The worktree of y in the `worktrees` of a `branches` answer.
+local Y_WORKTREE = { branch = "y", path = "/wt/worktrees/app/y", managed = true, owner = "tern", main = false }
+local UPDATED = Stub.answer(
+	"branches-offline",
+	{ repo = REPO },
+	{ branches = { "main", "x", "y" }, worktrees = { Y_WORKTREE } }
+)
+local STALE = Stub.answer("branches-offline", { repo = REPO }, { branches = { "main" }, worktrees = {} })
+local OFFLINE = Stub.answer(
+	"branches-offline",
+	{ repo = REPO },
+	{ default = "dev", branches = { "main", "x", "y" }, worktrees = { Y_WORKTREE } }
+)
 local FAILED = '{"error":{"code":"git_failed","message":"fetch failed"}}'
 -- The `branches` answer of the CLI when `gh pr list` fails, for REPO with a worktree of x.
-local PR_LIST_FAILED_VARS: { [string]: string } = { repo = REPO, worktree = "/wt/worktrees/app/x" }
+local PR_LIST_FAILED_VARS = Stub.worktree_vars("x")
 local PR_LIST_FAILED = Stub.fixture("branches-pr-list-failed", PR_LIST_FAILED_VARS)
 local LOADING = "info Loading branches…"
 local LOADED = "info Branches loaded"
 local REFRESHING = "info Refreshing branches…"
 local CHANGED = "info Branches refreshed: reopen to see changes"
 local UNCHANGED = "info Branches refreshed: no changes"
-local CREATED = Stub.answer("create-created", { branch = "y", repo = REPO, worktree = "/wt/worktrees/app/y" })
-local REMOVED = Stub.answer("remove-kept-policy", { repo = REPO, worktree = "/wt/worktrees/app/x" }, { branch = "x" })
+local CREATED = Stub.fixture("create-created", Stub.worktree_vars("y"))
+local REMOVED = Stub.answer("remove-kept-policy", Stub.worktree_vars("x"), { branch = "x" })
 
 -- Takes the pending `branches` runs out of the fake CLI, as a callback that Tern drops, and returns them.
 local function drop_branches(plugin: Stub.Harness): { Stub.Run }
@@ -174,7 +181,7 @@ test("a second open shows the cached picker before branches answers", function()
 	eq(open(plugin, cx), 2, "pickers after the second open, with branches unanswered")
 	eq(item_ids(cx.asked[2]), item_ids(cx.asked[1]), "items of the second picker")
 	eq(cx.asked[2].opts.placeholder, "Search branches in app", "placeholder")
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "background branches calls")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app", "background branches calls")
 end)
 
 test("the third open shows the answer of the background branches", function()
@@ -224,7 +231,7 @@ test("a background branches with a failed pull request list keeps the cached pul
 	open(plugin, cx)
 	plugin:answer("branches", PR_LIST_FAILED, 0, cx)
 	open(plugin, cx)
-	eq(Stub.item(cx.asked[#cx.asked], "pr:7") ~= nil, true, "pr:7 after the failed pull request list")
+	Stub.item(cx.asked[#cx.asked], "pr:7")
 end)
 
 test(
@@ -257,11 +264,11 @@ local function rows_after(stdout: string): (Stub.Harness, any)
 	local plugin = Stub.load({ env = ENV })
 	plugin.handlers.window_start(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "first rows branches")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app", "first rows branches")
 	plugin:answer("branches", BRANCHES, 0, cx)
 	plugin:tick(5 * 60000)
 	plugin.handlers.focus({ pane = 1 }, cx)
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "next rows branches")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app", "next rows branches")
 	plugin:answer("branches", stdout, 0, cx)
 	return plugin, cx
 end
@@ -308,7 +315,7 @@ test("a teardown during the first branches runs one more branches after it", fun
 	plugin:answer("remove", REMOVED, 0, cx)
 	plugin:answer("branches", BRANCHES, 0, cx)
 	eq(#cx.asked, 1, "pickers after the first branches answers")
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "rerun")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "rerun")
 	plugin:answer("branches", STALE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other pr:7 b:main", "items after the teardown")
@@ -343,7 +350,7 @@ test("a press after a background branches that never answered for 120 s starts a
 	eq(toast_lines(cx), REFRESHING, "toasts after a press at 120 s")
 	plugin:tick(1)
 	eq(open(plugin, cx), 4, "pickers after a press after 120 s")
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "new background branches")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app", "new background branches")
 	eq(toast_lines(cx), REFRESHING .. "; " .. REFRESHING, "toasts after a press after 120 s")
 	plugin:answer("branches", UPDATED, 0, cx)
 	open(plugin, cx)
@@ -355,7 +362,7 @@ test("choosing a branch in a cached picker creates its worktree", function()
 	first_open(plugin, cx, BRANCHES)
 	open(plugin, cx)
 	cx.asked[2].next(Stub.item(cx.asked[2], "b:x"), nil, cx)
-	eq(table.concat(plugin:pending("create"), "; "), "create --repo /r/app --no-tab --branch=x", "create argv")
+	eq(plugin:pending_line("create"), "create --repo /r/app --no-tab --branch=x", "create argv")
 end)
 
 test("a create refreshes the cache offline and keeps its pull requests and default branch", function()
@@ -382,7 +389,7 @@ test("a create during an online background branches runs one offline after it", 
 	plugin:answer("create", CREATED, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", STALE, 0, cx)
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app --offline", "rerun")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "rerun")
 	plugin:answer("branches", OFFLINE, 0, cx)
 	open(plugin, cx)
 	eq(item_ids(cx.asked[#cx.asked]), "new other b:main b:x b:y*", "items after the create")
@@ -397,7 +404,7 @@ test("an open during an offline refresh runs one online after it", function()
 	eq(open(plugin, cx), 2, "pickers after the open")
 	eq(toast_lines(cx), "", "toasts after the open during the offline refresh")
 	plugin:answer("branches", OFFLINE, 0, cx)
-	eq(table.concat(plugin:pending("branches"), "; "), "branches --repo /r/app", "rerun")
+	eq(plugin:pending_line("branches"), "branches --repo /r/app", "rerun")
 	eq(toast_lines(cx), REFRESHING, "toasts after the online rerun starts")
 	plugin:answer("branches", UPDATED, 0, cx)
 	eq(toast_lines(cx), REFRESHING .. "; " .. CHANGED, "toasts after the online rerun")

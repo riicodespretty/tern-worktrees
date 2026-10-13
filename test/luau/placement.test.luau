@@ -27,7 +27,7 @@ end
 
 -- The `create` answer for `branch` of /r/app, with an untyped setup line.
 local function created(branch: string): string
-	return Stub.answer("create-setup-no-tab", { branch = branch, repo = "/r/app", worktree = worktree(branch) })
+	return Stub.fixture("create-setup-no-tab", Stub.worktree_vars(branch))
 end
 
 -- Runs the Carly `create` of `branch` (default x) over `cx`, answers `create` and `resolve`, and returns the replies.

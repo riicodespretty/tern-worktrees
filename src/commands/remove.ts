@@ -96,11 +96,11 @@ const closeBlocks = async (ctx: Context, blocks: number[]): Promise<number[]> =>
   return closed.filter(block => block !== null);
 };
 
-const hasMergedPullRequest = async (ctx: Context, github: GithubRepoRef | null, branch: string): Promise<boolean> => {
-  if (github === null) {
+const hasMergedPullRequest = async (ctx: Context, repoRef: GithubRepoRef | null, branch: string): Promise<boolean> => {
+  if (repoRef === null) {
     return false;
   }
-  const { error, prs } = await listPullRequests(github, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
+  const { error, prs } = await listPullRequests(repoRef, [`--head=${branch}`, '--state', 'merged'], ['headRefOid']);
   if (error !== null) {
     ctx.warnings.push(`merged PR check failed: ${error}`);
     return false;

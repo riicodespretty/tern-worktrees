@@ -25,7 +25,8 @@ end
 
 local ROOT: string? = remembered_root()
 
--- Keeps the root of a `list --all` answer, without a trailing `/`, as the worktree root, also in kv.
+-- Sets the worktree root to the root of a `list --all` answer without a trailing `/`, and writes it to kv. Skips a
+-- root that is not a string, is empty, or is the same.
 local function learn_root(root: any)
 	local learned = if type(root) == "string" then without_trailing_slash(root) else nil
 	if learned ~= nil and learned ~= "" and learned ~= ROOT then
@@ -212,7 +213,8 @@ local function managed_worktree(cwd: string?): string?
 	return if entry ~= nil and entry.owner == "tern" then path else nil
 end
 
--- The managed worktrees of each tab in `panes`, once each; a tab with panes and none maps to an empty list.
+-- Returns the managed worktrees of each tab in `panes`, with no duplicates. A tab that has panes but no managed
+-- worktree maps to an empty list.
 local function managed_by_tab(panes: { PaneInfo }): { [number]: { string } }
 	local found: { [number]: { string } } = {}
 	for _, pane in ipairs(panes) do
@@ -238,6 +240,12 @@ local function rebuild_managed(panes: { PaneInfo })
 			managed[tab] = nil
 		end
 	end
+end
+
+-- Shows the queued errors, then writes the managed worktrees of each tab of the session of `cx` into `managed`.
+local function refresh_managed(cx: WindowCx)
+	flush(cx)
+	rebuild_managed(cx.session:panes())
 end
 
 local function apply_list(res: ListResult, startedAt: number)
@@ -266,7 +274,7 @@ end
 local refresh_index: () -> ()
 
 -- Runs `list --all`, and writes the worktree index and the worktree root from its answer. When a later `list_all`
--- starts before the answer, the answer is dropped.
+-- starts before the answer comes, this call drops the answer.
 local function list_all()
 	local startedAt = tern.now()
 	listing = startedAt
@@ -278,8 +286,7 @@ local function list_all()
 		listing = nil
 		if err == nil then
 			apply_list(res, startedAt)
-			flush(cx2)
-			rebuild_managed(cx2.session:panes())
+			refresh_managed(cx2)
 		end
 		if listAgain then
 			listAgain = false
@@ -448,8 +455,9 @@ local function pane_under(cx: WindowCx, path: string, exceptTab: number?): boole
 	return false
 end
 
--- The paths of `paths` that exist on disk and have no pane outside tab `exceptTab` (nil: no pane at all).
-local function to_ask(cx: WindowCx, paths: { string }, exceptTab: number?): { string }
+-- Returns each path in `paths` that exists on disk and has no pane under it outside tab `exceptTab`. When `exceptTab`
+-- is nil, a path is kept only when no pane in any tab is under it.
+local function paths_to_ask(cx: WindowCx, paths: { string }, exceptTab: number?): { string }
 	local found: { string } = {}
 	for _, path in ipairs(paths) do
 		if tern.fs.exists(path) and not pane_under(cx, path, exceptTab) then
@@ -1110,9 +1118,10 @@ local function add_row(
 end
 
 -- One pull request or branch of a `branches` answer, as the branch picker, the worktree rows and `create` see it.
--- `key` is the picker id, `rowKey` the key of the worktree row id, and `branch` the name of the progress toast.
+-- `pickId` is the id of the picker item. The worktree row id is a hash of `rowKey`. `branch` is the branch name that
+-- the progress toast shows.
 type BranchTarget = {
-	key: string,
+	pickId: string,
 	rowKey: string,
 	branch: string,
 	createArgs: { string },
@@ -1138,7 +1147,7 @@ local function branch_targets(res: BranchesResult): { BranchTarget }
 		local branch = tostring(pr.branch)
 		local label = "#" .. n .. " " .. tostring(pr.title)
 		table.insert(targets, {
-			key = "pr:" .. n,
+			pickId = "pr:" .. n,
 			rowKey = "pr:" .. n,
 			branch = branch,
 			createArgs = { "--pr", n },
@@ -1154,7 +1163,7 @@ local function branch_targets(res: BranchesResult): { BranchTarget }
 		local checkout: Checkout = checkouts[branch] or "new"
 		local inWorktree = checkout == "worktree"
 		table.insert(targets, {
-			key = "b:" .. branch,
+			pickId = "b:" .. branch,
 			rowKey = branch,
 			branch = branch,
 			createArgs = { "--branch=" .. branch },
@@ -1220,14 +1229,21 @@ local function new_branch(cx: WindowCx, root: string, repoName: string, defaultB
 	end)
 end
 
--- The items of the branch picker for `res`: `New branch…`, `Other repo…`, the pull requests, then the branches.
-local function branch_picker_items(res: BranchesResult): { PickItem }
+-- The items of the branch picker: `New branch…` from `defaultBranch`, `Other repo…`, then one item for each of
+-- `targets`.
+local function branch_picker_items(defaultBranch: string, targets: { BranchTarget }): { PickItem }
 	local items: { PickItem } = {
-		{ id = "new", label = "New branch…", detail = "from " .. tostring(res.default), icon = "plus" },
+		{ id = "new", label = "New branch…", detail = "from " .. defaultBranch, icon = "plus" },
 		{ id = "other", label = "Other repo…", icon = "folder" },
 	}
-	for _, t in ipairs(branch_targets(res)) do
-		table.insert(items, { id = t.key, label = t.pickLabel, detail = t.detail, group = t.group, icon = t.icon })
+	for _, target in ipairs(targets) do
+		table.insert(items, {
+			id = target.pickId,
+			label = target.pickLabel,
+			detail = target.detail,
+			group = target.group,
+			icon = target.icon,
+		})
 	end
 	return items
 end
@@ -1235,7 +1251,8 @@ end
 -- Whether the branch picker shows the same items for `a` and `b`, in the same order: the same ids, labels, dim text
 -- and groups.
 local function same_branch_picker_items(a: BranchesResult, b: BranchesResult): boolean
-	local itemsA, itemsB = branch_picker_items(a), branch_picker_items(b)
+	local itemsA = branch_picker_items(tostring(a.default), branch_targets(a))
+	local itemsB = branch_picker_items(tostring(b.default), branch_targets(b))
 	if #itemsA ~= #itemsB then
 		return false
 	end
@@ -1253,7 +1270,7 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 	local repoName = tostring(res.name)
 	local defaultBranch = tostring(res.default)
 	local targets = branch_targets(res)
-	local items = branch_picker_items(res)
+	local items = branch_picker_items(defaultBranch, targets)
 	choose(
 		cx,
 		{ placeholder = "Search branches in " .. repoName, icon = "branch", action = "open", items = items },
@@ -1266,9 +1283,9 @@ local function show_branch_picker(cx: WindowCx, root: string, res: BranchesResul
 			elseif id == "other" then
 				repo_picker(cx2)
 			else
-				for _, t in ipairs(targets) do
-					if t.key == id then
-						create(cx2, root, t.createArgs, t.branch, t.checkout)
+				for _, target in ipairs(targets) do
+					if target.pickId == id then
+						create(cx2, root, target.createArgs, target.branch, target.checkout)
 						break
 					end
 				end
@@ -1324,8 +1341,16 @@ local function register_rows(root: string, res: BranchesResult)
 	local name: string = if type(res.name) == "string" then res.name else basename(root)
 	local prefix = "wt-" .. fnv1a(root) .. "-"
 	local ids: { string } = {}
-	for _, t in ipairs(branch_targets(res)) do
-		add_row(root, prefix .. fnv1a(t.rowKey), name .. ": " .. t.rowLabel, t.createArgs, t.branch, t.checkout, ids)
+	for _, target in ipairs(branch_targets(res)) do
+		add_row(
+			root,
+			prefix .. fnv1a(target.rowKey),
+			name .. ": " .. target.rowLabel,
+			target.createArgs,
+			target.branch,
+			target.checkout,
+			ids
+		)
 	end
 	local currentIds: { [string]: boolean } = {}
 	for _, id in ipairs(ids) do
@@ -1776,7 +1801,7 @@ local function intercept(cx: WindowCx, tab: number?): boolean
 	if tab == nil then
 		return false
 	end
-	local paths = to_ask(cx, managed_by_tab(cx.session:panes())[tab] or {}, tab)
+	local paths = paths_to_ask(cx, managed_by_tab(cx.session:panes())[tab] or {}, tab)
 	if #paths == 0 then
 		return false
 	end
@@ -1854,8 +1879,7 @@ end
 tern.timer(0, link_cli_and_skill)
 
 tern.on("window_start", function(cx: WindowCx)
-	flush(cx)
-	rebuild_managed(cx.session:panes())
+	refresh_managed(cx)
 	for _, pane in ipairs(cx.session:panes()) do
 		remember_cwd(pane.pane, pane.cwd)
 	end
@@ -1869,8 +1893,7 @@ end)
 
 for _, name in ipairs({ "tab_created", "pane_created" }) do
 	tern.on(name, function(_ev: any, cx: WindowCx)
-		flush(cx)
-		rebuild_managed(cx.session:panes())
+		refresh_managed(cx)
 		local root = ROOT
 		if root == nil then
 			return
@@ -1885,8 +1908,7 @@ for _, name in ipairs({ "tab_created", "pane_created" }) do
 end
 
 tern.on("cwd", function(ev: CwdEvent, cx: WindowCx)
-	flush(cx)
-	rebuild_managed(cx.session:panes())
+	refresh_managed(cx)
 	remember_cwd(ev.pane, ev.path)
 	if ev.pane == cx.session:focused() then
 		refresh_dir(cx, ev.path)
@@ -1933,14 +1955,14 @@ tern.on("tab_closed", function(ev: TabEvent, cx: WindowCx)
 	if paths == nil then
 		return
 	end
-	local fresh: { string } = {}
+	local unhandled: { string } = {}
 	for _, path in ipairs(paths) do
 		if not handled[path] then
-			table.insert(fresh, path)
+			table.insert(unhandled, path)
 		end
 		handled[path] = nil
 	end
-	local open = to_ask(cx, fresh, nil)
+	local open = paths_to_ask(cx, unhandled, nil)
 	if #open > 0 then
 		ask_teardown(cx, nil, open)
 	end

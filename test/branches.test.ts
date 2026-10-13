@@ -265,7 +265,7 @@ describe('branches command', () => {
   });
 
   describe('contract fixtures', () => {
-    it('answers branches through main as the contract fixture', async () => {
+    it('answers branches through the CLI main function with the contract fixture', async () => {
       const repo = await tmpRepo('app');
       await pushDatedBranch(repo, 'x', '2030-01-01T00:00:00Z');
       await useGithubOrigin(GITHUB_ORIGIN);
@@ -275,7 +275,7 @@ describe('branches command', () => {
       await expect(cliJson(['branches', '--repo', repo.dir])).resolves.toStrictEqual(contract('branches', { repo: repo.dir, worktree: managed }));
     });
 
-    it('answers branches --offline through main as the contract fixture', async () => {
+    it('answers branches --offline through the CLI main function with the contract fixture', async () => {
       const repo = await tmpRepo('app');
       await pushDatedBranch(repo, 'x', '2030-01-01T00:00:00Z');
       await expect(cliJson(['branches', '--repo', repo.dir, '--offline'])).resolves.toStrictEqual(contract('branches-offline', { repo: repo.dir }));

@@ -8,11 +8,12 @@ local REPO = "/r/app"
 local ENV = { HOME = "/home/u" }
 local RESOLVED = Stub.fixture("resolve", { repo = REPO })
 -- The `branches` answer of the CLI for REPO with a worktree of x and the pull request 7.
-local BRANCHES = Stub.fixture("branches", { repo = REPO, worktree = "/wt/worktrees/app/x" })
+local BRANCHES = Stub.fixture("branches", Stub.worktree_vars("x"))
 -- A `branches` answer with the main checkout and a worktree of y that is not in the worktree root.
-local OUTSIDE_ROOT = [[{"name":"app","default":"main","branches":["main","y"],"prs":[],"prsFailed":false,
-"worktrees":[{"branch":"main","path":"/r/app","managed":false,"owner":null,"main":true},
-{"branch":"y","path":"/elsewhere/y","managed":false,"owner":null,"main":false}],"warnings":[]}]]
+local OUTSIDE_ROOT = Stub.answer("branches-offline", { repo = REPO }, function(answer: any)
+	answer.branches = { "main", "y" }
+	table.insert(answer.worktrees, { branch = "y", path = "/elsewhere/y", managed = false, main = false })
+end)
 
 local function same(actual: { [string]: any }, expected: { [string]: any }, what: string)
 	for key, value in expected do
@@ -230,7 +231,7 @@ end)
 test("GitHub repositories open a clone picker grouped by owner", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
-	plugin:answer("repos", Stub.answer("repos", {}), 0, cx)
+	plugin:answer("repos", Stub.fixture("repos", {}), 0, cx)
 	eq(#cx.asked, 2, "pickers and prompts opened")
 	local opts = cx.asked[2].opts
 	eq(opts.placeholder, "Search GitHub repositories", "placeholder")
@@ -308,7 +309,7 @@ end)
 test("dismissing or failing the GitHub repository picker clones nothing", function()
 	local plugin, cx = open_repo_picker()
 	cx.asked[1].next(Stub.item(cx.asked[1], "github"), nil, cx)
-	plugin:answer("repos", Stub.answer("repos", {}), 0, cx)
+	plugin:answer("repos", Stub.fixture("repos", {}), 0, cx)
 	cx.asked[2].next(nil, nil, cx)
 	cx.asked[2].next(nil, "gone", cx)
 	cx.asked[2].next(Stub.item(cx.asked[2], "gh:me/aoyama"), "gone", cx)

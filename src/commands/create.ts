@@ -319,19 +319,25 @@ const moveOrClear = async (ctx: Context, target: Target, existing: Worktree): Pr
   return { carry, refusal };
 };
 
+/** Updates the submodules of the worktree at `dir`, and adds their warnings to `ctx.warnings`. */
+const updateWorktreeSubmodules = async (ctx: Context, dir: string): Promise<void> => {
+  ctx.warnings.push(...(await updateSubmodules(ctx.root, dir)));
+};
+
 /**
  * Adds the worktree of `target` again after `moveOrClear` removed it, updates its submodules, then copies the carried files into it. Gives the carried files.
- * It adds the branch again with plain git, because clone mode does not apply to a rebuild.
+ * It adds the worktree again with plain git, because clone mode does not apply to a rebuild.
  */
 const rebuild = async (ctx: Context, target: Target, cleared: Cleared): Promise<string[]> =>
   await afterStaging(cleared.carry, async () => {
     await addWorktree({ ...ctx, clone: null }, { ...target, isNew: false });
-    ctx.warnings.push(`recreated: git worktree move refused (${cleared.refusal})`, ...(await updateSubmodules(ctx.root, target.path)));
+    ctx.warnings.push(`recreated: git worktree move refused (${cleared.refusal})`);
+    await updateWorktreeSubmodules(ctx, target.path);
     return unstage(ctx, cleared.carry, target.path);
   });
 
 /** Moves the worktree `existing` to the path of `target`, or rebuilds it there when git refuses the move. Gives the carried files. */
-const relocateExisting = async (ctx: Context, target: Target, existing: Worktree): Promise<string[]> => {
+const relocate = async (ctx: Context, target: Target, existing: Worktree): Promise<string[]> => {
   assertPathFree(target);
   mkdirSync(path.dirname(target.path), { recursive: true });
   const lockReason = existing.locked;
@@ -348,7 +354,7 @@ const relocateExisting = async (ctx: Context, target: Target, existing: Worktree
     throw error;
   }
   if (cleared === null) {
-    ctx.warnings.push(...(await updateSubmodules(ctx.root, target.path)));
+    await updateWorktreeSubmodules(ctx, target.path);
     return [];
   }
   return await rebuild(ctx, target, cleared);
@@ -368,7 +374,7 @@ const reuseOmpPrCheckout = async (ctx: Context, target: Target, listed: Worktree
   return headRef.status !== 0 || headRef.stdout.trim() === target.branch ? { branch, carried: [], owner: 'omp', path: found.path, status: 'reused' } : null;
 };
 
-const placeWorktree = async (ctx: Context, target: Target, relocate: boolean): Promise<Placed> => {
+const placeWorktree = async (ctx: Context, target: Target, mayRelocate: boolean): Promise<Placed> => {
   await checkBranch(ctx, target);
   const listed = await worktrees(ctx.root);
   const existing = listed.find(worktree => worktree.branch === target.branch);
@@ -381,7 +387,7 @@ const placeWorktree = async (ctx: Context, target: Target, relocate: boolean): P
       return reused;
     }
     await addWorktree(ctx, target);
-    ctx.warnings.push(...(await updateSubmodules(ctx.root, target.path)));
+    await updateWorktreeSubmodules(ctx, target.path);
     return { branch: target.branch, carried: [], owner: 'tern', path: target.path, status: 'created' };
   }
   const samePath = isUnder(existing.path, target.path) && isUnder(target.path, existing.path);
@@ -391,13 +397,13 @@ const placeWorktree = async (ctx: Context, target: Target, relocate: boolean): P
   if (existing.main) {
     return { branch: target.branch, carried: [], owner: 'main', path: existing.path, status: 'reused' };
   }
-  if (!relocate) {
+  if (!mayRelocate) {
     throw new CliError('worktree_exists_elsewhere', `${target.branch} has a worktree at ${existing.path}; pass --relocate to move it to ${target.path}`, {
       existing: existing.path,
       target: target.path,
     });
   }
-  const carried = await relocateExisting(ctx, target, existing);
+  const carried = await relocate(ctx, target, existing);
   return { branch: target.branch, carried, owner: 'tern', path: target.path, status: 'relocated' };
 };
 

@@ -3,7 +3,10 @@ import path from 'node:path';
 import { dirtyFiles, ignoredFiles, submodules, unpushedCommits } from './git.ts';
 import { CliError } from './proc.ts';
 
-/** The operation that a worktree with work to lose blocks: relocate is `'recreating'`, and teardown is `removing`, which holds the main checkout of the worktree. */
+/**
+ * The operation to stop when the worktree has work to lose. It is `'recreating'` for relocate, or `{ removing }` for teardown, where `removing`
+ * is the path of the main checkout of the worktree.
+ */
 export type Guarded = 'recreating' | { removing: string };
 
 /** The path segments of the ignored files that a build or an install makes again. An ignored file with none of them in its path is hard to rebuild. */
@@ -78,16 +81,24 @@ const hardToRebuildIn = async (dir: string, subs: string[]): Promise<string[]> =
 };
 
 /**
- * Relocate stops only on changes, and gives each hard-to-rebuild file to carry. Teardown stops on changes, and on each hard-to-rebuild file
- * that is not the same, byte for byte, as the file at the same path in the main checkout.
+ * Throws `dirty_worktree` when `operation` stops on the work to lose in the worktree at `dir`, submodules at each depth included. Relocate
+ * stops only on changes, and gives each hard-to-rebuild file to carry. Teardown gives an empty list. It also stops on each hard-to-rebuild
+ * file that is not the same, byte for byte, as the file at the same path in the main checkout.
+ *
+ * The error holds `changes`, `hardToRebuild` and `files`. `changes` holds the `git status --porcelain` lines, then for each submodule its
+ * `<sub>: <line>` and `<sub>: unpushed <commit>` entries. `hardToRebuild` holds the blocking hard-to-rebuild files, relative to `dir`.
+ * `files` holds the changes, then a `!! <path>` entry for each blocking hard-to-rebuild file.
  */
-export const guardWorkToLose = async (dir: string, op: Guarded): Promise<string[]> => {
+export const guardWorkToLose = async (dir: string, operation: Guarded): Promise<string[]> => {
   const subs = await submodules(dir);
-  const [changes, found] = await Promise.all([changesIn(dir, subs), hardToRebuildIn(dir, subs)]);
-  const blocking = op === 'recreating' ? [] : found.filter(file => !sameFile(path.join(dir, file), path.join(op.removing, file)));
+  const [changes, hardToRebuild] = await Promise.all([changesIn(dir, subs), hardToRebuildIn(dir, subs)]);
+  const { blocking, carried, doing }: { blocking: string[]; carried: string[]; doing: string } =
+    operation === 'recreating'
+      ? { blocking: [], carried: hardToRebuild, doing: operation }
+      : { blocking: hardToRebuild.filter(file => !sameFile(path.join(dir, file), path.join(operation.removing, file))), carried: [], doing: 'removing' };
   const files = [...changes, ...blocking.map(file => `!! ${file}`)];
   if (files.length > 0) {
-    throw new CliError('dirty_worktree', `${dir} has work that ${op === 'recreating' ? op : 'removing'} it would lose`, { changes, existing: dir, files, hardToRebuild: blocking });
+    throw new CliError('dirty_worktree', `${dir} has work that ${doing} it would lose`, { changes, existing: dir, files, hardToRebuild: blocking });
   }
-  return op === 'recreating' ? found : [];
+  return carried;
 };

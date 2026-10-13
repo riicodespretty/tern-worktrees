@@ -1,6 +1,5 @@
 --!strict
 
-local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -93,16 +92,16 @@ do
 	end)
 
 	test(`tab_closed {if case.asks then "asks" else "does not ask"} for a worktree with {case.what}`, function()
-		local live = Stub.cx(case.panes, 1)
-		local rest: { Stub.Pane } = {}
+		local before = Stub.cx(case.panes, 1)
+		local otherPanes: { Stub.Pane } = {}
 		for _, pane in case.panes do
 			if pane.tab ~= 1 then
-				table.insert(rest, pane)
+				table.insert(otherPanes, pane)
 			end
 		end
-		local after = Stub.cx(rest, if #rest > 0 then rest[1].pane else nil)
+		local after = Stub.cx(otherPanes, if #otherPanes > 0 then otherPanes[1].pane else nil)
 		local plugin = load()
-		plugin.handlers.window_start(live)
+		plugin.handlers.window_start(before)
 		plugin.handlers.tab_closed({ tab = 1 }, after)
 		plugin:answer("config", CONFIG, 0, after)
 		eq(#after.asked, if case.asks then 1 else 0, "pickers and prompts opened")
@@ -165,9 +164,9 @@ local OMP = "/wt/7-abc1234"
 local LISTED = Stub.fixture("list-all", { root = ROOT, repo = "/r/app", feat = FEAT, omp = OMP })
 local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
-local REMOVED = Stub.answer("remove-kept-policy", { repo = "/r/app", worktree = FEAT }, { branch = "feat" })
-local CREATE_X: { [string]: string } = { branch = "x", repo = "/r/app", worktree = "/wt/worktrees/app/x" }
-local CREATED = Stub.answer("create-created", CREATE_X)
+local REMOVED = Stub.answer("remove-kept-policy", Stub.worktree_vars("feat"), { branch = "feat" })
+local CREATE_X_VARS = Stub.worktree_vars("x")
+local CREATED = Stub.fixture("create-created", CREATE_X_VARS)
 
 -- Starts a window with one pane in `cwd`, and answers its `list --all` with LISTED.
 local function started(cwd: string): (Stub.Harness, any)
@@ -192,7 +191,7 @@ test("window_start writes the worktree index from list --all", function()
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/home/u" } }, 1)
 	local plugin = Stub.load({ env = ENV })
 	plugin.handlers.window_start(cx)
-	eq(table.concat(plugin:pending("list"), "; "), "list --all", "list calls")
+	eq(plugin:pending_line("list"), "list --all", "list calls")
 	plugin:answer("list", LISTED, 0, cx)
 	local feat = plugin.kv.worktreeIndex[FEAT]
 	eq(feat.main, "/r/app", "main of feat")
@@ -208,18 +207,16 @@ end)
 
 -- A `tern-wt setup` answer with the action `bin` for the CLI link and `skill` for the skill link.
 local function setup_answer(bin: string, skill: string): string
-	local answer = serde.decode(
-		"json",
-		Stub.fixture("setup", {
-			binLink = "/home/u/.local/bin/tern-wt",
-			binTarget = "/p/bin/tern-wt",
-			skillLink = "/home/u/.omp/agent/skills/tern-worktrees",
-			skillTarget = "/p/skills/tern-worktrees",
-		})
-	)
-	answer.links[1].action = bin
-	answer.links[2].action = skill
-	return serde.encode("json", answer)
+	local vars = {
+		binLink = "/home/u/.local/bin/tern-wt",
+		binTarget = "/p/bin/tern-wt",
+		skillLink = "/home/u/.omp/agent/skills/tern-worktrees",
+		skillTarget = "/p/skills/tern-worktrees",
+	}
+	return Stub.answer("setup", vars, function(answer: any)
+		answer.links[1].action = bin
+		answer.links[2].action = skill
+	end)
 end
 
 -- Loads the window half, checks that the load itself starts no `setup`, that its timer then runs `setup` one time, and
@@ -230,9 +227,9 @@ local function toasts_after_setup(stdout: string, status: number): string
 	local plugin = Stub.load({ env = ENV })
 	eq(#plugin:pending("setup"), 0, "setup calls during the load")
 	plugin:tick(0)
-	eq(table.concat(plugin:pending("setup"), "; "), "setup", "setup calls after the timer")
+	eq(plugin:pending_line("setup"), "setup", "setup calls after the timer")
 	plugin.handlers.window_start(cx)
-	eq(table.concat(plugin:pending("setup"), "; "), "setup", "setup calls after window_start")
+	eq(plugin:pending_line("setup"), "setup", "setup calls after window_start")
 	local before = #cx.toasts
 	plugin:answer("setup", stdout, status, cx)
 	local lines: { string } = {}
@@ -270,12 +267,12 @@ end)
 -- Counts the teardown pickers that a close of tab 2 opens, after the plugin made tab 2 from a `create` answer with
 -- `owner`.
 local function pickers_after_close_of_created_tab(owner: string): number
-	local X = CREATE_X.worktree
+	local X = CREATE_X_VARS.worktree
 	local panes: { Stub.Pane } = { { pane = 1, tab = 1, cwd = "/r/app" } }
 	local cx = Stub.cx(panes, 1)
 	local plugin = Stub.load({ env = ENV, files = { [X .. "/.git"] = "" }, kv = { worktreeRoot = ROOT } })
 	pick_branch_x(plugin, cx)
-	plugin:answer("create", Stub.answer("create-created", CREATE_X, { owner = owner }), 0, cx)
+	plugin:answer("create", Stub.answer("create-created", CREATE_X_VARS, { owner = owner }), 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	local after = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local before = #after.asked
@@ -357,14 +354,15 @@ test("the Carly create export passes the branch as one --branch=<name> argument"
 	local cx = Stub.cx({ { pane = 1, tab = 1, cwd = "/r/app" } }, 1)
 	local plugin = Stub.load({ env = ENV, kv = { worktreeRoot = ROOT } })
 	plugin.exports.create("/r/app", "-x", nil, cx, Stub.call())
-	eq(table.concat(plugin:pending("create"), "; "), "create --repo /r/app --branch=-x --no-tab", "create argv")
+	eq(plugin:pending_line("create"), "create --repo /r/app --branch=-x --no-tab", "create argv")
 end)
 
 -- A `branches` answer where the main checkout holds feat, the head branch of pull request 7, and a worktree holds x.
-local CHECKOUTS = [[{"name":"app","default":"main","branches":["main","feat","x"],]]
-	.. [["prs":[{"number":7,"title":"T","branch":"feat"}],"prsFailed":false,"worktrees":[]]
-	.. [[{"branch":"feat","path":"/r/app","managed":false,"owner":null,"main":true},]]
-	.. [[{"branch":"x","path":"/wt/worktrees/app/x","managed":true,"owner":"tern","main":false}],"warnings":[]}]]
+local CHECKOUTS = Stub.answer("branches", Stub.worktree_vars("x"), function(answer: any)
+	answer.branches = { "main", "feat", "x" }
+	answer.prs[1].title, answer.prs[1].branch = "T", "feat"
+	answer.worktrees[1].branch = "feat"
+end)
 
 -- The `level title` of the last toast after `start` runs the pending `create` of a window with pane 1 in /r/app.
 local function progress_toast(start: (plugin: Stub.Harness, cx: any) -> ()): string
@@ -508,7 +506,7 @@ test("command_finished events within 2 s start one list --all and one trailing r
 	plugin:tick(1999)
 	eq(#plugin:pending("list"), 0, "list runs before 2 s")
 	plugin:tick(1)
-	eq(table.concat(plugin:pending("list"), "; "), "list --all", "trailing run")
+	eq(plugin:pending_line("list"), "list --all", "trailing run")
 	plugin:answer("list", LISTED, 0, cx)
 	plugin:tick(2000)
 	eq(#plugin:pending("list"), 0, "list runs after the trailing run")
@@ -522,7 +520,7 @@ test("a refresh while list --all runs past 2 s waits for its answer", function()
 	plugin.handlers.command_finished({ pane = 1 }, cx)
 	eq(#plugin:pending("list"), 1, "list runs in flight")
 	plugin:answer("list", LISTED, 0, cx)
-	eq(table.concat(plugin:pending("list"), "; "), "list --all", "run after the answer")
+	eq(plugin:pending_line("list"), "list --all", "run after the answer")
 end)
 
 test("command_finished outside the index starts no list", function()
@@ -557,7 +555,7 @@ test(
 		dropped.cb({ stdout = LISTED, stderr = "", status = 0 }, nil)
 		plugin:tick(120001)
 		plugin.handlers.cwd({ pane = 1, path = "/wt/worktrees/app/new" }, cx)
-		eq(table.concat(plugin:pending("list"), "; "), "list --all", "list runs after the cwd")
+		eq(plugin:pending_line("list"), "list --all", "list runs after the cwd")
 		plugin:answer("list", LISTED, 0, cx)
 		dropped.cb({ stdout = '{"root":"/wt/worktrees","worktrees":[]}', stderr = "", status = 0 }, cx)
 		eq(plugin.kv.worktreeIndex[FEAT].branch, "feat", "entry after the late answer of the dropped run")
@@ -566,7 +564,7 @@ test(
 )
 
 for _, lost in { "fails", "is dropped" } do
-	test(`a refresh list --all after a window_start list --all that {lost} remembers the root`, function()
+	test(`after a window_start list --all that {lost}, a refresh list --all remembers the root`, function()
 		local cx = Stub.cx({ { pane = 1, tab = 1, cwd = FEAT .. "/src" } }, 1)
 		local plugin = Stub.load({
 			env = ENV,
@@ -678,14 +676,14 @@ local function window_over(kv: { [string]: any }): (Stub.Harness, any)
 	return plugin, cx
 end
 
--- Creates the worktree of `branch` at `path` from the branch picker of the window that `plugin` loaded.
-local function create_in(plugin: Stub.Harness, cx: any, branch: string, path: string)
+-- Creates the worktree of `branch` in /wt/worktrees/app from the branch picker of the window that `plugin` loaded.
+local function create_in(plugin: Stub.Harness, cx: any, branch: string)
 	plugin.commands.new.run(cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 	plugin:answer("branches", Stub.answer("branches-offline", { repo = "/r/app" }, { branches = { branch } }), 0, cx)
 	local picker = cx.asked[#cx.asked]
 	picker.next(Stub.item(picker, "b:" .. branch), nil, cx)
-	plugin:answer("create", Stub.answer("create-created", { branch = branch, repo = "/r/app", worktree = path }), 0, cx)
+	plugin:answer("create", Stub.fixture("create-created", Stub.worktree_vars(branch)), 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
 end
 
@@ -694,8 +692,8 @@ test("a create or remove in one window keeps the entries that another window wro
 	local kv: { [string]: any } = {}
 	local a, cxA = window_over(kv)
 	local b, cxB = window_over(kv)
-	create_in(a, cxA, "x", X)
-	create_in(b, cxB, "y", Y)
+	create_in(a, cxA, "x")
+	create_in(b, cxB, "y")
 	eq(kv.worktreeIndex[X] ~= nil, true, "X in kv after B's create")
 	eq(kv.worktreeIndex[Y] ~= nil, true, "Y in kv after B's create")
 	local call = Stub.call()

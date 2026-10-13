@@ -36,17 +36,15 @@ const check = (ok: boolean, message: string): void => {
   }
 };
 
-const git = gitMust;
-
 const cli = async <T>(...args: string[]): Promise<T> => {
-  const result = await run([CLI, ...args], { env });
+  const result = await run([CLI, ...args]);
   check(result.status === 0, `tern-wt ${args.join(' ')} exited ${result.status}: ${result.stdout.trim()}`);
   // SAFETY: the CLI prints one JSON object for each command.
   return JSON.parse(result.stdout) as T;
 };
 
 const makeClone = async (): Promise<RepoFixture> => {
-  const repo = await buildRepo(git, tempRoot, smokeName, 'smoke\n');
+  const repo = await buildRepo(gitMust, tempRoot, smokeName, 'smoke\n');
   await repo.pushBranch('feature/x');
   return repo;
 };
@@ -77,7 +75,7 @@ const waitForBlock = async (dir: string): Promise<void> => {
 const smoke = async (): Promise<void> => {
   const repo = await makeClone();
   const clone = repo.dir;
-  await git(clone, 'remote', 'set-url', 'origin', 'https://github.com/smoke/twt-smoke.git');
+  await gitMust(clone, 'remote', 'set-url', 'origin', 'https://github.com/smoke/twt-smoke.git');
   writeFileSync(path.join(env.TERN_PLUGIN_DATA, 'config.json'), JSON.stringify({ setup: { 'smoke/twt-smoke': ['touch .setup-ran'] } }));
   const created = await cli<CreateResult>('create', '--repo', clone, '--branch', 'feature/x');
   check(created.status === 'created', `create: status ${created.status}, not created`);
@@ -94,7 +92,7 @@ const smoke = async (): Promise<void> => {
   check(reused.setup === null, `create again: setup ${JSON.stringify(reused.setup)}, not null`);
   const listed = await cli<ListResult>('list');
   check(listed.worktrees.length === 1, `list: ${listed.worktrees.length} worktrees, not 1`);
-  await git(clone, 'remote', 'set-url', 'origin', repo.origin);
+  await gitMust(clone, 'remote', 'set-url', 'origin', repo.origin);
   await cli('remove', created.path);
   check(!existsSync(created.path), `remove: ${created.path} still exists`);
   const blocksLeft = await blocksUnder(created.path);

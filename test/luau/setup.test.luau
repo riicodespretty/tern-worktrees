@@ -10,24 +10,24 @@ local PATH = "/wt/worktrees/app/x"
 local LINE = "npm ci && npm test"
 local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
-local CREATE_VARS: { [string]: string } = { branch = "x", repo = "/r/app", worktree = PATH }
+local CREATE_VARS = Stub.worktree_vars("x")
 
 -- The first warning of the `create` contract fixture `name`: the CLI words for a setup that did not run.
 local function setup_warning(name: string): string
-	return serde.decode("json", Stub.fixture(name, { repo = "/r/app", worktree = PATH })).warnings[1]
+	return serde.decode("json", Stub.fixture(name, CREATE_VARS)).warnings[1]
 end
 
 local NO_PROMPT = setup_warning("create-setup-no-prompt")
 local OPEN_BEFORE = setup_warning("create-setup-open-before")
 local NO_TAB = "setup not run: no tab opened"
 
--- The `create` answer for branch x, with `setup` as its value.
+-- The `create` answer for branch x, with `setup` as the value of its `setup` key.
 local function created(setup: { [string]: any }): string
 	return Stub.answer("create-setup-no-tab", CREATE_VARS, { setup = setup })
 end
 
--- The `create` answer for branch x, with the untyped setup line LINE of the fixture.
-local UNTYPED = Stub.answer("create-setup-no-tab", CREATE_VARS)
+-- The `create` answer for branch x. Its setup line is LINE, from the fixture, and is not typed.
+local UNTYPED = Stub.fixture("create-setup-no-tab", CREATE_VARS)
 
 -- The shell pane of the new tab that a create opens in a `window()`, not yet at the prompt.
 local SHELL = 2
@@ -105,26 +105,26 @@ test("type_setup toasts the line when no prompt shows in 30 s", function()
 	eq(#cx.typed, 0, "typed")
 end)
 
-test("a tick of 31 s runs each setup poll on time", function()
+test("one tick of 31 s runs each setup poll on time, so the setup toast shows at 30 s", function()
 	local plugin, cx = window()
 	create_x(plugin, cx, UNTYPED)
 	local toast = cx.toast
-	local clocks: { number } = {}
+	local toast_clocks: { number } = {}
 	cx.toast = function(self: any, level: string, title: string, detail: string?)
 		if string.sub(title, 1, #"Setup not run") == "Setup not run" then
-			table.insert(clocks, plugin.clock)
+			table.insert(toast_clocks, plugin.clock)
 		end
 		toast(self, level, title, detail)
 	end
 	plugin:tick(31000)
-	eq(#clocks, 1, "setup toasts")
-	eq(clocks[1], 30000, "clock of the setup toast")
+	eq(#toast_clocks, 1, "setup toasts")
+	eq(toast_clocks[1], 30000, "clock of the setup toast")
 end)
 
 for _, case in
 	{
 		{ what = "typed is true", answer = created({ line = LINE, typed = true }) },
-		{ what = "setup is null", answer = Stub.answer("create-created", CREATE_VARS) },
+		{ what = "setup is null", answer = Stub.fixture("create-created", CREATE_VARS) },
 	}
 do
 	test(`type_setup does nothing when {case.what}`, function()

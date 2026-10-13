@@ -181,7 +181,7 @@ export const ghFixture = (args: string[], body: string): void => {
   writeFileSync(path.join(activeSandbox().ghDir, `${key}.json`), body);
 };
 
-/** The path of the managed worktree `dirName` of the repository `repoName` in the worktree root of the sandbox. */
+/** Gives the path of the managed worktree `dirName` for the repository `repoName`, in the worktree root of the sandbox. */
 export const managedPath = (dirName: string, repoName = 'aoyama'): string => path.join(activeSandbox().wtHome, 'worktrees', repoName, dirName);
 
 /** Gives the current branch of the checkout at `dir`. */
@@ -190,7 +190,7 @@ export const currentBranch = async (dir: string): Promise<string> => {
   return out.trim();
 };
 
-/** Makes the fake `gh pr view 7` answer pull request 7 of `virtusize/aoyama` with the head branch `headRefName`, from a fork when `fork` is set. */
+/** Makes the fake `gh pr view 7` answer with pull request 7 of `virtusize/aoyama`, whose head branch is `headRefName`. When `fork` is true, the pull request comes from a fork. */
 export const ghPrView = (headRefName = 'feature/x', { fork = false } = {}): void => {
   ghFixture(
     ['pr', 'view', '7', '--repo', 'virtusize/aoyama', '--json', 'number,headRefName,isCrossRepository'],

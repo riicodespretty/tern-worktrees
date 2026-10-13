@@ -68,7 +68,7 @@ describe('work to lose', () => {
       await expect(guardWorkToLose(dir, { removing: tempDir('main') })).resolves.toStrictEqual([]);
     });
 
-    it('stops on unpushed commits and changes at each submodule depth, and teardown also on an ignored file', async () => {
+    it('stops both operations on unpushed commits and changes at each submodule depth, and stops teardown also on an ignored file', async () => {
       const dir = await nestedSubmodules();
       const outer = path.join(dir, 'outer');
       const nested = path.join(outer, 'inner');
@@ -169,7 +169,7 @@ describe('work to lose', () => {
       expect(carried.toSorted()).toStrictEqual(['.env', '.env.link', 'outer/.env.local', 'outer/inner/local.settings.json', 'secrets/a.pem', 'secrets/deep/b.txt']);
     });
 
-    it('lets teardown drop each copy with the bytes of the file at the same path in the main checkout', async () => {
+    it('does not stop teardown on a copy with the same bytes as the file at the same path in the main checkout', async () => {
       const { dir, main } = await copiesOfMain();
       const error = await rejection(guardWorkToLose(dir, { removing: main }));
       // SAFETY: guardWorkToLose sets `hardToRebuild` to the string[] of blocking files.

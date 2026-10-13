@@ -184,7 +184,7 @@ describe('list command', () => {
       });
     });
 
-    it('answers list --all through main as the contract fixture', async () => {
+    it('answers list --all through the CLI main function with the contract fixture', async () => {
       const app = await tmpRepo('app');
       const feat = path.join(base, 'app', 'feat');
       const omp = path.join(base, '7-abc1234');

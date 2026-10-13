@@ -42,8 +42,12 @@ export type Harness = {
 	answer: (self: Harness, verb: string, stdout: string, status: number?, cx: any?) -> (),
 	tick: (self: Harness, ms: number) -> (),
 	pending: (self: Harness, verb: string) -> { string },
+	pending_line: (self: Harness, verb: string) -> string,
 	status: (self: Harness, cwd: string?) -> any,
 }
+
+-- The overrides of `Stub.answer`: top-level keys and their values, or a function that changes the decoded answer.
+export type Fields = { [string]: any } | (res: any) -> ()
 
 local Stub = {}
 
@@ -61,11 +65,11 @@ type Record = { id: number, name: string, tabs: { number } }
 --   first record. A parked pane has no tab.
 -- - `cx.current` (default `opts.current`, else the first record) and `cx.focused` (default `focused`).
 -- - `cx.names[tab]`: the name that `layout:name_tab` gave the tab.
--- - `cx.effects`: one line for each effect, in order. `cx:command("close_tab")` removes the panes of the tab of the
---   focused pane, writes `close_tab <tab>`, and fires the `tab_closed` handler of `cx.plugin`. `cx.on_effect`, when
---   set, runs with each line once it is in the log.
+-- - `cx.effects`: one line for each effect, in order. `cx:command("close_tab")` removes each pane in the tab of the
+--   focused pane. Then it writes `close_tab <tab>` and fires the `tab_closed` handler of `cx.plugin`. `cx.on_effect`,
+--   when set, runs with each line once it is in the log.
 -- - `cx.fail`: the effects that fail, from `opts.fail`.
--- - `cx.plugin`: the harness of `Stub.load({ cx = cx })`, whose handlers `cx:command` fires.
+-- - `cx.plugin`: the harness of `Stub.load({ cx = cx })`. `cx:command` fires the handlers of this harness.
 -- A new pane, tab or session gets the highest id in use plus 1.
 function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 	local asked: { any } = {}
@@ -388,8 +392,9 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		table.insert(self.toasts, { level = level, title = title, detail = detail })
 	end
 
-	-- Runs the Tern command `id`. Only `close_tab` exists. It closes the tab of the focused pane, then fires
-	-- `tab_closed` of `cx.plugin` at once [unverified]. Tern does not re-run overrides here, so neither does the fake.
+	-- Runs the Tern command `id`. The fake supports only `close_tab`. It closes the tab of the focused pane. Then it
+	-- fires the `tab_closed` handler of `cx.plugin` before it returns [unverified]. When a plugin runs `close_tab` as a
+	-- command, Tern does not call the `close_tab` override again. The fake also does not call it.
 	function cx.command(_self: any, id: string)
 		assert(id == "close_tab", `fake cx: no command {id}`)
 		local tab = cx.session:tab_of(cx.focused)
@@ -411,9 +416,9 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 		end
 		effect("close_tab " .. tab)
 		assert(cx.plugin ~= nil, "fake cx: close_tab needs Stub.load({ cx = cx })")
-		local closed = cx.plugin.handlers.tab_closed
-		if closed ~= nil then
-			closed({ tab = tab }, cx)
+		local on_tab_closed = cx.plugin.handlers.tab_closed
+		if on_tab_closed ~= nil then
+			on_tab_closed({ tab = tab }, cx)
 		end
 	end
 
@@ -433,7 +438,7 @@ function Stub.cx(panes: { Pane }, focused: number?, opts: CxOptions?): any
 	return cx
 end
 
--- A fake Carly call. `reply` appends its result to `replies`, `fail` raises "call:fail <err>", and `wait` returns nil.
+-- A fake Carly call. `reply` adds its result to `replies`. `fail` raises the error "call:fail <err>". `wait` returns nil.
 function Stub.call(): Call
 	local call: Call = {
 		replies = {},
@@ -450,7 +455,7 @@ function Stub.call(): Call
 	return call
 end
 
--- The item of the pick `request` with `id`. It raises when no item has that id.
+-- Returns the item that has `id` from the pick `request`. Raises an error when no item has that id.
 function Stub.item(request: any, id: string): any
 	for _, it in request.opts.items do
 		if it.id == id then
@@ -492,8 +497,8 @@ function Stub.load(opts: Options): Harness
 		answer = function(self: Harness, verb: string, stdout: string, status: number?, cx: any?)
 			answer(self, verb, stdout, status, cx or defaultCx or lastCx)
 		end,
-		-- Moves the fake clock by `ms`. Each timer due in that time fires at its own time, earliest first, also one
-		-- that a callback set.
+		-- Moves the fake clock forward by `ms`. Each timer that becomes due in that interval fires at its own due time,
+		-- earliest first. This includes a timer that a callback sets during the tick.
 		tick = function(self: Harness, ms: number)
 			local target = self.clock + ms
 			while true do
@@ -514,7 +519,8 @@ function Stub.load(opts: Options): Harness
 				end
 			end
 		end,
-		-- The arguments after the binary of each run of `verb` that no answer has taken yet, in order.
+		-- Returns one line for each run of `verb` that `answer` did not remove yet, in order. A line holds the arguments
+		-- after the binary, joined with spaces.
 		pending = function(self: Harness, verb: string): { string }
 			local lines: { string } = {}
 			for _, run in self.runs do
@@ -523,6 +529,10 @@ function Stub.load(opts: Options): Harness
 				end
 			end
 			return lines
+		end,
+		-- Returns the lines of `pending` for `verb`, joined with "; ".
+		pending_line = function(self: Harness, verb: string): string
+			return table.concat(self:pending(verb), "; ")
 		end,
 		-- Runs the status formatter for a focused pane in `cwd`. `tern.chrome.refresh` raises an error while the
 		-- formatter runs, as it does in Tern.
@@ -652,15 +662,24 @@ function Stub.fixture(name: string, vars: { [string]: string }): string
 	)
 end
 
--- The fixture `name` with `vars` as in `Stub.fixture`, with each top-level key of `fields` set to its value, as JSON
--- text.
-function Stub.answer(name: string, vars: { [string]: string }, fields: { [string]: any }?): string
+-- Returns the fixture `name` as JSON text. It fills in `vars` the same way `Stub.fixture` does. Then it sets each
+-- top-level key of `fields` to its value, or, when `fields` is a function, calls it with the decoded answer to change.
+function Stub.answer(name: string, vars: { [string]: string }, fields: Fields): string
 	local res = serde.decode("json", Stub.fixture(name, vars))
-	local extra: { [string]: any } = fields or {}
-	for key, value in extra do
-		res[key] = value
+	if type(fields) == "function" then
+		fields(res)
+	else
+		for key, value in fields do
+			res[key] = value
+		end
 	end
 	return serde.encode("json", res)
+end
+
+-- Returns the fixture vars of the managed worktree of `branch` in /r/app: `branch`, `repo` (/r/app) and `worktree`
+-- (/wt/worktrees/app/<branch>).
+function Stub.worktree_vars(branch: string): { [string]: string }
+	return { branch = branch, repo = "/r/app", worktree = "/wt/worktrees/app/" .. branch }
 end
 
 return Stub

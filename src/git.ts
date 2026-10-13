@@ -163,10 +163,10 @@ const brokenSubmoduleGitfiles = async (dir: string): Promise<string[]> => await 
 
 /**
  * Makes the submodules of the worktree at `dir` usable again after omp cloned the main checkout into it. The clone copies the `.git` file
- * of each submodule, and its relative path then points through the `.git` file of the worktree, so git fails in the submodule. This copies
- * the submodule git directories of the main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the file
- * system can, then removes each broken `.git` file. `git submodule update` then connects each submodule to its copy and checks out the
- * recorded commit. The cloned files stay, also the ignored build output, and no submodule is fetched again. When the copy fails, the
+ * of each submodule. The relative path in that file then points through the `.git` file of the worktree, so git fails in the submodule. This
+ * copies the submodule git directories of the main checkout (`.git/modules`) into the git directory of the worktree, copy-on-write where the
+ * file system can. Then it removes each broken `.git` file. `git submodule update` then connects each submodule to its copy and checks out the
+ * recorded commit. The cloned files stay, and so does the ignored build output. Git fetches no submodule again. When the copy fails, the
  * `.git` files stay and a `submodule repair failed:` warning tells why.
  */
 const repairClonedSubmodules = async (root: string, dir: string): Promise<string[]> => {
@@ -188,8 +188,9 @@ const repairClonedSubmodules = async (root: string, dir: string): Promise<string
 };
 
 /**
- * Settles the submodules of the worktree at `dir`. `root` is the main checkout of the worktree. It repairs the `.git` files that omp clone
- * mode copied, then runs `git submodule update --init --recursive`. Gives the warnings in order.
+ * Updates the submodules of the worktree at `dir`. `root` is the main checkout of the worktree. It repairs the `.git` files that omp clone
+ * mode copied, then runs `git submodule update --init --recursive`. It gives the warnings in the sequence of the steps: the repair warning
+ * first, then the update warning.
  */
 export const updateSubmodules = async (root: string, dir: string): Promise<string[]> => {
   const warnings = await repairClonedSubmodules(root, dir);

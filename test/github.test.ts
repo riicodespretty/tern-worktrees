@@ -40,7 +40,7 @@ describe('github helpers', () => {
       },
     );
 
-    it('gives no origin without an origin', async () => {
+    it('gives present false and a null github without an origin remote', async () => {
       const repo = await tmpRepo();
       await git(repo.dir, 'remote', 'remove', 'origin');
       await expect(readOrigin(repo.dir)).resolves.toStrictEqual({ github: null, present: false });

@@ -27,7 +27,7 @@ describe('resolve command', () => {
       });
     });
 
-    it('answers resolve through main as the contract fixture', async () => {
+    it('answers resolve through the CLI main function with the contract fixture', async () => {
       const repo = await tmpRepo('app');
       await expect(cliJson(['resolve', repo.dir])).resolves.toStrictEqual(contract('resolve', { repo: repo.dir }));
     });

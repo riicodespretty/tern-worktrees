@@ -84,12 +84,12 @@ export const run = async (args: string[]): Promise<BranchesResult> => {
       warnings.push(fetchWarning);
     }
   }
-  const github = offline ? null : origin.github;
+  const repoRef = offline ? null : origin.github;
   const [branches, pullRequests, repoWorktrees, defaultName, wtRoot] = await Promise.all([
     listBranches(root, origin.present),
-    github === null ? { failed: false, prs: [] } : openPullRequests(github, warnings),
+    repoRef === null ? { failed: false, prs: [] } : openPullRequests(repoRef, warnings),
     worktrees(root),
-    defaultBranch(root, github),
+    defaultBranch(root, repoRef),
     worktreeRoot(),
   ]);
   return {

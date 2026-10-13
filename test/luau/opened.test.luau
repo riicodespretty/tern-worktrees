@@ -7,10 +7,13 @@ local test, eq = runner.test, runner.eq
 local ENV = { HOME = "/home/u" }
 local PATH = "/wt/worktrees/app/x"
 local RESOLVED = Stub.fixture("resolve", { repo = "/r/app" })
-local HOME_RESOLVED = '{"repos":[{"dir":"/home/u","root":null,"name":null}]}'
+-- The `resolve` answer of the CLI for /home/u, a dir in no repository.
+local HOME_RESOLVED = Stub.answer("resolve", { repo = "/home/u" }, function(answer: any)
+	answer.repos[1].root, answer.repos[1].name = nil, nil
+end)
 local BRANCHES = Stub.fixture("branches-offline", { repo = "/r/app" })
 -- The `create` answer for branch x, with an untyped setup line.
-local CREATED = Stub.answer("create-setup-no-tab", { branch = "x", repo = "/r/app", worktree = PATH })
+local CREATED = Stub.fixture("create-setup-no-tab", Stub.worktree_vars("x"))
 local ELSEWHERE =
 	'{"error":{"code":"worktree_exists_elsewhere","message":"elsewhere","existing":"/old/app/x","target":"/wt/worktrees/app/x"}}'
 
@@ -97,11 +100,7 @@ test("a create from the branch picker whose tab step raises still refreshes and 
 	picker.next(Stub.item(picker, "b:x"), nil, cx)
 	plugin:answer("create", CREATED, 0, cx)
 	plugin:answer("resolve", RESOLVED, 0, cx)
-	eq(
-		table.concat(plugin:pending("branches"), "; "),
-		"branches --repo /r/app --offline",
-		"branches calls after the create"
-	)
+	eq(plugin:pending_line("branches"), "branches --repo /r/app --offline", "branches calls after the create")
 	eq(success_toast(cx).detail, PATH .. " · tab not opened: no tab", "success toast detail")
 	plugin:tick(31000)
 	eq(#cx.typed, 0, "typed")
@@ -156,15 +155,15 @@ for _, entry in ENTRIES do
 	test(`a create from {entry.what} resolves sessions once, after it writes the index entry`, function()
 		local plugin, cx = window()
 		entry.run(plugin, cx)
-		eq(table.concat(plugin:pending("create"), "; ") ~= "", true, "create pending")
-		eq(table.concat(plugin:pending("resolve"), "; "), "", "resolve calls before the create answer")
+		eq(plugin:pending_line("create") ~= "", true, "create pending")
+		eq(plugin:pending_line("resolve"), "", "resolve calls before the create answer")
 		plugin:answer("create", CREATED, 0, cx)
-		eq(table.concat(plugin:pending("resolve"), "; "), "resolve /r/app", "resolve calls after the create answer")
+		eq(plugin:pending_line("resolve"), "resolve /r/app", "resolve calls after the create answer")
 		local indexed = (plugin.kv.worktreeIndex or {})[PATH]
 		eq(indexed ~= nil and indexed.owner, "tern", "index entry owner before resolve answers")
 		eq(#cx.effects, 0, "effects before resolve answers")
 		plugin:answer("resolve", RESOLVED, 0, cx)
-		eq(table.concat(plugin:pending("resolve"), "; "), "", "resolve calls after resolve answers")
+		eq(plugin:pending_line("resolve"), "", "resolve calls after resolve answers")
 		eq(table.concat(cx.effects, "; "), "new_tab → tab 2, pane 2; name_tab 2 x", "effects")
 	end)
 end

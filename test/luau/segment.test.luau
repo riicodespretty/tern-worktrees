@@ -1,6 +1,5 @@
 --!strict
 
-local serde = require("@lune/serde")
 local Stub = require("./stub")
 local runner = require("./runner")
 local test, eq = runner.test, runner.eq
@@ -11,21 +10,19 @@ local FEAT = "/wt/worktrees/app/feat"
 local OMP = "/wt/7-abc1234"
 
 -- A `list --all` answer with the given rows, each `{path, branch, changed, owner}`. A nil branch means a detached
--- `HEAD`. Each row is a copy of an entry of the `list-all` fixture with these values set.
+-- `HEAD`. Each row is a copy of the first worktree of the `list-all` fixture, with these values set.
 local function listed(rows: { { any } }): string
-	local answer = serde.decode(
-		"json",
-		Stub.fixture("list-all", { root = "/wt/worktrees", repo = "/r/app", feat = FEAT, omp = OMP })
-	)
-	local entry = answer.worktrees[1]
-	local items: { any } = {}
-	for _, row in rows do
-		local item = table.clone(entry)
-		item.path, item.branch, item.changed, item.dirty, item.owner = row[1], row[2], row[3], row[3] > 0, row[4]
-		table.insert(items, item)
-	end
-	answer.worktrees = items
-	return serde.encode("json", answer)
+	local vars = { root = "/wt/worktrees", repo = "/r/app", feat = FEAT, omp = OMP }
+	return Stub.answer("list-all", vars, function(answer: any)
+		local entry = answer.worktrees[1]
+		local items: { any } = {}
+		for _, row in rows do
+			local item = table.clone(entry)
+			item.path, item.branch, item.changed, item.dirty, item.owner = row[1], row[2], row[3], row[3] > 0, row[4]
+			table.insert(items, item)
+		end
+		answer.worktrees = items
+	end)
 end
 
 local LISTED = listed({
@@ -127,8 +124,7 @@ test("refresh runs once after a create adds an entry", function()
 	picker.next(Stub.item(picker, "b:x"), nil, cx)
 	eq(#plugin.runs > 0 and plugin.runs[#plugin.runs].argv[2], "create", "pending CLI call")
 	local before = plugin.refreshes
-	local vars = { branch = "x", repo = "/r/app", worktree = "/wt/worktrees/app/x" }
-	plugin:answer("create", Stub.answer("create-created", vars), 0, cx)
+	plugin:answer("create", Stub.fixture("create-created", Stub.worktree_vars("x")), 0, cx)
 	eq(plugin.refreshes - before, 1, "refreshes")
 	eq(segment_of(plugin, "/wt/worktrees/app/x").text, "x", "text in the new worktree")
 end)

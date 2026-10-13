@@ -13,7 +13,7 @@ const brokenGitfile = (dir: string): string => {
   return path.join(dir, '.git');
 };
 
-/** Gives the repository `dir` broken submodule `.git` files at `lib/a` and `lib/a/n`, a `.git` file at `not-a-path` that no `.gitmodules` names, a `valid` checkout, and a `missing` entry. Gives the two broken files. */
+/** Writes into the repository `dir` broken submodule `.git` files at `lib/a` and `lib/a/n`, a `.git` file at `not-a-path` that no `.gitmodules` names, a `valid` checkout, and a `.gitmodules` entry `missing` with no directory. Gives the paths of the two broken files. */
 const brokenSubmodules = async (dir: string): Promise<string[]> => {
   const outer = brokenGitfile(path.join(dir, 'lib', 'a'));
   const inner = brokenGitfile(path.join(dir, 'lib', 'a', 'n'));
