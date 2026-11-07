@@ -15,6 +15,7 @@
 
 ### Fix
 
+- Find Bun through mise's shims when Tern starts with a GUI PATH. Previously the window's automatic setup failed with `bun not found` even though Bun worked in terminal login shells.
 - Link the bundled skill at `~/.agents/skills/tern-worktrees` for cross-agent discovery. Remove the previous omp link only when it points into a `tern-worktrees` package, and report that removal in setup output. Preserve real folders and unrelated links
 - Expand `~` and `~/` in CLI directory arguments while keeping each `resolve` lookup key as given. Compare home-relative pane directories with absolute worktree index paths. Before, an agent directory that starts with `~/` resolved to no repository and selected the session's first repository
 - Defer worktree index and hotkey file reads until after window load. Coalesce directory, focus and command end refreshes on the next tick. Register worktree rows in batches of eight. Look up status entries through directory parents without a full worktree scan

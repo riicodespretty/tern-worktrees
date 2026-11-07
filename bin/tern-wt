@@ -6,6 +6,8 @@ DIR=$(cd -P "$(dirname "$SELF")" && pwd)
 
 if command -v bun >/dev/null 2>&1; then
 	BUN=$(command -v bun)
+elif [ -x "$HOME/.local/share/mise/shims/bun" ]; then
+	BUN="$HOME/.local/share/mise/shims/bun"
 elif [ -x /opt/homebrew/bin/bun ]; then
 	BUN=/opt/homebrew/bin/bun
 elif [ -x "$HOME/.bun/bin/bun" ]; then
